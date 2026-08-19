@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zásady ochrany soukromí – Okolník</title>
+<meta name="description" content="Jak aplikace Okolník nakládá s vašimi údaji.">
+<style>
+  :root {
+    --tmava: #0D2B2E;
+    --zelena: #2E7D5B;
+    --oranzova: #F29D38;
+    --pisek: #F2E8CF;
+    --text: #1d2624;
+    --slabsi: #55605d;
+    --linka: #dfe4e1;
+    --papir: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--pisek);
+    color: var(--text);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+  }
+  header {
+    background: var(--tmava);
+    color: #f4efe2;
+    padding: 22px 20px;
+  }
+  header .obal { max-width: 760px; margin: 0 auto; }
+  header a { color: var(--oranzova); text-decoration: none; font-weight: 600; }
+  header a:hover { text-decoration: underline; }
+  main {
+    max-width: 760px;
+    margin: 26px auto 60px;
+    background: var(--papir);
+    padding: 34px 30px 44px;
+    border-radius: 14px;
+    box-shadow: 0 2px 14px rgba(13, 43, 46, .09);
+  }
+  h1 { font-size: 1.75rem; line-height: 1.25; margin: 0 0 6px; color: var(--tmava); }
+  h2 {
+    font-size: 1.2rem; margin: 34px 0 10px; padding-top: 16px;
+    border-top: 1px solid var(--linka); color: var(--zelena);
+  }
+  h2:first-of-type { border-top: 0; padding-top: 0; }
+  p, li { margin: 0 0 12px; }
+  ul { padding-left: 22px; }
+  a { color: var(--zelena); }
+  strong { color: var(--tmava); }
+  em { color: var(--slabsi); }
+  code {
+    background: #eef2ef; padding: 1px 5px; border-radius: 4px;
+    font-size: .92em;
+  }
+  footer {
+    max-width: 760px; margin: 0 auto 50px; padding: 0 30px;
+    color: var(--slabsi); font-size: .875rem;
+  }
+  @media (max-width: 620px) {
+    main { margin: 14px 10px 40px; padding: 24px 18px 32px; border-radius: 10px; }
+    footer { padding: 0 18px; }
+    h1 { font-size: 1.45rem; }
+  }
+</style>
+</head>
+<body>
+<header><div class="obal"><a href="/">← Okolník</a></div></header>
+<main>
+<h1>Zásady ochrany soukromí – aplikace Okolník</h1>
+<p style="color:#55605d;margin-top:-2px">Platné od 19. 8. 2026</p>
+<p>Aplikace <strong>Okolník – vyhledávač míst v okolí</strong> (dále „aplikace") respektuje
+vaše soukromí. Tento dokument popisuje, jaké údaje aplikace zpracovává, proč
+a jaká máte práva. Zpracování probíhá v souladu s nařízením (EU) 2016/679
+(GDPR). Provozovatelem je <strong>Stanislav Mudra</strong>, e-mail: stamu.apps@gmail.com.</p>
+<h2>Shrnutí</h2>
+<p>Aplikace <strong>nevytváří účty ani neshromažďuje osobní údaje spojené s vaší
+osobou</strong> a nemá vlastní servery pro vaše data. Poloha, trasa, deník, výpravy
+i fotky zůstávají uložené jen ve vašem telefonu. Na server správce posíláte
+to, co sami odešlete (návrh místa, hlasování, zpětná vazba) – bez jména či
+e-mailu; aplikace navíc odesílá <strong>souhrnné statistiky používání</strong>
+(lze vypnout v nastavení). Některé funkce se dotazují veřejných služeb
+třetích stran (mapy, OpenStreetMap, Wikipedie). Hlášení „místo už neexistuje"
+se zveřejní jako veřejná poznámka v OpenStreetMap. Bezplatná verze zobrazuje
+reklamy Google AdMob, které v EU vyžadují váš souhlas.</p>
+<h2>Poloha</h2>
+<p>Aplikace používá polohu zařízení (GPS) k zobrazení vaší pozice a míst
+v okolí na mapě a v seznamu a k hernímu „vybarvování" navštívených oblastí.
+<strong>Poloha se zpracovává ve vašem zařízení</strong> a neukládá se na servery správce.
+Některé funkce ale potřebují poslat přibližnou polohu veřejné službě třetí
+strany, aby fungovaly: načtení mapových dlaždic, načtení veřejných poznámek
+OpenStreetMap v hrubém okolí (~±30 km) kolem vás a načtení popisku
+zobrazovaného místa z Wikipedie.</p>
+<p>Volitelně lze v nastavení zapnout <strong>zaznamenávání trasy na pozadí</strong> (např.
+při zhasnutém displeji). Funkce je ve výchozím stavu vypnutá, běží jako
+viditelná služba s trvalým oznámením a zaznamenaná trasa zůstává jen ve
+vašem zařízení. Oprávnění k poloze můžete kdykoli odebrat v nastavení
+systému; aplikace pak nabídne omezený režim.</p>
+<p><strong>Navigace:</strong> při volbě „Navigovat" aplikace předá cíl (a u služby Mapy.com
+i vaši výchozí polohu) navigační aplikaci či webu dle vaší volby (Google
+Mapy, Mapy.com / Seznam.cz, Waze). Tyto služby mají vlastní zásady.
+U nádraží a zastávek lze obdobně otevřít odjezdovou tabuli ve službě
+<strong>IDOS</strong> – předá se jen název zastávky, nikoli vaše poloha.</p>
+<h2>Data, která zůstávají jen ve vašem zařízení</h2>
+<p>Zaznamenaná trasa a „objevené" oblasti, turistický deník a výpravy (zápisy,
+poznámky, fotografie), vlastní a oblíbená místa, úspěchy i nastavení se
+ukládají <strong>pouze lokálně ve vašem zařízení</strong> a nikam se neodesílají. Smažete
+je v aplikaci, vymazáním dat aplikace nebo její odinstalací. Systém Android
+může data aplikace zálohovat do vašeho účtu Google (lze vypnout v nastavení
+telefonu); aplikace navíc umí ruční export zálohy (ZIP).</p>
+<h2>Reklamy (Google AdMob)</h2>
+<p>Bezplatná verze zobrazuje reklamní banner služby <strong>Google AdMob</strong>. Google
+a partneři mohou v souvislosti s reklamami zpracovávat reklamní
+identifikátory zařízení, IP adresu a údaje o interakci s reklamou dle svých
+zásad: https://policies.google.com/privacy a
+https://support.google.com/admob/answer/6128543.</p>
+<p>V zemích EU/EHP se před zobrazením personalizovaných reklam zobrazí
+<strong>formulář souhlasu (GDPR)</strong>, kde můžete personalizaci odmítnout. Volbu lze
+později změnit v nastavení aplikace, případně omezit personalizaci a
+resetovat reklamní ID v nastavení systému Android.</p>
+<h2>Údaje, které sami odešlete</h2>
+<ul>
+<li><strong>Do databáze správce (Google Firebase / Firestore):</strong> návrh nového místa
+  (název, kategorie, poznámka, souřadnice, verze aplikace, pseudonymní
+  kód instalace proti spamu), hlas o aktuálnosti místa (+1 k počítadlu)
+  a dobrovolná zpětná vazba (text + verze aplikace). Neodesílá se jméno,
+  e-mail, telefon ani vaše poloha. Kód instalace lze obnovit smazáním dat
+  aplikace (viz vysvětlení níže).</li>
+<li><strong>Veřejně do OpenStreetMap:</strong> hlášení „místo už neexistuje / je mimo
+  provoz" vytvoří po vašem potvrzení <strong>veřejnou anonymní poznámku</strong> trvale
+  dohledatelnou na openstreetmap.org (obsahuje název a souřadnice místa),
+  aby mapu opravili dobrovolníci OpenStreetMap.</li>
+<li><strong>Sdílení:</strong> obsah (např. karta výpravy) předáte přes systémovou nabídku
+  tam, kam sami zvolíte.</li>
+</ul>
+<p><strong>Co je identifikátor instalace.</strong> Náhodně vygenerovaný kód, který vznikne
+při prvním spuštění a zůstává stejný, dokud aplikaci nesmažete. Neobsahuje nic
+o vás ani o telefonu a sami k němu nemáme žádné jméno ani e-mail. Protože je
+ale <em>trvalý</em> a odlišuje jednu instalaci od druhé, považujeme ho podle GDPR
+(recitál 26) za <strong>pseudonymizovaný osobní údaj</strong> – ne za anonymní. Slouží jen
+k tomu, abychom u zpětné vazby dohledali váš případ, omezili spam u návrhů
+a hlasování a mohli ručně přiznat prémiový přístup konkrétní instalaci
+(testeři, výherci). K ničemu jinému ho nepoužíváme.</p>
+<h2>Souhrnné statistiky používání</h2>
+<p>Aby bylo možné aplikaci zlepšovat a odhalovat chyby, odesílá aplikace do služby
+Google Firebase základní <strong>souhrnné</strong> statistiky používání – počet
+spuštění, denní počet aktivních zařízení, verzi aplikace, orientační stáří
+instalace, počty použití funkcí a počty pádů. Zapisují se pouze jako souhrnná
+počítadla („dnes +1"); neodesílá se žádné jméno, identifikátor, poloha ani
+obsah, takže je nelze přiřadit ke konkrétní osobě. Sběr lze kdykoli vypnout
+v nastavení aplikace (přepínač „Anonymní statistiky používání").</p>
+<h2>Hlášení chyb a pádů</h2>
+<p>Když aplikace spadne nebo přestane reagovat, vytvoří o tom technický záznam
+a při dalším spuštění ho odešle vývojáři, aby šlo chybu opravit. Takové
+hlášení obsahuje:</p>
+<ul>
+<li>technický popis chyby (tzv. stack trace / ANR trace) — tedy které části
+  programu selhaly,</li>
+<li><strong>model zařízení</strong> a verzi Androidu,</li>
+<li>verzi aplikace a údaj o využité paměti,</li>
+<li><strong>náhodně vygenerovaný identifikátor zařízení</strong>, aby šlo poznat, že několik
+  hlášení pochází z jednoho telefonu (není odvozený z žádného vašeho údaje
+  ani z reklamního ID a nelze podle něj zjistit, kdo jste).</li>
+</ul>
+<p>Hlášení <strong>neobsahuje</strong> vaši polohu, deník, fotky ani obsah, který jste
+v aplikaci vytvořili. Ukládá se do služby Google Firestore a slouží výhradně
+k opravě chyb.</p>
+<p>Odesílání pádů vypíná <strong>týž přepínač</strong> jako souhrnné statistiky („Anonymní
+statistiky používání") — když je vypnutý, neodešle se nic. Podrobný záznam
+zůstává navíc uložený v telefonu a můžete ho sami sdílet z obrazovky
+„O aplikaci".</p>
+<h2>Data stahovaná do aplikace</h2>
+<p>Aplikace stahuje z veřejného repozitáře na GitHub.com datový kanál
+s aktualizacemi, které nevyžadují novou verzi – např. průměrné ceny paliv
+(zdroj: Český statistický úřad) a provozní nastavení. Jde o stažení obsahu;
+poskytovateli se předá jen běžný síťový požadavek (IP adresa), žádné vaše
+osobní údaje.</p>
+<p><strong>Počasí:</strong> pro atmosférické efekty v Objevování (mraky, mlha) stahuje
+aplikace aktuální počasí ze služby <strong>Open-Meteo</strong>. Dotaz obsahuje <strong>pevný
+seznam bodů</strong> rozmístěných po ČR, stejný pro všechny uživatele – vaše poloha
+ani výřez mapy se neodesílají. Počasí pro vaše okolí se vybere z už
+stažených dat přímo v telefonu.</p>
+<p><strong>Srážkový radar:</strong> protože předpověď se občas mýlí, ověřuje aplikace déšť
+ještě podle <strong>radarových snímků služby RainViewer</strong>. Stahuje se seznam
+dostupných snímků a obrázkové dlaždice radaru; jde o běžné stažení obsahu,
+vaše poloha se neodesílá.</p>
+<h2>Nákupy v aplikaci</h2>
+<p>Prémiové funkce lze zakoupit přes <strong>Google Play</strong>. Platbu zpracovává výhradně
+Google – správce nemá přístup k údajům o platební kartě a od Googlu obdrží
+pouze informaci, zda je nákup aktivní.</p>
+<h2>Komu údaje předáváme</h2>
+<p>Údaje nikomu neprodáváme. Příjemci / poskytovateli služeb jsou:</p>
+<ul>
+<li><strong>Google</strong> – AdMob (reklamy), Firebase/Firestore (návrhy, hlasy, zpětná
+  vazba, souhrnné statistiky), Google Play (nákupy a distribuce).</li>
+<li><strong>OpenStreetMap</strong> – mapové dlaždice a komunitní poznámky (načítání
+  i veřejné hlášení zaniklých míst).</li>
+<li><strong>OpenTopoMap</strong> a <strong>Esri</strong> – mapové podklady (turistická mapa, letecké
+  snímky).</li>
+<li><strong>Wikimedia / Wikipedia</strong> – popisek zobrazovaného místa.</li>
+<li><strong>GitHub</strong> (Microsoft) – stažení datového kanálu.</li>
+<li><strong>Open-Meteo</strong> – aktuální počasí pro pevné body v ČR (bez odeslání vaší
+  polohy).</li>
+<li><strong>RainViewer</strong> – snímky srážkového radaru (bez odeslání vaší polohy).</li>
+<li><strong>Navigační služby dle vaší volby</strong> – Google Mapy, Mapy.com / Seznam.cz,
+  Waze (jen když spustíte navigaci).</li>
+<li><strong>IDOS</strong> (CHAPS) – odjezdové tabule zastávek a nádraží, jen když je sami
+  otevřete (předá se název zastávky).</li>
+</ul>
+<p>Tito příjemci obdrží běžné síťové požadavky (zejména IP adresu a případně
+souřadnice podle konkrétní funkce).</p>
+<h2>Oprávnění aplikace</h2>
+<ul>
+<li><strong>Poloha (přesná/přibližná)</strong> – pozice na mapě, hledání v okolí,
+  vybarvování navštívených oblastí.</li>
+<li><strong>Poloha na pozadí</strong> – pouze pro volitelný záznam trasy na pozadí; do
+  jeho zapnutí se nepoužívá.</li>
+<li><strong>Oznámení</strong> – trvalé oznámení, že běží záznam trasy na pozadí.</li>
+<li><strong>Internet</strong> – mapy, reklamy, odeslání návrhů, hlášení a zpětné vazby.</li>
+<li><strong>Fotoaparát</strong> – pořizování fotek k výpravám a do deníku přímo v aplikaci
+  (vlastní hledáček). Zvuk se nenahrává, fotky zůstávají v zařízení.</li>
+<li><strong>Galerie / soubory</strong> – výběr už pořízených fotek a načtení či uložení
+  zálohy (ZIP) přes systémový výběr souborů.</li>
+</ul>
+<h2>Data míst</h2>
+<p>Databáze míst pochází z projektu <strong>OpenStreetMap</strong>
+(© přispěvatelé OpenStreetMap, licence ODbL 1.0). Průměrné ceny pohonných
+hmot pocházejí z otevřených dat <strong>Českého statistického úřadu</strong> a jsou
+celorepublikovým průměrem, nikoli cenou konkrétní čerpací stanice.</p>
+<h2>Vaše práva</h2>
+<p>Podle GDPR máte právo na přístup, opravu, výmaz, omezení zpracování,
+přenositelnost a námitku. Data uložená v telefonu máte plně pod kontrolou
+(smazání dat / odinstalace). U údajů odeslaných na server nás
+kontaktujte e-mailem a přiložte svůj <strong>kód instalace</strong> (najdete ho v aplikaci
+v „O aplikaci"). Podle něj vaše záznamy dohledáme a na požádání smažeme.
+Bez toho kódu je k vaší osobě přiřadit neumíme (čl. 11 GDPR) – jiný údaj
+o vás nemáme. Pro údaje zpracovávané společností Google (reklamy)
+využijte nástroje Google. Máte také právo podat stížnost u Úřadu pro
+ochranu osobních údajů (uoou.gov.cz). S dotazy se obraťte na správce:
+<strong>Stanislav Mudra</strong>, e-mail: stamu.apps@gmail.com.</p>
+<h2>Děti</h2>
+<p>Aplikace není určena dětem mladším 15 let (hranice souhlasu se zpracováním
+osobních údajů podle § 7 zákona č. 110/2019 Sb.) a vědomě neshromažďujeme
+jejich údaje. Pokud zjistíte, že nám dítě odeslalo osobní údaje, napište nám
+a my je smažeme.</p>
+<h2>Změny</h2>
+<p>Aktuální verze těchto zásad je vždy dostupná na této adrese. O podstatných
+změnách budeme informovat v popisu aktualizace aplikace.</p>
+</main>
+<footer>
+  Dotaz k soukromí: <a href="mailto:stamu.apps@gmail.com">stamu.apps@gmail.com</a>
+  · <a href="https://github.com/stanislavmudra-hue/Sarcher-data/blob/main/PRIVACY.md">zdrojový text</a>
+</footer>
+</body>
+</html>
