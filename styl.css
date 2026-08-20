@@ -239,7 +239,10 @@ p, li { margin: 0 0 12px; }
   flex-wrap: wrap;
   margin-top: 26px;
 }
-.snimek { width: 260px; max-width: 78vw; }
+/* ⚠️ `figure` má ve výchozím stylu prohlížeče `margin: 1em 40px`.
+   Bez vynulování zabral každý snímek o 80 px víc, tři se do řádku
+   nevešly a třetí spadl pod ně (změřeno na 1165 px širokém okně). */
+.snimek { width: 260px; max-width: 78vw; margin: 0; }
 .snimek img {
   width: 100%;
   border-radius: 22px;
