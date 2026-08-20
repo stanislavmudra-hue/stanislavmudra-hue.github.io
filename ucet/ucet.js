@@ -45,7 +45,8 @@ var PROJEKT = 'sarcher-b32a1';
 // holým REST, takže referrer neposílá a s omezením by přestala
 // fungovat (proto má vlastní, neomezený).
 var KLIC = 'AIzaSyB3sj8qS-Lh4lHow6AUrWH-JayEtJ70igQ';
-var KLIENT_ID = '';   // ← DOPLNIT (viz komentář výš)
+var KLIENT_ID =
+    '878915340826-4mc76u4anq2mbvh07glgnnugnvdbr4gt.apps.googleusercontent.com';
 
 var ZAKLAD = 'https://firestore.googleapis.com/v1/projects/' + PROJEKT +
              '/databases/(default)/documents';
