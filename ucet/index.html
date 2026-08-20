@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Můj Okolník – přihlášení a moje výsledky</title>
+<meta name="description" content="Přihlaste se účtem Google, spárujte web s aplikací Okolník a prohlížejte si své úspěchy, rekordy a měsíční čísla.">
+<meta name="color-scheme" content="light">
+<style>
+  :root {
+    --tmava: #0D2B2E;
+    --zelena: #2E7D5B;
+    --oranzova: #F29D38;
+    --pisek: #F2E8CF;
+    --text: #1d2624;
+    --slabsi: #55605d;
+    --linka: #dfe4e1;
+    --papir: #ffffff;
+    --jemna: #f4f7f4;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--pisek);
+    color: var(--text);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+  }
+  header {
+    background: var(--tmava);
+    color: #f4efe2;
+    padding: 22px 20px;
+  }
+  header .obal { max-width: 760px; margin: 0 auto; }
+  header a { color: var(--oranzova); text-decoration: none; font-weight: 600; }
+  header a:hover { text-decoration: underline; }
+  main {
+    max-width: 760px;
+    margin: 26px auto 40px;
+    background: var(--papir);
+    padding: 34px 30px 40px;
+    border-radius: 14px;
+    box-shadow: 0 2px 14px rgba(13, 43, 46, .09);
+  }
+  h1 { font-size: 1.75rem; line-height: 1.25; margin: 0 0 6px; color: var(--tmava); }
+  .podtitul { color: var(--slabsi); margin: 0 0 22px; }
+  h2 { font-size: 1.05rem; margin: 0 0 8px; color: var(--zelena); }
+  h3 { font-size: .95rem; margin: 0 0 6px; color: var(--tmava); }
+  p, li { margin: 0 0 12px; }
+  a { color: var(--zelena); }
+  strong { color: var(--tmava); }
+
+  .karta {
+    border: 1px solid var(--linka); border-radius: 12px;
+    padding: 20px 20px 16px; margin: 0 0 20px; background: var(--jemna);
+  }
+  .karta.tichá { background: var(--papir); }
+
+  button, .tlacitko {
+    font: inherit; font-size: .97rem; line-height: 1.2;
+    padding: 11px 18px; cursor: pointer;
+    background: var(--zelena); color: #fff; font-weight: 600;
+    border: 1px solid var(--zelena); border-radius: 999px;
+    transition: filter .12s;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:focus-visible { outline: 3px solid var(--oranzova); outline-offset: 2px; }
+  button[disabled] { opacity: .55; cursor: default; filter: none; }
+  button.druha {
+    background: var(--papir); color: var(--tmava); border-color: var(--linka);
+    font-weight: 500;
+  }
+  button.google {
+    background: #fff; color: #3c4043; border: 1px solid #dadce0;
+    display: inline-flex; align-items: center; gap: 10px;
+  }
+  button.google svg { width: 18px; height: 18px; flex: none; }
+
+  input[type="text"] {
+    font: inherit; padding: 11px 14px; border-radius: 10px;
+    border: 1px solid var(--linka); background: var(--papir);
+    color: var(--text); width: 100%; max-width: 240px;
+  }
+  input[type="text"]#kod {
+    font-size: 1.3rem; letter-spacing: .22em; text-transform: uppercase;
+    font-variant-numeric: tabular-nums; max-width: 220px;
+  }
+  input:focus-visible { outline: 3px solid var(--oranzova); outline-offset: 1px; }
+  .radek { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+  .profil { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .profil img { width: 44px; height: 44px; border-radius: 50%; }
+  .profil .jmeno { font-weight: 600; color: var(--tmava); }
+  .profil .mail { color: var(--slabsi); font-size: .9rem; }
+
+  .hlaska { border-radius: 10px; padding: 11px 14px; margin: 12px 0 0; font-size: .95rem; }
+  .hlaska.chyba { background: #fdecec; color: #7a2020; border: 1px solid #f3c9c9; }
+  .hlaska.ok    { background: #e9f5ee; color: #1d5b3c; border: 1px solid #c4e3d1; }
+  .hlaska.info  { background: #fff6e8; color: #6b4310; border: 1px solid #f2ddb8; }
+
+  .cisla { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin: 0 0 18px; }
+  .cislo {
+    background: var(--jemna); border: 1px solid var(--linka);
+    border-radius: 12px; padding: 14px 12px; text-align: center;
+  }
+  .cislo .h { font-size: 1.5rem; font-weight: 700; color: var(--tmava); font-variant-numeric: tabular-nums; }
+  .cislo .p { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--slabsi); }
+
+  ul.seznam { list-style: none; padding: 0; margin: 0 0 18px; }
+  ul.seznam li {
+    display: flex; gap: 12px; align-items: baseline;
+    padding: 9px 0; border-bottom: 1px solid var(--linka); margin: 0;
+  }
+  ul.seznam li:last-child { border-bottom: 0; }
+  ul.seznam .nazev { font-weight: 600; color: var(--tmava); }
+  ul.seznam .popis { color: var(--slabsi); font-size: .92rem; }
+  ul.seznam .hodnota { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  li.nehotovo .nazev { color: var(--slabsi); font-weight: 500; }
+
+  .tocka {
+    width: 26px; height: 26px; margin: 0 auto 12px;
+    border: 3px solid var(--linka); border-top-color: var(--zelena);
+    border-radius: 50%; animation: tocit 1s linear infinite;
+  }
+  @keyframes tocit { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .tocka { animation: none; } }
+
+  .stav {
+    border: 1px dashed var(--linka); border-radius: 12px;
+    padding: 26px 22px; text-align: center; color: var(--slabsi);
+    background: var(--jemna);
+  }
+  .stav h2 { color: var(--tmava); margin-bottom: 6px; }
+
+  footer {
+    max-width: 760px; margin: 0 auto 50px; padding: 0 30px;
+    color: var(--slabsi); font-size: .875rem;
+  }
+  footer h2 { color: var(--tmava); font-size: 1rem; margin: 0 0 6px; }
+
+  @media (max-width: 620px) {
+    main { margin: 14px 10px 30px; padding: 24px 18px 30px; border-radius: 10px; }
+    footer { padding: 0 18px; }
+    h1 { font-size: 1.45rem; }
+  }
+</style>
+</head>
+<body>
+<header><div class="obal"><a href="/">← Okolník</a></div></header>
+
+<main>
+  <h1>Můj Okolník</h1>
+  <p class="podtitul">Přihlaste se účtem Google, spárujte web s&nbsp;aplikací
+  a&nbsp;prohlížejte si své úspěchy i&nbsp;rekordy na&nbsp;velké obrazovce.</p>
+
+  <!-- ── 1) PŘIHLÁŠENÍ ─────────────────────────────────────────── -->
+  <section class="karta" id="kartaPrihlaseni" aria-busy="true">
+    <div class="stav" id="stavPrihlaseni">
+      <div class="tocka" aria-hidden="true"></div>
+      <p>Připravuji přihlášení…</p>
+    </div>
+  </section>
+
+  <!-- ── 2) SPÁROVÁNÍ S APLIKACÍ ───────────────────────────────── -->
+  <section class="karta tichá" id="kartaParovani" hidden>
+    <h2>Spárování s&nbsp;aplikací</h2>
+    <div id="parovaniObsah"></div>
+  </section>
+
+  <!-- ── 3) MOJE VÝSLEDKY ──────────────────────────────────────── -->
+  <section id="kartaVysledky" hidden aria-live="polite">
+    <h2>Moje výsledky</h2>
+    <div id="vysledky"></div>
+  </section>
+</main>
+
+<footer>
+  <h2>Proč přihlášení jen na&nbsp;webu?</h2>
+  <p>Hra samotná <strong>žádný účet nepotřebuje</strong> a&nbsp;nikdy ho vyžadovat nebude –
+  Okolník funguje hned po instalaci a&nbsp;všechna data má ve&nbsp;vašem telefonu.
+  Účet Google slouží <strong>jen tomuhle webu</strong>, aby věděl, čí výsledky má
+  ukázat. Aplikace vaši e‑mailovou adresu nikdy nedostane.</p>
+  <p>Spárování je dobrovolné a&nbsp;kdykoli ho tu můžete zrušit. Zobrazují se
+  hodnoty, které aplikace posílá do&nbsp;žebříčku a&nbsp;do&nbsp;vašeho profilu –
+  <strong>ne poloha, trasa, deník ani fotky</strong>.</p>
+  <p><a href="/">Okolník</a> · <a href="/zebricek">Žebříček</a>
+  · <a href="/soukromi">Zásady ochrany soukromí</a>
+  · Dotaz: <a href="mailto:stamu.apps@gmail.com">stamu.apps@gmail.com</a></p>
+</footer>
+
+<script src="/ucet/ucet.js"></script>
+</body>
+</html>

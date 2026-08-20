@@ -1,2 +1,7 @@
 # interní poznámky, na web nepatří
 NASTAVENI-DOMENY.md
+ZEBRICEK-POZNAMKY.md
+UCET-POZNAMKY.md
+
+# lokální náhled (python -m http.server), na web nepatří
+.claude/

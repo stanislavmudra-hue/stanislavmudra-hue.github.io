@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Žebříček – Okolník</title>
+<meta name="description" content="Měsíční žebříček hráčů Okolníku: ušlé kilometry, nové obce a fotovýpravy.">
+<meta name="color-scheme" content="light">
+<style>
+  :root {
+    --tmava: #0D2B2E;
+    --zelena: #2E7D5B;
+    --oranzova: #F29D38;
+    --pisek: #F2E8CF;
+    --text: #1d2624;
+    --slabsi: #55605d;
+    --linka: #dfe4e1;
+    --papir: #ffffff;
+    --jemna: #f4f7f4;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--pisek);
+    color: var(--text);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+  }
+  header {
+    background: var(--tmava);
+    color: #f4efe2;
+    padding: 22px 20px;
+  }
+  header .obal { max-width: 760px; margin: 0 auto; }
+  header a { color: var(--oranzova); text-decoration: none; font-weight: 600; }
+  header a:hover { text-decoration: underline; }
+  main {
+    max-width: 760px;
+    margin: 26px auto 40px;
+    background: var(--papir);
+    padding: 34px 30px 40px;
+    border-radius: 14px;
+    box-shadow: 0 2px 14px rgba(13, 43, 46, .09);
+  }
+  h1 { font-size: 1.75rem; line-height: 1.25; margin: 0 0 6px; color: var(--tmava); }
+  .podtitul { color: var(--slabsi); margin: 0 0 22px; }
+  h2 { font-size: 1.05rem; margin: 0 0 8px; color: var(--zelena); }
+  p, li { margin: 0 0 12px; }
+  a { color: var(--zelena); }
+  strong { color: var(--tmava); }
+
+  /* ── přepínače ─────────────────────────────────────────────── */
+  .volby { display: grid; gap: 16px; margin: 0 0 22px; }
+  .skupina .popis {
+    font-size: .8rem; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--slabsi); margin: 0 0 6px;
+  }
+  .prepinac { display: flex; flex-wrap: wrap; gap: 8px; }
+  .prepinac button {
+    font: inherit; font-size: .95rem; line-height: 1.2;
+    padding: 9px 14px; cursor: pointer;
+    background: var(--jemna); color: var(--tmava);
+    border: 1px solid var(--linka); border-radius: 999px;
+    transition: background .12s, border-color .12s, color .12s;
+  }
+  .prepinac button:hover { border-color: var(--zelena); }
+  .prepinac button:focus-visible { outline: 3px solid var(--oranzova); outline-offset: 2px; }
+  .prepinac button[aria-pressed="true"] {
+    background: var(--zelena); border-color: var(--zelena);
+    color: #fff; font-weight: 600;
+  }
+
+  /* ── stavy ─────────────────────────────────────────────────── */
+  .stav {
+    border: 1px dashed var(--linka); border-radius: 12px;
+    padding: 26px 22px; text-align: center; color: var(--slabsi);
+    background: var(--jemna);
+  }
+  .stav h2 { color: var(--tmava); margin-bottom: 6px; }
+  .stav p:last-child { margin-bottom: 0; }
+  .stav.chyba { border-color: #e0b7a2; background: #fdf4ee; }
+  .stav button {
+    font: inherit; margin-top: 10px; padding: 9px 16px; cursor: pointer;
+    background: var(--zelena); color: #fff; border: 0; border-radius: 999px;
+  }
+  .tocka {
+    display: inline-block; width: 20px; height: 20px; margin-bottom: 6px;
+    border: 3px solid var(--linka); border-top-color: var(--zelena);
+    border-radius: 50%; animation: tocit .9s linear infinite;
+  }
+  @keyframes tocit { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .tocka { animation: none; } }
+
+  /* ── tabulka ───────────────────────────────────────────────── */
+  .obal-tabulky { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  caption { text-align: left; color: var(--slabsi); font-size: .9rem; padding-bottom: 10px; }
+  th, td { padding: 9px 10px; border-bottom: 1px solid var(--linka); }
+  th {
+    text-align: left; font-size: .78rem; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--slabsi); font-weight: 600;
+    border-bottom: 2px solid var(--linka);
+  }
+  td.poradi, th.poradi { width: 3.2rem; text-align: right; color: var(--slabsi); font-variant-numeric: tabular-nums; }
+  td.hodnota, th.hodnota { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.hodnota { font-weight: 600; color: var(--tmava); }
+  td.jmeno { font-weight: 600; color: var(--tmava); word-break: break-word; }
+  td.kraj, th.kraj { color: var(--slabsi); font-size: .92rem; }
+  tbody tr:nth-child(odd) { background: #fbfcfb; }
+  tr.stupne td.poradi { color: var(--tmava); font-weight: 700; }
+  tr.m1 { background: #fff8ec !important; }
+  tr.m1 td.poradi::before { content: "🥇 "; }
+  tr.m2 td.poradi::before { content: "🥈 "; }
+  tr.m3 td.poradi::before { content: "🥉 "; }
+  .kraj-mob { display: none; font-weight: 400; font-size: .85rem; color: var(--slabsi); }
+
+  .ukazka-pruh {
+    background: var(--oranzova); color: #3a2405; font-weight: 600;
+    border-radius: 10px; padding: 10px 14px; margin: 0 0 16px; text-align: center;
+  }
+
+  footer {
+    max-width: 760px; margin: 0 auto 50px; padding: 0 30px;
+    color: var(--slabsi); font-size: .875rem;
+  }
+  footer h2 { color: var(--tmava); font-size: 1rem; margin: 0 0 6px; }
+
+  @media (max-width: 620px) {
+    main { margin: 14px 10px 30px; padding: 24px 18px 30px; border-radius: 10px; }
+    footer { padding: 0 18px; }
+    h1 { font-size: 1.45rem; }
+    th, td { padding: 8px 6px; }
+    .prepinac button { padding: 8px 12px; font-size: .9rem; }
+    th.kraj, td.kraj { display: none; }
+    .kraj-mob { display: block; }
+  }
+</style>
+</head>
+<body>
+<header><div class="obal"><a href="/">← Okolník</a></div></header>
+
+<main>
+  <h1>Žebříček</h1>
+  <p class="podtitul">Kdo toho za měsíc nachodil a&nbsp;objevil nejvíc. Soutěží jen ti,
+  kdo se do žebříčku sami přihlásili v&nbsp;aplikaci.</p>
+
+  <div id="ukazkaPruh" class="ukazka-pruh" hidden>
+    UKÁZKA – zobrazená čísla jsou vymyšlená, nejde o&nbsp;skutečná data.
+  </div>
+
+  <div class="volby">
+    <div class="skupina">
+      <p class="popis" id="popisKategorie">Kategorie</p>
+      <div class="prepinac" role="group" aria-labelledby="popisKategorie" id="prepinacKategorie">
+        <button type="button" data-metrika="km" aria-pressed="true">Ušlé kilometry</button>
+        <button type="button" data-metrika="obce" aria-pressed="false">Nové obce</button>
+        <button type="button" data-metrika="vypravy" aria-pressed="false">Fotovýpravy</button>
+      </div>
+    </div>
+    <div class="skupina">
+      <p class="popis" id="popisObdobi">Období</p>
+      <div class="prepinac" role="group" aria-labelledby="popisObdobi" id="prepinacObdobi">
+        <button type="button" data-obdobi="tento" aria-pressed="true">Tento měsíc</button>
+        <button type="button" data-obdobi="minuly" aria-pressed="false">Minulý měsíc</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="vysledek" aria-live="polite" aria-busy="true">
+    <div class="stav">
+      <div class="tocka" aria-hidden="true"></div>
+      <p>Načítám žebříček…</p>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <h2>Jak se do žebříčku dostanu?</h2>
+  <p>V&nbsp;aplikaci Okolník otevřete <strong>Nastavení → Žebříček</strong>, zapněte účast
+  a&nbsp;zvolte si přezdívku. Aplikace pak jednou za čas odešle jen tři čísla
+  za&nbsp;aktuální měsíc – kolik kilometrů jste ušli, kolik nových obcí jste
+  navštívili a&nbsp;kolik jste udělali fotovýprav – plus přezdívku a&nbsp;volitelně kraj.
+  <strong>Bez zapnutí se neodesílá nic</strong> a&nbsp;účast můžete kdykoli vypnout.
+  Neodesílá se poloha, trasa, deník ani fotky.</p>
+  <p>Žebříček je <strong>dobrovolný a&nbsp;pro zábavu</strong>. Čísla hlásí telefon hráče, takže je
+  nelze nezávisle ověřit; nepřiměřené hodnoty se do žebříčku vůbec nezapíšou.
+  Měsíce se počítají zvlášť, aby nováček nesoutěžil s&nbsp;někým, kdo hraje od začátku.</p>
+  <p><a href="/">Okolník</a> · <a href="/soukromi">Zásady ochrany soukromí</a>
+  · Dotaz: <a href="mailto:stamu.apps@gmail.com">stamu.apps@gmail.com</a></p>
+</footer>
+
+<script src="/zebricek/zebricek.js"></script>
+</body>
+</html>
