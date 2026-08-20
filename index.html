@@ -29,6 +29,7 @@
       <a href="/zebricek/">Žebříček</a>
       <a href="/ucet/">Můj Okolník</a>
       <a href="/soukromi/">Soukromí</a>
+      <a href="/kontakt/">Kontakt</a>
     </nav>
   </div>
 </header>
@@ -96,15 +97,15 @@
     <h2>Jak to vypadá</h2>
     <div class="snimky">
       <figure class="snimek">
-        <img src="/img/app-turisticka.webp" alt="Turistická mapa s vrstevnicemi a značenými trasami" width="540" height="915" loading="lazy">
+        <img src="/img/app-turisticka.webp" alt="Turistická mapa s vrstevnicemi a značenými trasami" width="540" height="900" loading="lazy">
         <figcaption>Turistická mapa se značkami KČT</figcaption>
       </figure>
       <figure class="snimek">
-        <img src="/img/app-herni.webp" alt="Herní mapa v noci: kreslená krajina, světla vesnic a postavička hráče" width="540" height="915" loading="lazy">
+        <img src="/img/app-herni.webp" alt="Herní mapa v noci: kreslená krajina, světla vesnic a postavička hráče" width="540" height="900" loading="lazy">
         <figcaption>Herní mapa – tady v noci</figcaption>
       </figure>
       <figure class="snimek">
-        <img src="/img/app-uspechy.webp" alt="Obrazovka Úspěchy a výzvy s úrovní, rekordy a postupem" width="540" height="915" loading="lazy">
+        <img src="/img/app-uspechy.webp" alt="Obrazovka Úspěchy a výzvy s úrovní, rekordy a postupem" width="540" height="900" loading="lazy">
         <figcaption>Úspěchy, výzvy a rekordy</figcaption>
       </figure>
     </div>
@@ -112,15 +113,34 @@
 
   <section class="pruh">
     <div class="sekce">
-      <h2>Aplikace se dolaďuje</h2>
-      <p>Okolník je teď v uzavřeném testování a chystá se do Google Play.
-      Chcete být u toho, nebo máte nápad, co by měl umět? Napište mi –
-      každý e-mail si čtu.</p>
-      <a class="tlacitko" href="mailto:stamu.apps@gmail.com">Napsat autorovi</a>
+      <h2>Našli jste chybu? Napadá vás vylepšení?</h2>
+      <p>Okolník píše jeden člověk a každou zprávu si přečte. Nejvíc
+      pomůže, když napíšete, <strong>co jste dělali</strong>, co se stalo
+      a jaký máte telefon.</p>
+      <p class="mail" id="mail">stamu.apps@gmail.com</p>
+      <button class="tlacitko" type="button" id="kopirovat">Zkopírovat adresu</button>
     </div>
   </section>
 
 </main>
+
+<script>
+  // Adresa se hlavně UKAZUJE (na počítači málokdo používá poštovního
+  // klienta, takže `mailto:` často jen otevře nastavení Outlooku).
+  // Tlačítko ji jen zkopíruje do schránky; když to prohlížeč nedovolí,
+  // adresa je i tak čitelná a dá se označit myší.
+  (function () {
+    var t = document.getElementById('kopirovat');
+    var m = document.getElementById('mail');
+    if (!t || !m || !navigator.clipboard) { if (t) t.hidden = true; return; }
+    t.addEventListener('click', function () {
+      navigator.clipboard.writeText(m.textContent.trim()).then(function () {
+        t.textContent = 'Zkopírováno ✓';
+        setTimeout(function () { t.textContent = 'Zkopírovat adresu'; }, 2500);
+      }, function () { t.hidden = true; });
+    });
+  })();
+</script>
 
 <footer class="pata">
   <div class="obal">
@@ -133,7 +153,7 @@
       <a href="/zebricek/">Žebříček</a>
       <a href="/ucet/">Můj Okolník</a>
       <a href="/soukromi/">Zásady soukromí</a>
-      <a href="mailto:stamu.apps@gmail.com">Kontakt</a>
+      <a href="/kontakt/">Kontakt</a>
     </nav>
   </div>
   <div class="obal" style="padding-top:0">

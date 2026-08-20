@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kontakt – Okolník</title>
+<meta name="description" content="Kontakt na autora aplikace Okolník: hlášení chyb, náměty a dotazy.">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="/img/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/img/favicon.png">
+<link rel="stylesheet" href="/styl.css">
+</head>
+<body>
+
+<header class="hlava">
+  <div class="obal">
+    <a class="znacka" href="/">
+      <img class="emblem" src="/img/emblem-96.webp" alt="" width="38" height="38">
+      <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="120" height="30">
+    </a>
+    <nav class="menu" aria-label="Hlavní nabídka">
+      <a href="/">Domů</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/soukromi/">Soukromí</a>
+      <a href="/kontakt/" aria-current="page">Kontakt</a>
+    </nav>
+  </div>
+</header>
+
+<main class="uzky">
+  <h1>Kontakt</h1>
+  <p class="podtitul">Okolník píše jeden člověk. Každou zprávu si přečtu –
+  a na tu, kde je vidět, co se dělo, dokážu odpovědět nejrychleji.</p>
+
+  <h2>Autor</h2>
+  <p><strong>Stanislav Mudra</strong><br>
+  vývojář aplikace Okolník</p>
+
+  <h2>E-mail</h2>
+  <p class="mail" id="mail">stamu.apps@gmail.com</p>
+  <button class="tlacitko" type="button" id="kopirovat">Zkopírovat adresu</button>
+
+  <h2>Když hlásíte chybu</h2>
+  <p>Pomůže, když k tomu připíšete:</p>
+  <ul>
+    <li><strong>co jste dělali</strong>, než se to stalo (a jestli to jde zopakovat),</li>
+    <li>co se stalo místo toho, co jste čekali,</li>
+    <li>značku a model telefonu,</li>
+    <li>verzi aplikace – najdete ji ve <em>Více → O aplikaci</em>,</li>
+    <li>klidně i snímek obrazovky.</li>
+  </ul>
+
+  <h2>Náměty</h2>
+  <p>Chybí vám nějaká kategorie míst, máte nápad na výzvu nebo víte
+  o zajímavém místě, které v aplikaci není? Napište – většina toho, co
+  Okolník dnes umí, vznikla přesně takhle.</p>
+
+  <section class="vysvetlivka">
+    <p>Okolník je zatím <strong>zájmový projekt</strong>, ne firma – proto tu
+    nenajdete sídlo ani telefon. Adresa výš je jediná oficiální cesta,
+    jak se ozvat. Jak nakládám s údaji, popisují
+    <a href="/soukromi/">zásady ochrany soukromí</a>.</p>
+  </section>
+</main>
+
+<footer class="pata">
+  <div class="obal">
+    <div>
+      <strong style="color:#f2ede0">Okolník</strong>
+      <p class="drobne">© 2026 Stanislav Mudra</p>
+    </div>
+    <nav class="odkazy" aria-label="Odkazy v patičce">
+      <a href="/">Domů</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/soukromi/">Zásady soukromí</a>
+      <a href="/kontakt/">Kontakt</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+  // Adresa se hlavně UKAZUJE (na počítači málokdo používá poštovního
+  // klienta, takže `mailto:` často jen otevře nastavení Outlooku).
+  (function () {
+    var t = document.getElementById('kopirovat');
+    var m = document.getElementById('mail');
+    if (!t || !m || !navigator.clipboard) { if (t) t.hidden = true; return; }
+    t.addEventListener('click', function () {
+      navigator.clipboard.writeText(m.textContent.trim()).then(function () {
+        t.textContent = 'Zkopírováno ✓';
+        setTimeout(function () { t.textContent = 'Zkopírovat adresu'; }, 2500);
+      }, function () { t.hidden = true; });
+    });
+  })();
+</script>
+
+</body>
+</html>

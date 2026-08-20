@@ -316,7 +316,12 @@ p, li { margin: 0 0 12px; }
   .hero { padding: 42px 18px 48px; }
   .hero img.emblem { width: 92px; height: 92px; }
   .hero p.lead { font-size: 1.02rem; }
-  .hlava .obal { padding: 8px 14px; gap: 8px; }
+  /* ⚠️ Lišta je lepivá, takže každý pixel navíc ubírá z obsahu.
+     S pěti položkami se menu na mobilu zalomí do dvou řádků — proto
+     je tu všechno o kus menší (změřeno: 141 → ~118 px). */
+  .hlava .obal { padding: 6px 12px; gap: 6px; }
+  .znacka img.emblem { width: 32px; height: 32px; }
+  .znacka img.napis { height: 18px; }
   /* ⭐ Na mobilu se menu ZALAMUJE, ne posouvá do strany. Zkoušeno
      s vodorovným posuvem a rozostřeným okrajem (20. 8.): na 359 px se
      čtyři položky vejdou těsně, na užším displeji už ne — a položka
@@ -329,7 +334,8 @@ p, li { margin: 0 0 12px; }
     flex-wrap: wrap;
     justify-content: center;
   }
-  .menu a { padding: 7px 10px; font-size: .86rem; }
+  .menu a { padding: 6px 9px; font-size: .82rem; }
+  .menu { gap: 4px; row-gap: 4px; }
   .pata .obal { padding: 24px 16px 30px; }
 }
 
@@ -343,3 +349,16 @@ p, li { margin: 0 0 12px; }
 }
 .vysvetlivka h2 { font-size: 1rem; color: var(--tmava); margin-bottom: 8px; }
 .vysvetlivka p:last-child { margin-bottom: 0; }
+
+/* E-mailová adresa jako text, ne odkaz — na počítači málokdo používá
+   poštovního klienta a `mailto:` mu jen otevře nastavení Outlooku. */
+.mail {
+  font-size: 1.22rem;
+  font-weight: 700;
+  color: var(--oranzova);
+  letter-spacing: .01em;
+  user-select: all;
+  margin: 6px 0 18px;
+  word-break: break-word;
+}
+.uzky .mail { color: var(--zelena); }
