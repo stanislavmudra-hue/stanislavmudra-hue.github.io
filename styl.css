@@ -266,6 +266,10 @@ p, li { margin: 0 0 12px; }
 .pruh .sekce { text-align: center; }
 .pruh h2 { color: #fff; }
 .pruh p { color: #d9d3c4; max-width: 620px; margin: 0 auto 20px; }
+/* ⚠️ Na tmavém pruhu se `strong` MUSÍ přebarvit. Globálně má
+   tmavou zeleň (`--tmava`), což je na tmavě zeleném pozadí prakticky
+   nečitelné — zvýrazněná slova zmizela ("co jste dělali"). */
+.pruh strong { color: #ffffff; }
 
 /* ── PATIČKA ────────────────────────────────────────────────────── */
 .pata {
