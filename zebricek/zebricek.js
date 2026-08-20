@@ -20,7 +20,12 @@
    veřejné čtení a přísně validovaný zápis. Klíč tedy smí být i tady.
 --------------------------------------------------------------------- */
 var PROJEKT = 'sarcher-b32a1';
-var KLIC = 'AIzaSyCPhgsYuCXT3_UlqfIUb3Gv8IImFokI6gY';
+// ⚠️ JINÝ KLÍČ NEŽ V APLIKACI. Tenhle je omezený na okolnik.cz
+// (Websites restrikce) + jen tři API: Identity Toolkit, Firestore
+// a Token Service. Klíč z APK sem NEPATŘÍ — appka volá Firestore
+// holým REST, takže referrer neposílá a s omezením by přestala
+// fungovat (proto má vlastní, neomezený).
+var KLIC = 'AIzaSyB3sj8qS-Lh4lHow6AUrWH-JayEtJ70igQ';
 var KOLEKCE = 'zebricek';
 var ZAKLAD = 'https://firestore.googleapis.com/v1/projects/' + PROJEKT +
              '/databases/(default)/documents';
