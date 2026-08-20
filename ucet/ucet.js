@@ -476,6 +476,20 @@ function vykresliParovani() {
   vstup.addEventListener('keydown', function (ev) {
     if (ev.key === 'Enter') { ev.preventDefault(); spustit(); }
   });
+
+  // ⭐ KÓD Z ADRESY (`?kod=ABC123`). Aplikace otevře prohlížeč rovnou
+  // s kódem, takže uživatel nic neopisuje — jen se přihlásí a klepne.
+  // ⚠️ V adrese smí být JEN JEDNORÁZOVÝ KÓD, nikdy `uid` hráče:
+  // adresy se ukládají do historie a dávají se omylem dál. Kód platí
+  // 30 minut a po použití se maže, uid by platil navždy.
+  var zAdresy = (new URLSearchParams(location.search).get('kod') || '')
+      .toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  if (zAdresy.length === 6) {
+    vstup.value = zAdresy;
+    rekni('Kód z aplikace je předvyplněný — stačí klepnout na Spárovat.',
+          'info');
+    try { tlacitko.focus(); } catch (e) { /* nevadí */ }
+  }
 }
 
 function sparuj(kod) {
