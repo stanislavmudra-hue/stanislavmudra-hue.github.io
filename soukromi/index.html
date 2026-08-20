@@ -5,70 +5,43 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zásady ochrany soukromí – Okolník</title>
 <meta name="description" content="Jak aplikace Okolník nakládá s vašimi údaji.">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="/img/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/img/favicon.png">
+<link rel="stylesheet" href="/styl.css">
 <style>
-  :root {
-    --tmava: #0D2B2E;
-    --zelena: #2E7D5B;
-    --oranzova: #F29D38;
-    --pisek: #F2E8CF;
-    --text: #1d2624;
-    --slabsi: #55605d;
-    --linka: #dfe4e1;
-    --papir: #ffffff;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--pisek);
-    color: var(--text);
-    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          "Helvetica Neue", Arial, sans-serif;
-  }
-  header {
-    background: var(--tmava);
-    color: #f4efe2;
-    padding: 22px 20px;
-  }
-  header .obal { max-width: 760px; margin: 0 auto; }
-  header a { color: var(--oranzova); text-decoration: none; font-weight: 600; }
-  header a:hover { text-decoration: underline; }
-  main {
-    max-width: 760px;
-    margin: 26px auto 60px;
-    background: var(--papir);
-    padding: 34px 30px 44px;
-    border-radius: 14px;
-    box-shadow: 0 2px 14px rgba(13, 43, 46, .09);
-  }
-  h1 { font-size: 1.75rem; line-height: 1.25; margin: 0 0 6px; color: var(--tmava); }
-  h2 {
+  /* jen to, co je vlastní zásadám; zbytek řeší /styl.css */
+  .uzky h2 {
     font-size: 1.2rem; margin: 34px 0 10px; padding-top: 16px;
     border-top: 1px solid var(--linka); color: var(--zelena);
   }
-  h2:first-of-type { border-top: 0; padding-top: 0; }
-  p, li { margin: 0 0 12px; }
+  .uzky h2:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
   ul { padding-left: 22px; }
-  a { color: var(--zelena); }
-  strong { color: var(--tmava); }
   em { color: var(--slabsi); }
   code {
     background: #eef2ef; padding: 1px 5px; border-radius: 4px;
     font-size: .92em;
   }
-  footer {
-    max-width: 760px; margin: 0 auto 50px; padding: 0 30px;
-    color: var(--slabsi); font-size: .875rem;
-  }
-  @media (max-width: 620px) {
-    main { margin: 14px 10px 40px; padding: 24px 18px 32px; border-radius: 10px; }
-    footer { padding: 0 18px; }
-    h1 { font-size: 1.45rem; }
-  }
 </style>
 </head>
 <body>
-<header><div class="obal"><a href="/">← Okolník</a></div></header>
-<main>
+
+<header class="hlava">
+  <div class="obal">
+    <a class="znacka" href="/">
+      <img class="emblem" src="/img/emblem-96.webp" alt="" width="38" height="38">
+      <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="120" height="30">
+    </a>
+    <nav class="menu" aria-label="Hlavní nabídka">
+      <a href="/">Domů</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/soukromi/" aria-current="page">Soukromí</a>
+    </nav>
+  </div>
+</header>
+
+<main class="uzky">
 <h1>Zásady ochrany soukromí – aplikace Okolník</h1>
 <p style="color:#55605d;margin-top:-2px">Platné od 19. 8. 2026</p>
 <p>Aplikace <strong>Okolník – vyhledávač míst v okolí</strong> (dále „aplikace") respektuje
@@ -248,10 +221,27 @@ a my je smažeme.</p>
 <h2>Změny</h2>
 <p>Aktuální verze těchto zásad je vždy dostupná na této adrese. O podstatných
 změnách budeme informovat v popisu aktualizace aplikace.</p>
+  <section class="vysvetlivka">
+    <p>Dotaz k&nbsp;soukromí: <a href="mailto:stamu.apps@gmail.com">stamu.apps@gmail.com</a>
+    · <a href="https://github.com/stanislavmudra-hue/Sarcher-data/blob/main/PRIVACY.md">zdrojový text</a></p>
+  </section>
 </main>
-<footer>
-  Dotaz k soukromí: <a href="mailto:stamu.apps@gmail.com">stamu.apps@gmail.com</a>
-  · <a href="https://github.com/stanislavmudra-hue/Sarcher-data/blob/main/PRIVACY.md">zdrojový text</a>
+
+<footer class="pata">
+  <div class="obal">
+    <div>
+      <strong style="color:#f2ede0">Okolník</strong>
+      <p class="drobne">© 2026 Stanislav Mudra</p>
+    </div>
+    <nav class="odkazy" aria-label="Odkazy v patičce">
+      <a href="/">Domů</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/soukromi/">Zásady soukromí</a>
+      <a href="mailto:stamu.apps@gmail.com">Kontakt</a>
+    </nav>
+  </div>
 </footer>
+
 </body>
 </html>

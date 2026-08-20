@@ -1,67 +1,146 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="cs">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Okolník – objevujte Česko</title>
-<style>
-  :root{
-    --ink:#22302e; --muted:#5b6b68; --brand:#0D2B2E; --accent:#F29D38;
-    --bg:#f7f5ef; --card:#fff; --line:#e3ded2;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
-       background:var(--bg);color:var(--ink);line-height:1.65}
-  header{background:var(--brand);color:#f2ede2;padding:3rem 1.2rem 2.6rem;text-align:center}
-  header h1{margin:0 0 .4rem;font-size:2.1rem;letter-spacing:.01em}
-  header p{margin:0;opacity:.8;font-size:1.05rem}
-  main{max-width:720px;margin:0 auto;padding:2rem 1.2rem 3rem}
-  h2{font-size:1.15rem;color:var(--brand);margin:2rem 0 .6rem}
-  ul{padding-left:1.2rem}
-  li{margin:.3rem 0}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
-        padding:1.1rem 1.3rem;margin:1.2rem 0}
-  a{color:#a8631d}
-  footer{max-width:720px;margin:0 auto;padding:0 1.2rem 3rem;
-         color:var(--muted);font-size:.9rem;border-top:1px solid var(--line);padding-top:1.2rem}
-</style>
+<title>Okolník – objevuj Česko kousek po kousku</title>
+<meta name="description" content="Turistický průvodce po Česku, který z výletu udělá objevování. Mapa se vybarvuje podle toho, kudy jste prošli.">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="/img/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/img/favicon.png">
+<link rel="stylesheet" href="/styl.css">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Okolník – objevuj Česko kousek po kousku">
+<meta property="og:description" content="Turistický průvodce po Česku, který z výletu udělá objevování.">
+<meta property="og:url" content="https://okolnik.cz/">
+<meta property="og:image" content="https://okolnik.cz/img/og.webp">
+<meta name="twitter:card" content="summary_large_image">
 </head>
 <body>
-<header>
-  <h1>Okolník</h1>
-  <p>Objevujte Česko kousek po kousku</p>
+
+<header class="hlava">
+  <div class="obal">
+    <a class="znacka" href="/">
+      <img class="emblem" src="/img/emblem-96.webp" alt="" width="38" height="38">
+      <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="120" height="30">
+    </a>
+    <nav class="menu" aria-label="Hlavní nabídka">
+      <a href="/" aria-current="page">Domů</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/soukromi/">Soukromí</a>
+    </nav>
+  </div>
 </header>
+
 <main>
 
-<p>Okolník je turistický průvodce po České republice, který z obyčejného
-výletu udělá objevování. Ukáže vám, co zajímavého je právě kolem vás –
-a čím víc toho projdete, tím víc se vám odkrývá mapa republiky.</p>
+  <section class="hero">
+    <img class="emblem" src="/img/emblem.webp" alt="" width="120" height="120">
+    <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="320" height="81">
+    <p class="tagline">Objev · Prožij · Sdílej</p>
+    <p class="lead">Turistický průvodce po Česku, který z obyčejného výletu udělá
+    objevování. Ukáže vám, co zajímavého je právě kolem vás – a čím víc toho
+    projdete, tím víc se vám odkrývá mapa republiky.</p>
+    <div class="akce">
+      <a class="tlacitko" href="/zebricek/">Žebříček hráčů</a>
+      <a class="tlacitko tise" href="#co-umi">Co Okolník umí</a>
+    </div>
+  </section>
 
-<div class="card">
-  <h2 style="margin-top:0">Co Okolník umí</h2>
-  <ul>
-    <li>přes 160 000 míst po celé ČR ve 42 kategoriích</li>
-    <li>herní vybarvování mapy chůzí</li>
-    <li>sbírka obecních erbů a přes 1 000 úspěchů</li>
-    <li>turistický deník, výpravy s fotkami a plánování výletů</li>
-    <li>funguje i bez signálu – offline balíčky okresů</li>
-  </ul>
-</div>
+  <section class="sekce" id="co-umi">
+    <h2>Co Okolník umí</h2>
+    <p class="podtitul" style="text-align:center">Všechno běží ve vašem telefonu.
+    Účet k tomu nepotřebujete.</p>
+    <div class="karty">
+      <div class="karta">
+        <span class="ikona" aria-hidden="true">🗺️</span>
+        <h3>Mapa, která se vybarvuje</h3>
+        <p>Kudy projdete, tam se rozestoupí mlha. Republika se odkrývá
+        kousek po kousku – a je hned vidět, kde jste ještě nebyli.</p>
+      </div>
+      <div class="karta">
+        <span class="ikona" aria-hidden="true">📍</span>
+        <h3>Přes 160 000 míst</h3>
+        <p>Hrady, rozhledny, studánky, nádraží i obchody – v 55 kategoriích,
+        které si zapínáte podle nálady.</p>
+      </div>
+      <div class="karta">
+        <span class="ikona" aria-hidden="true">🏆</span>
+        <h3>Úspěchy a výzvy</h3>
+        <p>175 úspěchů, měsíční mise ve třech obtížnostech, osobní rekordy
+        a sbírka 455 malovaných míst.</p>
+      </div>
+      <div class="karta">
+        <span class="ikona" aria-hidden="true">🛡️</span>
+        <h3>Erby 6 258 obcí</h3>
+        <p>Za každou pořádně prochozenou obec získáte její znak. Kraje
+        a okresy ukazují, kolik jich máte hotových.</p>
+      </div>
+      <div class="karta">
+        <span class="ikona" aria-hidden="true">📔</span>
+        <h3>Deník a fotovýpravy</h3>
+        <p>Kam jste došli, co jste viděli a jaké bylo počasí. Fotky
+        z výprav zůstávají u vás v telefonu.</p>
+      </div>
+      <div class="karta">
+        <span class="ikona" aria-hidden="true">📶</span>
+        <h3>Jede i bez signálu</h3>
+        <p>Stáhněte si okres, kam jedete – kolem 1 MB. V lese pak mapa
+        funguje dál a nestojí to data.</p>
+      </div>
+    </div>
+  </section>
 
-<h2>Odkazy</h2>
-<ul>
-  <li><a href="/zebricek">Žebříček</a> – měsíční soutěž hráčů</li>
-  <li><a href="/ucet">Můj Okolník</a> – přihlášení a vlastní výsledky</li>
-  <li><a href="/soukromi">Zásady ochrany soukromí</a></li>
-  <li>Kontakt: <a href="mailto:stamu.apps@gmail.com">stamu.apps@gmail.com</a></li>
-</ul>
+  <section class="sekce">
+    <h2>Jak to vypadá</h2>
+    <div class="snimky">
+      <figure class="snimek">
+        <img src="/img/app-turisticka.webp" alt="Turistická mapa s vrstevnicemi a značenými trasami" width="540" height="915" loading="lazy">
+        <figcaption>Turistická mapa se značkami KČT</figcaption>
+      </figure>
+      <figure class="snimek">
+        <img src="/img/app-herni.webp" alt="Herní mapa v noci: kreslená krajina, světla vesnic a postavička hráče" width="540" height="915" loading="lazy">
+        <figcaption>Herní mapa – tady v noci</figcaption>
+      </figure>
+      <figure class="snimek">
+        <img src="/img/app-uspechy.webp" alt="Obrazovka Úspěchy a výzvy s úrovní, rekordy a postupem" width="540" height="915" loading="lazy">
+        <figcaption>Úspěchy, výzvy a rekordy</figcaption>
+      </figure>
+    </div>
+  </section>
 
-<p>Data o místech pocházejí z projektu OpenStreetMap
-(© přispěvatelé OpenStreetMap, licence ODbL).</p>
+  <section class="pruh">
+    <div class="sekce">
+      <h2>Aplikace se dolaďuje</h2>
+      <p>Okolník je teď v uzavřeném testování a chystá se do Google Play.
+      Chcete být u toho, nebo máte nápad, co by měl umět? Napište mi –
+      každý e-mail si čtu.</p>
+      <a class="tlacitko" href="mailto:stamu.apps@gmail.com">Napsat autorovi</a>
+    </div>
+  </section>
 
 </main>
-<footer>
-  Okolník © 2026 Stanislav Mudra
+
+<footer class="pata">
+  <div class="obal">
+    <div>
+      <strong style="color:#f2ede0">Okolník</strong>
+      <p class="drobne">© 2026 Stanislav Mudra</p>
+    </div>
+    <nav class="odkazy" aria-label="Odkazy v patičce">
+      <a href="/">Domů</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/soukromi/">Zásady soukromí</a>
+      <a href="mailto:stamu.apps@gmail.com">Kontakt</a>
+    </nav>
+  </div>
+  <div class="obal" style="padding-top:0">
+    <p class="drobne">Data o místech pocházejí z projektu OpenStreetMap
+    (© přispěvatelé OpenStreetMap, licence ODbL). Letecké snímky a výškopis ČÚZK.</p>
+  </div>
 </footer>
+
 </body>
 </html>
