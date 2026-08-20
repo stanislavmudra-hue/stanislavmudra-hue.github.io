@@ -314,8 +314,19 @@ p, li { margin: 0 0 12px; }
   .hero img.emblem { width: 92px; height: 92px; }
   .hero p.lead { font-size: 1.02rem; }
   .hlava .obal { padding: 8px 14px; gap: 8px; }
-  .menu { margin-left: 0; width: 100%; }
-  .menu a { padding: 7px 12px; font-size: .9rem; }
+  /* ⭐ Na mobilu se menu ZALAMUJE, ne posouvá do strany. Zkoušeno
+     s vodorovným posuvem a rozostřeným okrajem (20. 8.): na 359 px se
+     čtyři položky vejdou těsně, na užším displeji už ne — a položka
+     usečnutá za okrajem vypadá jako chyba, i když jde odrolovat.
+     Zalomení nikdy nic neschová a lišta se natáhne jen na malých
+     telefonech. */
+  .menu {
+    margin-left: 0;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .menu a { padding: 7px 10px; font-size: .86rem; }
   .pata .obal { padding: 24px 16px 30px; }
 }
 
