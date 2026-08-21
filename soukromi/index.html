@@ -44,14 +44,17 @@
 
 <main class="uzky">
 <h1>Zásady ochrany soukromí – aplikace Okolník</h1>
-<p style="color:#55605d;margin-top:-2px">Platné od 19. 8. 2026</p>
+<p style="color:#55605d;margin-top:-2px">Platné od 21. 8. 2026</p>
 <p>Aplikace <strong>Okolník – vyhledávač míst v okolí</strong> (dále „aplikace") respektuje
 vaše soukromí. Tento dokument popisuje, jaké údaje aplikace zpracovává, proč
 a jaká máte práva. Zpracování probíhá v souladu s nařízením (EU) 2016/679
 (GDPR). Provozovatelem je <strong>Stanislav Mudra</strong>, e-mail: stamu.apps@gmail.com.</p>
 <h2>Shrnutí</h2>
-<p>Aplikace <strong>nevytváří účty ani neshromažďuje osobní údaje spojené s vaší
-osobou</strong> a nemá vlastní servery pro vaše data. Poloha, trasa, deník, výpravy
+<p>Aplikace <strong>nevyžaduje účet a neshromažďuje osobní údaje spojené s vaší
+osobou</strong> a nemá vlastní servery pro vaše data. Volitelně si můžete zapnout
+<strong>žebříček na okolnik.cz</strong> – teprve tím začne aplikace odesílat přezdívku
+a několik čísel o vaší chůzi; výchozí stav je vypnuto a dá se kdykoli
+zrušit. Poloha, trasa, deník, výpravy
 i fotky zůstávají uložené jen ve vašem telefonu. Na server správce posíláte
 to, co sami odešlete (návrh místa, hlasování, zpětná vazba) – bez jména či
 e-mailu; aplikace navíc odesílá <strong>souhrnné statistiky používání</strong>
@@ -117,6 +120,39 @@ ale <em>trvalý</em> a odlišuje jednu instalaci od druhé, považujeme ho podle
 k tomu, abychom u zpětné vazby dohledali váš případ, omezili spam u návrhů
 a hlasování a mohli ručně přiznat prémiový přístup konkrétní instalaci
 (testeři, výherci). K ničemu jinému ho nepoužíváme.</p>
+<h2>Žebříček a účet na webu (dobrovolné)</h2>
+<p>Aplikace jde používat celým rozsahem bez účtu a bez připojení k webu.
+Pokud si v aplikaci („Více → Můj Okolník“) zapnete účast v žebříčku,
+platí navíc toto:</p>
+<ul>
+<li><strong>Co je veřejné.</strong> Na stránce okolnik.cz/zebricek se zobrazí vaše
+  <strong>přezdívka</strong>, počet ušlých kilometrů, počet nových obcí a počet
+  fotovýprav za aktuální měsíc, případně kraj, pokud si ho zvolíte.
+  Přezdívku si volíte sami – nemusí to být vaše jméno.</li>
+<li><strong>Co se neodesílá nikdy.</strong> Vaše poloha, trasa, deník, fotky, seznam
+  navštívených míst ani e-mail. Z těchto dat vznikají jen výše uvedená
+  souhrnná čísla, která se počítají přímo v telefonu.</li>
+<li><strong>Anonymní identita.</strong> Aby nikdo nemohl přepisovat cizí výsledky,
+  získá aplikace při zapnutí účasti <strong>anonymní účet Firebase Auth</strong>.
+  Ten neobsahuje jméno ani e-mail – je to náhodný kód, který podle GDPR
+  považujeme za pseudonymizovaný údaj (viz vysvětlení identifikátoru
+  instalace výše).</li>
+<li><strong>Krokoměr.</strong> Se zapnutou účastí si aplikace vyžádá přístup
+  k čítači kroků telefonu. Slouží jen k tomu, aby šlo odlišit chůzi
+  od jízdy – do žebříčku se posílá pouze <strong>měsíční počet kroků</strong>
+  a příznak „podloženo kroky“, ne jednotlivá měření ani časy.
+  Souhlas můžete kdykoli odvolat v nastavení Androidu.</li>
+<li><strong>Spárování s webem.</strong> Na okolnik.cz/ucet se lze přihlásit účtem
+  Google a jednorázovým šestiznakovým kódem z aplikace připojit svou
+  hru. Vaše e-mailová adresa zůstává u Googlu – <strong>aplikace ji nikdy
+  nedostane</strong> a na naší straně se ukládá jen odkaz mezi účtem Google
+  a anonymním kódem hráče. Kód platí 15 minut a po použití se maže.
+  Spárovaný účet navíc vidí svůj <strong>soukromý profil</strong> (úroveň, souhrnná
+  čísla, úspěchy); ten je čitatelný jen pro něj, ne veřejně.</li>
+<li><strong>Odhlášení.</strong> Vypnutím přepínače v „Můj Okolník“ se váš řádek
+  z žebříčku smaže a další čísla se už neposílají. O smazání profilu
+  i spárování lze kdykoli požádat na stamu.apps@gmail.com.</li>
+</ul>
 <h2>Souhrnné statistiky používání</h2>
 <p>Aby bylo možné aplikaci zlepšovat a odhalovat chyby, odesílá aplikace do služby
 Google Firebase základní <strong>souhrnné</strong> statistiky používání – počet
@@ -168,7 +204,9 @@ pouze informaci, zda je nákup aktivní.</p>
 <p>Údaje nikomu neprodáváme. Příjemci / poskytovateli služeb jsou:</p>
 <ul>
 <li><strong>Google</strong> – AdMob (reklamy), Firebase/Firestore (návrhy, hlasy, zpětná
-  vazba, souhrnné statistiky), Google Play (nákupy a distribuce).</li>
+  vazba, souhrnné statistiky, žebříček), Firebase Auth (anonymní identita
+  hráče a přihlášení účtem Google na webu), Google Play (nákupy
+  a distribuce).</li>
 <li><strong>OpenStreetMap</strong> – mapové dlaždice a komunitní poznámky (načítání
   i veřejné hlášení zaniklých míst).</li>
 <li><strong>OpenTopoMap</strong> a <strong>Esri</strong> – mapové podklady (turistická mapa, letecké
@@ -197,6 +235,10 @@ souřadnice podle konkrétní funkce).</p>
   (vlastní hledáček). Zvuk se nenahrává, fotky zůstávají v zařízení.</li>
 <li><strong>Galerie / soubory</strong> – výběr už pořízených fotek a načtení či uložení
   zálohy (ZIP) přes systémový výběr souborů.</li>
+<li><strong>Rozpoznání tělesné aktivity</strong> – čtení čítače kroků telefonu pro
+  počítání kroků ve výpravě a pro odlišení chůze od jízdy v žebříčku.
+  Aplikace o něj požádá až při spuštění výpravy nebo při zapnutí
+  žebříčku; bez něj vše ostatní funguje dál.</li>
 </ul>
 <h2>Data míst</h2>
 <p>Databáze míst pochází z projektu <strong>OpenStreetMap</strong>

@@ -609,7 +609,10 @@ function vypisVysledky(hrac, mesic, obdobi) {
     box.appendChild(prvek('h3', null, 'Tento měsíc (' + obdobi + ')'));
     var m = prvek('div', 'cisla');
     [['Ušlé km', mesic.km, 1], ['Nové obce', mesic.obce, 0],
-     ['Fotovýpravy', mesic.vypravy, 0]].forEach(function (d) {
+     ['Fotovýpravy', mesic.vypravy, 0],
+     ['Navštívená místa', mesic.navstevy, 0],
+     ['Aktivní dny', mesic.dny, 0],
+     ['Kroky', mesic.kroky, 0]].forEach(function (d) {
       if (typeof d[1] !== 'number') return;
       var k = prvek('div', 'cislo');
       k.appendChild(prvek('div', 'h', cislo(d[1], d[2])));
@@ -617,6 +620,21 @@ function vypisVysledky(hrac, mesic, obdobi) {
       m.appendChild(k);
     });
     box.appendChild(m);
+
+    // ⭐ ODZNAK „PODLOŽENO KROKY“. Auto se z ušlých kilometrů vyhazuje
+    // podle rychlosti, což nechytne jízdu po městě ani autobus. Kroky
+    // jsou nezávislý důkaz chůze — appka pošle příznak, web ho jen
+    // ukáže. ⚠️ Je to informace, NE obvinění: telefon v batohu nebo
+    // hůlky v rukou počet kroků srazí, proto žádné červené varování.
+    if (typeof mesic.podlozeno === 'boolean'
+        && typeof mesic.kroky === 'number' && mesic.kroky > 0) {
+      var od = prvek('p', 'poznamka',
+        mesic.podlozeno
+          ? '✅ Kilometry jsou podložené nachózenými kroky.'
+          : 'ℹ️ Kroků je na ten počet kilometrů méně, než '
+            + 'odpovídá chůzi (třeba telefon v batohu, nebo jízda).');
+      box.appendChild(od);
+    }
     var odkaz = prvek('p');
     var a = document.createElement('a');
     a.href = '/zebricek';

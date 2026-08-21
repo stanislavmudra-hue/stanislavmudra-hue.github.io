@@ -366,3 +366,13 @@ p, li { margin: 0 0 12px; }
   word-break: break-word;
 }
 .uzky .mail { color: var(--zelena); }
+
+/* Poznámka pod měsíčními čísly na „Můj Okolník" — příznak „podloženo
+   kroky". ⚠️ Záměrně nenápadná: je to informace, ne obvinění (telefon
+   v batohu zachytí míň kroků, než člověk skutečně ušel). */
+.poznamka {
+  margin: 10px 0 0;
+  color: var(--slabsi);
+  font-size: .92rem;
+  line-height: 1.5;
+}
