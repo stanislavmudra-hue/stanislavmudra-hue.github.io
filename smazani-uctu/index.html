@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smazání účtu a dat – Okolník</title>
+<meta name="description" content="Jak smazat účet a data v aplikaci Okolník: co se smaže, co zůstane a jak o smazání požádat i bez aplikace.">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="/img/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/img/favicon.png">
+<link rel="stylesheet" href="/styl.css">
+<style>
+  .karta {
+    border: 1px solid var(--linka); border-radius: 12px;
+    padding: 20px 20px 16px; margin: 0 0 20px; background: var(--jemna);
+  }
+  .karta.tichá { background: var(--papir); }
+  .tabulka { width: 100%; border-collapse: collapse; margin: 6px 0 4px; }
+  .tabulka th, .tabulka td {
+    text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--linka);
+    vertical-align: top;
+  }
+  .tabulka th { font-size: .86rem; color: var(--slabsi); font-weight: 600; }
+  .ano { color: var(--zelena); font-weight: 700; }
+  .ne { color: var(--oranzova); font-weight: 700; }
+  .mail {
+    font-size: 1.18rem; font-weight: 700; color: var(--oranzova);
+    user-select: all; word-break: break-word;
+  }
+  ol.kroky { padding-left: 20px; }
+  ol.kroky li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<header class="hlava">
+  <div class="obal">
+    <a class="znacka" href="/">
+      <img class="emblem" src="/img/emblem-96.webp" alt="" width="38" height="38">
+      <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="120" height="30">
+    </a>
+    <nav class="menu" aria-label="Hlavní nabídka">
+      <a href="/">Domů</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/soukromi/">Soukromí</a>
+      <a href="/kontakt/">Kontakt</a>
+    </nav>
+  </div>
+</header>
+
+<main class="obal uzky">
+  <h1>Smazání účtu a dat</h1>
+
+  <p class="perex">
+    Okolník se hraje <strong>bez účtu</strong> — mapa, deník, výpravy
+    i fotky zůstávají ve vašem telefonu a nikam se neodesílají. Účet
+    vzniká, jen když si sami zapnete žebříček nebo propojíte hru s webem.
+    Tahle stránka je pro případ, že ho chcete zrušit.
+  </p>
+
+  <div class="karta">
+    <h2>Co se smaže a co zůstane</h2>
+    <table class="tabulka">
+      <tr>
+        <th>Údaj</th><th>Kde je</th><th>Smaže se</th>
+      </tr>
+      <tr>
+        <td>Přezdívka a měsíční čísla v žebříčku</td>
+        <td>server</td><td class="ano">ano, všechna období</td>
+      </tr>
+      <tr>
+        <td>Profil pro web (souhrn, rekordy)</td>
+        <td>server</td><td class="ano">ano</td>
+      </tr>
+      <tr>
+        <td>Anonymní identita hráče</td>
+        <td>server</td><td class="ano">ano</td>
+      </tr>
+      <tr>
+        <td>Propojení s účtem Google</td>
+        <td>server</td><td class="ano">ano</td>
+      </tr>
+      <tr>
+        <td>Odkrytá mapa, ušlé kilometry, deník, výpravy, fotky</td>
+        <td>jen váš telefon</td>
+        <td class="ne">na serveru nikdy nebyly</td>
+      </tr>
+    </table>
+    <p class="drobne">
+      Hra o nic nepřijde. Data ve hře smažete jedině odinstalováním
+      aplikace nebo vymazáním jejích dat v nastavení telefonu.
+    </p>
+  </div>
+
+  <div class="karta">
+    <h2>Smazání přímo v aplikaci (nejrychlejší)</h2>
+    <ol class="kroky">
+      <li>Otevřete Okolník.</li>
+      <li>Nahoře vpravo <strong>Více</strong> → <strong>Můj Okolník</strong>.</li>
+      <li>Úplně dole <strong>Smazat účet a data ze serveru</strong>.</li>
+    </ol>
+    <p class="drobne">
+      Smaže to řádek v žebříčku za všechna období, profil i identitu
+      hráče. Potvrzení se ukáže hned na obrazovce.
+    </p>
+  </div>
+
+  <div class="karta">
+    <h2>Nemáte aplikaci po ruce</h2>
+    <p>
+      Napište na adresu níž z <strong>e-mailu, kterým jste se přihlásili
+      na okolnik.cz</strong>, nebo připojte svou přezdívku ze žebříčku,
+      ať víme, co smazat.
+    </p>
+    <p class="mail">stamu.apps@gmail.com</p>
+    <p class="drobne">
+      Do předmětu stačí „Smazání účtu". Vyřídíme to nejpozději do
+      30 dnů, obvykle týž den; o vyřízení přijde odpověď. Kromě adresy,
+      ze které napíšete, po vás nic dalšího nechceme.
+    </p>
+  </div>
+
+  <div class="karta tichá">
+    <h2>Propojení s účtem Google</h2>
+    <p>
+      Když jste hru spárovali s webem, je u nás uložený jen odkaz mezi
+      vaším účtem Google a anonymním kódem hráče — <strong>žádné jméno
+      ani e-mailová adresa</strong>. Zrušíte ho na stránce
+      <a href="/ucet/">Můj Okolník</a> tlačítkem <em>Odpojit aplikaci</em>
+      po přihlášení, nebo e-mailem výš.
+    </p>
+    <p class="drobne">
+      Samotný účet Google zůstává váš a u Googlu; my ho smazat neumíme
+      ani k němu nemáme přístup. Přístup aplikace ke svému účtu Google
+      můžete kdykoli odebrat v
+      <a href="https://myaccount.google.com/permissions" rel="noopener">nastavení účtu Google</a>.
+    </p>
+  </div>
+
+  <p class="vysvetlivka">
+    Podrobnosti o tom, co aplikace zpracovává a proč, jsou v
+    <a href="/soukromi/">zásadách ochrany soukromí</a>.
+  </p>
+</main>
+
+<footer class="pata">
+  <div class="obal">
+    <div>
+      <strong style="color:#f2ede0">Okolník</strong>
+      <p class="drobne">© 2026 Stanislav Mudra</p>
+    </div>
+    <nav class="odkazy" aria-label="Odkazy v patičce">
+      <a href="/">Domů</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/soukromi/">Zásady soukromí</a>
+      <a href="/smazani-uctu/">Smazání účtu</a>
+      <a href="/kontakt/">Kontakt</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>
