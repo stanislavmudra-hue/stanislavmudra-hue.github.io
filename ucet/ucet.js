@@ -400,7 +400,11 @@ function popisChybyPrihlaseni(e) {
 /* ---------------------------------------------------------------------
    Vykreslení: 2) spárování s aplikací
 --------------------------------------------------------------------- */
-var ucet = null;   // {hrac, spojeno} z kolekce `ucty/{uid}`
+/* ⛔ 25. 8. 2026: PÁROVACÍ KÓDY ZRUŠENY. Aplikace se nově přihlašuje
+   stejným účtem (Google / e-mail) jako web, takže výsledky se čtou
+   rovnou z `zebricek/{vlastní uid}` — vazební kolekce `ucty/{uid}`
+   a `parovani/{KOD}` už nevznikají. Stará vazba se ignoruje: měsíční
+   řádek žebříčku se pod novým uid pošle z aplikace celý znovu. */
 
 function vykresliParovani() {
   var karta = el('kartaParovani');
@@ -408,129 +412,10 @@ function vykresliParovani() {
   obsah.textContent = '';
   karta.hidden = !relace;
   if (!relace) return;
-
-  if (ucet && ucet.hrac) {
-    obsah.appendChild(prvek('p', null,
-      'Web je spárovaný s aplikací. Vaše výsledky se načítají níž.'));
-    var odpojit = prvek('button', 'druha', 'Odpojit aplikaci');
-    odpojit.addEventListener('click', function () {
-      odpojit.disabled = true;
-      smaz('ucty/' + relace.uid).then(function () {
-        ucet = null;
-        vykresli();
-      }).catch(function () {
-        odpojit.disabled = false;
-        obsah.appendChild(prvek('div', 'hlaska chyba',
-          'Odpojení se nepovedlo. Zkuste to prosím za chvíli.'));
-      });
-    });
-    obsah.appendChild(odpojit);
-    return;
-  }
-
   obsah.appendChild(prvek('p', null,
-    'V aplikaci otevřete Více → Můj Okolník → Spárovat s webem. ' +
-    'Zobrazí se šestimístný kód, který platí 15 minut – opište ho sem.'));
-
-  var radek = prvek('div', 'radek');
-  var vstup = document.createElement('input');
-  vstup.type = 'text';
-  vstup.id = 'kod';
-  vstup.maxLength = 7;              // 6 znaků + případná mezera při vkládání
-  vstup.autocomplete = 'one-time-code';
-  vstup.setAttribute('aria-label', 'Párovací kód z aplikace');
-  vstup.placeholder = 'ABC123';
-  radek.appendChild(vstup);
-
-  var tlacitko = prvek('button', null, 'Spárovat');
-  radek.appendChild(tlacitko);
-  obsah.appendChild(radek);
-
-  var hlaska = prvek('div', 'hlaska chyba', '');
-  hlaska.hidden = true;
-  obsah.appendChild(hlaska);
-
-  var rekni = function (text, druh) {
-    hlaska.className = 'hlaska ' + (druh || 'chyba');
-    hlaska.textContent = text;
-    hlaska.hidden = false;
-  };
-
-  var spustit = function () {
-    var kod = String(vstup.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (kod.length !== 6) {
-      rekni('Kód má šest znaků – písmena a číslice.');
-      return;
-    }
-    tlacitko.disabled = true;
-    hlaska.hidden = true;
-    sparuj(kod).then(function () {
-      vykresli();
-    }).catch(function (e) {
-      tlacitko.disabled = false;
-      rekni(popisChybyParovani(e));
-    });
-  };
-
-  tlacitko.addEventListener('click', spustit);
-  vstup.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Enter') { ev.preventDefault(); spustit(); }
-  });
-
-  // ⭐ KÓD Z ADRESY (`?kod=ABC123`). Aplikace otevře prohlížeč rovnou
-  // s kódem, takže uživatel nic neopisuje — jen se přihlásí a klepne.
-  // ⚠️ V adrese smí být JEN JEDNORÁZOVÝ KÓD, nikdy `uid` hráče:
-  // adresy se ukládají do historie a dávají se omylem dál. Kód platí
-  // 30 minut a po použití se maže, uid by platil navždy.
-  var zAdresy = (new URLSearchParams(location.search).get('kod') || '')
-      .toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
-  if (zAdresy.length === 6) {
-    vstup.value = zAdresy;
-    rekni('Kód z aplikace je předvyplněný — stačí klepnout na Spárovat.',
-          'info');
-    try { tlacitko.focus(); } catch (e) { /* nevadí */ }
-  }
-}
-
-function sparuj(kod) {
-  return precti('parovani/' + kod).then(function (d) {
-    if (!d || !d.hrac) throw new Error('NENALEZEN');
-    if (d.plati) {
-      var doKdy = Date.parse(d.plati);
-      if (isFinite(doKdy) && doKdy < Date.now()) throw new Error('VYPRSEL');
-    }
-    // ⚠️ `kod` SE MUSÍ ULOŽIT S SEBOU. Pravidlo u `ucty/{uid}` si
-    // přes něj ověřuje, že vazba vznikla ze živé párovací karty — bez
-    // toho by stačilo opsat cizí `hrac` ze žebříčku (id dokumentu je
-    // veřejné) a číst cizí profil.
-    // ⛔ A proto se karta maže AŽ POTÉ, co je vazba zapsaná.
-    return zapis('ucty/' + relace.uid, {
-      fields: {
-        hrac: { stringValue: d.hrac },
-        kod: { stringValue: kod },
-        spojeno: { timestampValue: new Date().toISOString() },
-      },
-    }).then(function () {
-      ucet = { hrac: d.hrac };
-      // kód je jednorázový; když se smazat nepovede, sám vyprší
-      return smaz('parovani/' + kod).catch(function () { return true; });
-    });
-  });
-}
-
-function popisChybyParovani(e) {
-  var m = (e && e.message) || '';
-  if (m === 'NENALEZEN') {
-    return 'Takový kód neznáme. Zkontrolujte ho, nebo si v aplikaci ' +
-           'nechte vygenerovat nový.';
-  }
-  if (m === 'VYPRSEL') {
-    return 'Kód už vypršel. Nechte si v aplikaci vygenerovat nový.';
-  }
-  if (m === 'PERMISSION_DENIED') {
-    return 'Párování zatím není na serveru povolené.';
-  }
-  return 'Spárování se nepovedlo (' + (m || 'neznámá chyba') + ').';
+    'Aplikace a web používají jeden účet. Stačí se v aplikaci ' +
+    '(Více → Můj Okolník) přihlásit stejným účtem jako tady — ' +
+    'výsledky se pak objeví níž samy, žádný kód není potřeba.'));
 }
 
 /* ---------------------------------------------------------------------
@@ -539,7 +424,7 @@ function popisChybyParovani(e) {
 function vykresliVysledky() {
   var karta = el('kartaVysledky');
   var box = el('vysledky');
-  karta.hidden = !(relace && ucet && ucet.hrac);
+  karta.hidden = !relace;
   if (karta.hidden) return;
 
   box.textContent = '';
@@ -550,8 +435,8 @@ function vykresliVysledky() {
 
   var obdobi = obdobiKlic(new Date());
   Promise.all([
-    precti('hraci/' + ucet.hrac).catch(function () { return null; }),
-    precti('zebricek/' + ucet.hrac + '_' + obdobi).catch(function () { return null; }),
+    precti('hraci/' + relace.uid).catch(function () { return null; }),
+    precti('zebricek/' + relace.uid + '_' + obdobi).catch(function () { return null; }),
   ]).then(function (v) {
     vypisVysledky(v[0], v[1], obdobi);
   }).catch(function () {
@@ -574,8 +459,9 @@ function vypisVysledky(hrac, mesic, obdobi) {
 
   if (!hrac && !mesic) {
     box.appendChild(stavovaKarta('Zatím tu nic není',
-      'Aplikace ještě neposlala žádná data. Otevřete Okolník ' +
-      'v telefonu – profil se odešle při nejbližší příležitosti.'));
+      'Přihlaste se v aplikaci stejným účtem (Více → Můj Okolník) ' +
+      'a zapněte žebříček – čísla se odešlou při nejbližší ' +
+      'příležitosti.'));
     return;
   }
 
@@ -704,11 +590,8 @@ function start() {
   relace = nactiRelaci();
   if (!relace) { vykresli(); return; }
 
-  // ověřit, že uložená relace ještě žije, a rovnou zjistit spárování
+  // ověřit, že uložená relace ještě žije
   token().then(function () {
-    return precti('ucty/' + relace.uid).catch(function () { return null; });
-  }).then(function (d) {
-    ucet = (d && d.hrac) ? d : null;
     vykresli();
   }).catch(function () {
     relace = null;      // refresh token neplatí (odvolaný účet, změna hesla…)
