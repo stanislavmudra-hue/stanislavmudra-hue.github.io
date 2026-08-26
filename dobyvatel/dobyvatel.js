@@ -64,7 +64,9 @@ var kraje = null;
 var vlajky = [];      // [{n, h, lat, lon}] dle indexu (jména oblastí)
 var body = null;      // FeatureCollection bodů vlajek
 var obrys = null;     // maska ztlumení okolí + čára hranice ČR
-var IKONA_DRUHU = {castles:'hrad',peaks:'vrchol',towers:'rozhledna',caves:'jeskyne',waterfalls:'vodopad',rocks:'skala',viewpoints:'vyhlidka',archaeology:'archeologie',mines:'stola',fortifications:'bunkr',memorial_trees:'pamatny_strom',propasti:'jeskyne',jezera:'jezero',prameny:'studanka'};
+var IKONA_DRUHU = {castles:1,peaks:1,towers:1,caves:1,waterfalls:1,
+  rocks:1,viewpoints:1,archaeology:1,mines:1,fortifications:1,
+  memorial_trees:1,propasti:1,jezera:1,prameny:1};
 
 function barvaTymu() {
   var v = ['match', ['get', 't']];
@@ -76,17 +78,15 @@ function barvaTymu() {
 }
 
 function nahrajIkony() {
-  var druhy = {};
-  for (var k in IKONA_DRUHU) druhy[IKONA_DRUHU[k]] = true;
-  return Promise.all(Object.keys(druhy).map(function (soubor) {
-    return fetch('data/ikony/' + soubor + '.webp')
+  return Promise.all(Object.keys(IKONA_DRUHU).map(function (kat) {
+    return fetch('data/ikonky/' + kat + '.webp?v=15')
       .then(function (r) { return r.blob(); })
       .then(function (b) { return createImageBitmap(b); })
       .then(function (bmp) {
-        if (!mapa.hasImage('ik-' + soubor)) {
-          mapa.addImage('ik-' + soubor, bmp, { pixelRatio: 6 });
+        if (!mapa.hasImage('ik-' + kat)) {
+          mapa.addImage('ik-' + kat, bmp, { pixelRatio: 2 });
         }
-      }).catch(function () { /* bez ikony zůstane tečka */ });
+      }).catch(function () { /* bez ikonky zůstane tečka */ });
   }));
 }
 
@@ -151,15 +151,9 @@ function pridejVrstvy() {
   mapa.addLayer({
     id: 'vlajky-ikony', type: 'symbol', source: 'body', minzoom: 8.6,
     layout: {
-      'icon-image': ['concat', 'ik-', ['match', ['get', 'k'],
-        'castles', 'hrad', 'peaks', 'vrchol', 'towers', 'rozhledna',
-        'caves', 'jeskyne', 'waterfalls', 'vodopad', 'rocks', 'skala',
-        'viewpoints', 'vyhlidka', 'archaeology', 'archeologie',
-        'mines', 'stola', 'fortifications', 'bunkr',
-        'memorial_trees', 'pamatny_strom', 'propasti', 'jeskyne',
-        'jezera', 'jezero', 'prameny', 'studanka', 'vrchol']],
+      'icon-image': ['concat', 'ik-', ['get', 'k']],
       'icon-size': ['interpolate', ['linear'], ['zoom'],
-        8.6, 0.55, 11, 0.8, 13, 1.05],
+        8.6, 0.6, 11, 0.85, 13, 1.1],
     },
   });
   mapa.addLayer({
@@ -227,7 +221,10 @@ function vypisSkore(skore) {
   var radky = tymy.map(function (t) {
     return { t: t, body: (skore && skore[t.klic]) || 0 };
   }).sort(function (a, b) { return b.body - a.body; });
-  var suma = radky.reduce(function (s, r) { return s + r.body; }, 0);
+  // procenta = podíl na dobytí CELÉ republiky (součet hodnot všech
+  // vlajek), přání 27. 8.
+  var suma = 0;
+  for (var v = 0; v < vlajky.length; v++) suma += vlajky[v].h || 0;
   for (var i = 0; i < radky.length; i++) {
     var r = document.createElement('tr');
     var jm = document.createElement('td');
@@ -247,7 +244,7 @@ function vypisSkore(skore) {
     var pct = document.createElement('td');
     pct.className = 'body';
     pct.textContent = suma > 0
-      ? (100 * radky[i].body / suma).toFixed(0) + ' %'
+      ? (100 * radky[i].body / suma).toFixed(2) + ' %'
       : '—';
     r.appendChild(jm);
     r.appendChild(body);
