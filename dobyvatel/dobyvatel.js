@@ -241,7 +241,7 @@ function start() {
   Promise.all([
     fetch('data/tymy.json?v=10').then(function (r) { return r.json(); }),
     fetch('data/vlajky_oblasti.json?v=10').then(function (r) { return r.json(); }),
-    fetch('data/kraje.json?v=9').then(function (r) { return r.json(); }),
+    fetch('data/kraje.json?v=11').then(function (r) { return r.json(); }),
     fetch('data/vlajky.json').then(function (r) { return r.json(); }),
   ]).then(function (vysledky) {
     tymy = vysledky[0].tymy;
