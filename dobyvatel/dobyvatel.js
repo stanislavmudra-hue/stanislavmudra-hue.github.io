@@ -63,6 +63,8 @@ var oblasti = null;
 var kraje = null;
 var vlajky = [];      // [{n, h, lat, lon}] dle indexu (jména oblastí)
 var body = null;      // FeatureCollection bodů vlajek
+var obrys = null;     // maska ztlumení okolí + čára hranice ČR
+var IKONA_DRUHU = {castles:'hrad',peaks:'vrchol',towers:'rozhledna',caves:'jeskyne',waterfalls:'vodopad',rocks:'skala',viewpoints:'vyhlidka',archaeology:'archeologie',mines:'stola',fortifications:'bunkr',memorial_trees:'pamatny_strom',propasti:'jeskyne',jezera:'jezero',prameny:'studanka'};
 
 function barvaTymu() {
   var v = ['match', ['get', 't']];
@@ -73,7 +75,35 @@ function barvaTymu() {
   return v;
 }
 
+function nahrajIkony() {
+  var druhy = {};
+  for (var k in IKONA_DRUHU) druhy[IKONA_DRUHU[k]] = true;
+  return Promise.all(Object.keys(druhy).map(function (soubor) {
+    return fetch('data/ikony/' + soubor + '.webp')
+      .then(function (r) { return r.blob(); })
+      .then(function (b) { return createImageBitmap(b); })
+      .then(function (bmp) {
+        if (!mapa.hasImage('ik-' + soubor)) {
+          mapa.addImage('ik-' + soubor, bmp, { pixelRatio: 6 });
+        }
+      }).catch(function () { /* bez ikony zůstane tečka */ });
+  }));
+}
+
 function pridejVrstvy() {
+  // ztlumené okolí ČR + zřetelná hranice (přání 27. 8.)
+  mapa.addSource('obrys', { type: 'geojson', data: obrys });
+  mapa.addLayer({
+    id: 'ztlumeni', type: 'fill', source: 'obrys',
+    filter: ['==', '$type', 'Polygon'],
+    paint: { 'fill-color': '#e9e4d6', 'fill-opacity': 0.82 },
+  });
+  mapa.addLayer({
+    id: 'obrys-cr', type: 'line', source: 'obrys',
+    filter: ['==', '$type', 'LineString'],
+    paint: { 'line-color': '#43413a', 'line-width': 1.8,
+             'line-opacity': 0.85 },
+  });
   mapa.addSource('oblasti', { type: 'geojson', data: oblasti });
   mapa.addLayer({
     id: 'uzemi', type: 'fill', source: 'oblasti',
@@ -105,7 +135,7 @@ function pridejVrstvy() {
   // přiblížení jméno vlajky = jméno oblasti
   mapa.addSource('body', { type: 'geojson', data: body });
   mapa.addLayer({
-    id: 'vlajky-body', type: 'circle', source: 'body',
+    id: 'vlajky-body', type: 'circle', source: 'body', maxzoom: 8.6,
     paint: {
       'circle-color': ['case', ['==', ['get', 't'], '0'],
         '#7d7668', barvaTymu()],
@@ -114,6 +144,22 @@ function pridejVrstvy() {
       'circle-stroke-color': '#f7f4ec',
       'circle-stroke-width': 1,
       'circle-opacity': 0.9,
+    },
+  });
+  // malované značky podle druhu místa (hrad, vrchol, jeskyně…);
+  // kolize je řídí samy — zblízka jich přibývá
+  mapa.addLayer({
+    id: 'vlajky-ikony', type: 'symbol', source: 'body', minzoom: 8.6,
+    layout: {
+      'icon-image': ['concat', 'ik-', ['match', ['get', 'k'],
+        'castles', 'hrad', 'peaks', 'vrchol', 'towers', 'rozhledna',
+        'caves', 'jeskyne', 'waterfalls', 'vodopad', 'rocks', 'skala',
+        'viewpoints', 'vyhlidka', 'archaeology', 'archeologie',
+        'mines', 'stola', 'fortifications', 'bunkr',
+        'memorial_trees', 'pamatny_strom', 'propasti', 'jeskyne',
+        'jezera', 'jezero', 'prameny', 'studanka', 'vrchol']],
+      'icon-size': ['interpolate', ['linear'], ['zoom'],
+        8.6, 0.55, 11, 0.8, 13, 1.05],
     },
   });
   mapa.addLayer({
@@ -181,6 +227,7 @@ function vypisSkore(skore) {
   var radky = tymy.map(function (t) {
     return { t: t, body: (skore && skore[t.klic]) || 0 };
   }).sort(function (a, b) { return b.body - a.body; });
+  var suma = radky.reduce(function (s, r) { return s + r.body; }, 0);
   for (var i = 0; i < radky.length; i++) {
     var r = document.createElement('tr');
     var jm = document.createElement('td');
@@ -197,8 +244,14 @@ function vypisSkore(skore) {
     var body = document.createElement('td');
     body.className = 'body';
     body.textContent = String(radky[i].body);
+    var pct = document.createElement('td');
+    pct.className = 'body';
+    pct.textContent = suma > 0
+      ? (100 * radky[i].body / suma).toFixed(0) + ' %'
+      : '—';
     r.appendChild(jm);
     r.appendChild(body);
+    r.appendChild(pct);
     tab.appendChild(r);
   }
 }
@@ -396,7 +449,9 @@ function start() {
     fetch('data/vlajky_oblasti.json?v=10').then(function (r) { return r.json(); }),
     fetch('data/kraje.json?v=11').then(function (r) { return r.json(); }),
     fetch('data/vlajky.json').then(function (r) { return r.json(); }),
+    fetch('data/obrys.json?v=14').then(function (r) { return r.json(); }),
   ]).then(function (vysledky) {
+    obrys = vysledky[4];
     tymy = vysledky[0].tymy;
     oblasti = vysledky[1];
     kraje = vysledky[2];
@@ -405,7 +460,7 @@ function start() {
       type: 'FeatureCollection',
       features: vlajky.map(function (v, i) {
         return { type: 'Feature', id: i,
-          properties: { n: v.n, h: v.h, t: '0' },
+          properties: { n: v.n, h: v.h, t: '0', k: v.k },
           geometry: { type: 'Point', coordinates: [v.lon, v.lat] } };
       }),
     };
@@ -454,7 +509,7 @@ function start() {
       showUserLocation: true,
     }), 'top-right');
     mapa.on('load', function () {
-      pridejVrstvy();
+      nahrajIkony().then(function () { pridejVrstvy(); });
       nactiSnimek().then(function (s) {
         var poradi = s.tymyPoradi || [];
         var drzitele = s.drzitele
