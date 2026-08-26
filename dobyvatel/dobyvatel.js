@@ -240,6 +240,16 @@ function pridejVrstvy() {
       'line-width': ['case', ['==', ['get', 't'], '0'], 0.4, 1.2],
     },
   });
+  // zvýraznění kliknuté oblasti (přání 27. 8.) — filtr plní klik,
+  // zhasíná zavření bubliny
+  mapa.addLayer({ id: 'zvyraz-vypln', type: 'fill', source: 'oblasti',
+    filter: ['==', ['id'], -1],
+    paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.2 } });
+  mapa.addLayer({ id: 'zvyraz-cara', type: 'line', source: 'oblasti',
+    filter: ['==', ['id'], -1],
+    paint: { 'line-color': '#2f2a20', 'line-width': 2.4,
+             'line-opacity': 0.9 } });
+
   // body vlajek: tečka v barvě držitele (neutrální hnědošedá) — a od
   // přiblížení jméno vlajky = jméno oblasti
   mapa.addSource('body', { type: 'geojson', data: body });
@@ -328,11 +338,20 @@ function pridejVrstvy() {
     obal.appendChild(document.createTextNode(
         v.h + ' b. · ' + (drzitel === '0'
             ? 'neutrální'
-            : 'drží ' + jmenoTymu(drzitel) + ' kraj')));
-    new maplibregl.Popup({ closeButton: false, maxWidth: '260px' })
+            : 'drží ' + jmenoTymu(drzitel))));
+    ['zvyraz-vypln', 'zvyraz-cara'].forEach(function (id) {
+      try { mapa.setFilter(id, ['==', ['id'], f.id]); } catch (er) { }
+    });
+    var bublina = new maplibregl.Popup(
+        { closeButton: false, maxWidth: '260px' })
       .setLngLat([v.lon, v.lat])
       .setDOMContent(obal)
       .addTo(mapa);
+    bublina.on('close', function () {
+      ['zvyraz-vypln', 'zvyraz-cara'].forEach(function (id) {
+        try { mapa.setFilter(id, ['==', ['id'], -1]); } catch (er) { }
+      });
+    });
   });
   ['vlajky-ik4', 'vlajky-ik3', 'vlajky-ik2', 'vlajky-ik1',
    'vlajky-ik-vse']
@@ -563,8 +582,67 @@ function vypisSkore(skore) {
     r.appendChild(jm);
     r.appendChild(body);
     r.appendChild(pct);
+    (function (klic, b2, p2) {
+      r.onmouseenter = function () { ukazTymTip(klic, b2, p2, r); };
+      r.onmouseleave = schovejTymTip;
+    })(radky[i].t.klic, radky[i].body, pct.textContent);
     tab.appendChild(r);
   }
+}
+
+/* Detail týmu po najetí na řádek skóre (přání 27. 8.). */
+var posledniDrziteleArr = null;
+var posledniDobyto = null;
+var posledniClenove = null;
+var tymTip = null;
+
+function schovejTymTip() {
+  if (tymTip) { tymTip.remove(); tymTip = null; }
+}
+
+function ukazTymTip(klic, body2, pct, radekEl) {
+  schovejTymTip();
+  tymTip = document.createElement('div');
+  tymTip.style.cssText = 'position:fixed;z-index:40;'
+    + 'background:#fffdf6;border:1px solid #b9b2a0;'
+    + 'border-radius:10px;padding:8px 12px;font:12.5px sans-serif;'
+    + 'box-shadow:0 3px 10px rgba(0,0,0,.2);pointer-events:none;'
+    + 'max-width:250px;';
+  function radek(text, tucne) {
+    var p = document.createElement('div');
+    if (tucne) p.style.fontWeight = '700';
+    p.textContent = text;
+    tymTip.appendChild(p);
+  }
+  radek(jmenoTymu(klic), true);
+  radek('Členů: ' + ((posledniClenove
+      && posledniClenove[klic]) != null
+      ? posledniClenove[klic] : '–'));
+  var vlajek = 0;
+  if (posledniDrziteleArr) {
+    for (var i = 0; i < posledniDrziteleArr.length; i++) {
+      if (posledniDrziteleArr[i] === klic) vlajek++;
+    }
+  }
+  radek('Drží vlajek: ' + vlajek);
+  radek('Body: ' + body2 + (pct ? ' (' + pct + ')' : ''));
+  var okresu = 0;
+  var krajeT = [];
+  if (posledniDobyto) {
+    var ok = posledniDobyto.okresy || {};
+    for (var o in ok) { if (ok[o] === klic) okresu++; }
+    var kr = posledniDobyto.kraje || {};
+    for (var k2 in kr) {
+      if (kr[k2] === klic) krajeT.push(nazevKraje(k2));
+    }
+  }
+  radek('Dobyté okresy: ' + okresu);
+  if (krajeT.length) radek('Dobyté kraje: ' + krajeT.join(', '));
+  document.body.appendChild(tymTip);
+  var rect = radekEl.getBoundingClientRect();
+  tymTip.style.left = (rect.left - 10) + 'px';
+  tymTip.style.top = Math.max(8, rect.top - 6) + 'px';
+  tymTip.style.transform = 'translateX(-100%)';
 }
 
 function jmenoTymu(klic) {
@@ -1065,14 +1143,16 @@ function vykresliZalozeni() {
     var vDosah = cislo('metrů dosah od vlajky', 150, 50, 2000);
     var vLhuta = cislo('dní lhůta pro změnu týmu', 30, 0, 365);
     function datum(popis) {
+      // stačí DEN (výtka 27. 8.: datetime-local chtěl i čas a bez
+      // něj hlásil nevyplněno) a pole je VIDĚT, ne ve skrytých
       var radek = document.createElement('label');
       radek.style.cssText =
-        'display:flex;align-items:center;gap:6px;margin:3px 0;';
+        'display:flex;align-items:center;gap:6px;margin:4px 0;';
       var vstup = document.createElement('input');
-      vstup.type = 'datetime-local';
+      vstup.type = 'date';
       radek.appendChild(vstup);
       radek.appendChild(document.createTextNode(' ' + popis));
-      dalsi.appendChild(radek);
+      f.appendChild(radek);
       return vstup;
     }
     var vZacatek = datum('začátek soutěže (povinné)');
@@ -1113,12 +1193,12 @@ function vykresliZalozeni() {
         return;
       }
       if (!vZacatek.value || !vKonec.value) {
-        zprava.textContent = 'Vyplň začátek a konec soutěže '
-          + '(v Dalším nastavení).';
+        zprava.textContent = 'Vyplň začátek a konec soutěže.';
         return;
       }
-      if (new Date(vKonec.value) <= new Date(vZacatek.value)) {
-        zprava.textContent = 'Konec soutěže musí být po začátku.';
+      if (vKonec.value < vZacatek.value) {
+        zprava.textContent =
+          'Konec soutěže nesmí být před začátkem.';
         return;
       }
       zaloz.disabled = true;
@@ -1150,14 +1230,8 @@ function vykresliZalozeni() {
           zmenaTymuDni: parseInt(vLhuta.value, 10) || 30,
           prahNadoblasti: 0.5,
         };
-        if (vZacatek.value) {
-          prav.zacatek = new Date(vZacatek.value).toISOString()
-            .split('.')[0] + 'Z';
-        }
-        if (vKonec.value) {
-          prav.konec = new Date(vKonec.value).toISOString()
-            .split('.')[0] + 'Z';
-        }
+        prav.zacatek = vZacatek.value + 'T00:00:00Z';
+        prav.konec = vKonec.value + 'T23:59:59Z';
         return zapisDoc('souteze/' + sid, {
           nazev: jmeno.value.trim(),
           stav: 'priprava',
@@ -1453,7 +1527,7 @@ function zebricekHracu() {
     if (!radky.length) {
       var r0 = document.createElement('tr');
       var t0 = document.createElement('td');
-      t0.colSpan = 6;
+      t0.colSpan = 5;
       t0.textContent = 'Zatím nikdo nic nezabral — buď první.';
       r0.appendChild(t0);
       tab.appendChild(r0);
@@ -1463,7 +1537,7 @@ function zebricekHracu() {
       var r = document.createElement('tr');
       [String(i + 1) + '.',
        jmena[h.uid] || 'dobyvatel bez přezdívky',
-       String(h.z), String(h.o), String(h.b),
+       String(h.z), String(h.o),
        String(h.xp)].forEach(function (text, j) {
         var td = document.createElement('td');
         td.textContent = text;
@@ -1691,6 +1765,9 @@ function start() {
         var poradi = s.tymyPoradi || [];
         var drzitele = s.drzitele
           ? rozbalDrzitele(s.drzitele, poradi) : null;
+        posledniDrziteleArr = drzitele;
+        posledniDobyto = s.dobyto || null;
+        posledniClenove = s.clenove || null;
         obarvi(drzitele);
         vypisSkore(s.skore || {});
         vypisDobyto(s.dobyto || {});
