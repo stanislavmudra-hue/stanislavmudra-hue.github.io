@@ -1444,14 +1444,16 @@ function zebricekHracu() {
       if (uid && jm) jmena[uid] = jm;
     });
     var radky = Object.keys(hraci).map(function (uid) {
-      return { uid: uid, z: hraci[uid].z || 0, b: hraci[uid].b || 0 };
-    }).sort(function (a, b) { return b.b - a.b || b.z - a.z; })
-      .slice(0, 20);
+      return { uid: uid, z: hraci[uid].z || 0, b: hraci[uid].b || 0,
+               o: hraci[uid].o || 0, xp: hraci[uid].xp || 0 };
+    }).sort(function (a, b) {
+      return b.xp - a.xp || b.b - a.b || b.z - a.z;
+    }).slice(0, 20);
     var tab = el('hraci');
     if (!radky.length) {
       var r0 = document.createElement('tr');
       var t0 = document.createElement('td');
-      t0.colSpan = 4;
+      t0.colSpan = 6;
       t0.textContent = 'Zatím nikdo nic nezabral — buď první.';
       r0.appendChild(t0);
       tab.appendChild(r0);
@@ -1461,7 +1463,8 @@ function zebricekHracu() {
       var r = document.createElement('tr');
       [String(i + 1) + '.',
        jmena[h.uid] || 'dobyvatel bez přezdívky',
-       String(h.z), String(h.b)].forEach(function (text, j) {
+       String(h.z), String(h.o), String(h.b),
+       String(h.xp)].forEach(function (text, j) {
         var td = document.createElement('td');
         td.textContent = text;
         if (j >= 2) td.className = 'body';
@@ -1559,32 +1562,24 @@ function pridejLegendu() {
     + '— přibližováním přibývají další. Barva území = tým, který je '
     + 'drží.';
   panel.appendChild(pozn);
-  var klic = 'dobyvatelLegenda';
-  var volba = null;
-  try { volba = localStorage.getItem(klic); } catch (e) { }
-  // INTRO (přání 27. 8.): legenda se ukáže ~2,5 s, sroluje se a
-  // tlačítko zadrnčí — uživatel si všimne, kde ji najde. Kdo si ji
-  // sám otevřel (volba 'ano'), tomu zůstává otevřená bez cirkusu.
+  // INTRO: legenda se ukáže ~2,5 s, sroluje se a tlačítko zadrnčí
+  // — VŽDY (dřívější zapamatované „nechat otevřenou" ji drželo
+  // napořád, výtka 29. 8. „po vteřině nemizí")
   panel.style.display = 'block';
   var kf = document.createElement('style');
   kf.textContent = '@keyframes legenda-drnc{0%,100%{transform:none}'
     + '25%{transform:translateX(-3px) rotate(-2deg)}'
     + '75%{transform:translateX(3px) rotate(2deg)}}';
   document.head.appendChild(kf);
-  var introCasovac = null;
-  if (volba !== 'ano') {
-    introCasovac = setTimeout(function () {
-      panel.style.display = 'none';
-      tl.style.animation = 'legenda-drnc .45s ease 3';
-    }, 2500);
-  }
+  var introCasovac = setTimeout(function () {
+    panel.style.display = 'none';
+    tl.style.animation = 'legenda-drnc .45s ease 3';
+  }, 2500);
   tl.onclick = function () {
     if (introCasovac) { clearTimeout(introCasovac); introCasovac = null; }
     tl.style.animation = '';
-    var skryt = panel.style.display !== 'none';
-    panel.style.display = skryt ? 'none' : 'block';
-    try { localStorage.setItem(klic, skryt ? 'ne' : 'ano'); }
-    catch (e) { }
+    panel.style.display =
+      panel.style.display !== 'none' ? 'none' : 'block';
   };
   obal.style.position = 'relative';
   obal.appendChild(tl);

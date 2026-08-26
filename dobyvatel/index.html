@@ -145,13 +145,16 @@
     <div class="karta">
       <h2>Nejlepší dobyvatelé</h2>
       <table class="tabulka" id="hraci">
-        <tr><th>#</th><th>Hráč</th><th style="text-align:right">Zabráno
-          vlajek</th><th style="text-align:right">Body</th></tr>
+        <tr><th>#</th><th>Hráč</th><th style="text-align:right">Dobytí
+          </th><th style="text-align:right">Obrany</th>
+          <th style="text-align:right">Body</th>
+          <th style="text-align:right">XP</th></tr>
       </table>
-      <p class="legenda">Body = součet hodnot držených vlajek (hrad 4,
-        vrchol 3, vyhlídka 2, bunkr 1…). Procenta = podíl na dobytí
-        celé republiky. Kraj je dobytý, když jeden tým drží
-        nadpoloviční součet bodů jeho vlajek.</p>
+      <p class="legenda">XP: dobytí vlajky 20 + 5×hodnota (hrad 4,
+        vrchol 3, vyhlídka 2, bunkr 1…), sebrání držené vlajky +10
+        navíc, ubráněný útok 15. Body = hodnoty vlajek zabraných pro
+        tým. Kraj je dobytý, když jeden tým drží nadpoloviční součet
+        bodů jeho vlajek.</p>
       <div class="reklama" data-reklama>reklamní plocha</div>
     </div>
   </section>
@@ -209,6 +212,6 @@
   </div>
 </footer>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="dobyvatel.js?v=27"></script>
+<script src="dobyvatel.js?v=28"></script>
 </body>
 </html>
