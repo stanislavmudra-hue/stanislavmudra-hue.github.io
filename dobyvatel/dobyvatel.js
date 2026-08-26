@@ -251,7 +251,7 @@ function pridejVrstvy() {
     mapa.addLayer({
       id: 'vlajky-ik' + p[0], type: 'symbol', source: 'body',
       minzoom: p[1],
-      maxzoom: 13.8,
+      maxzoom: 13,
       filter: ['all', ['==', ['get', 'p'], p[0]],
         ['!=', ['coalesce', ['get', 'akt'], 1], 0]],
       layout: {
@@ -272,12 +272,12 @@ function pridejVrstvy() {
   // se vypínají a kreslí se úplně všechny vlajky
   mapa.addLayer({
     id: 'vlajky-ik-vse', type: 'symbol', source: 'body',
-    minzoom: 13.8,
+    minzoom: 13,
     filter: ['!=', ['coalesce', ['get', 'akt'], 1], 0],
     layout: {
       'icon-image': ['concat', 'ik-', ['get', 'k']],
       'icon-size': ['interpolate', ['exponential', 1.5], ['zoom'],
-        13.8, 0.85, 17, 2.3],
+        13, 0.66, 17, 2.3],
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
     },
@@ -301,6 +301,9 @@ function pridejVrstvy() {
       'text-offset': [0, 0.9],
       'text-anchor': 'top',
       'text-max-width': 9,
+      // jména se kreslí dřív než ikony (vyšší vrstva) a KRADLA jim
+      // místo — ikony pak „mizely"; jméno smí zmizet, ikona ne
+      'text-ignore-placement': true,
     },
     paint: {
       'text-color': '#4a443a',
@@ -1072,8 +1075,8 @@ function vykresliZalozeni() {
       dalsi.appendChild(radek);
       return vstup;
     }
-    var vZacatek = datum('začátek soutěže (nepovinné)');
-    var vKonec = datum('konec soutěže (nepovinné)');
+    var vZacatek = datum('začátek soutěže (povinné)');
+    var vKonec = datum('konec soutěže (povinné)');
     var ffa = document.createElement('label');
     ffa.style.cssText = 'display:block;margin:4px 0;color:#6b6455;';
     var ffaCh = document.createElement('input');
@@ -1107,6 +1110,15 @@ function vykresliZalozeni() {
       if (vybrane.length < 2) {
         zprava.textContent =
           'Přidej aspoň dva týmy a vyplň jim názvy.';
+        return;
+      }
+      if (!vZacatek.value || !vKonec.value) {
+        zprava.textContent = 'Vyplň začátek a konec soutěže '
+          + '(v Dalším nastavení).';
+        return;
+      }
+      if (new Date(vKonec.value) <= new Date(vZacatek.value)) {
+        zprava.textContent = 'Konec soutěže musí být po začátku.';
         return;
       }
       zaloz.disabled = true;
@@ -1160,11 +1172,27 @@ function vykresliZalozeni() {
         location.href = '?s=' + sid;
       }).catch(function (e) {
         zaloz.disabled = false;
-        zprava.textContent = (e && e.message === 'kvota')
-          ? 'Vedeš už 5 soutěží — nejdřív některou smaž (v její '
-            + 'Správě).'
-          : 'Založení se nepovedlo — zkuste jiný název, nebo se '
-            + 'přihlaste znovu.';
+        // slot kvóty vrátit, když dokument soutěže neprošel
+        platnyToken().then(function (token) {
+          return ctiDoc(ZAKLAD_DOK + 'zalozene/' + relace.uid
+              + '?key=' + KLIC, token);
+        }).then(function (reg) {
+          var sids = (reg.sids || []).filter(function (x) {
+            return x !== sid;
+          });
+          return zapisDoc('zalozene/' + relace.uid, { sids: sids });
+        }).catch(function () { });
+        if (e && e.message === 'kvota') {
+          zprava.textContent = 'Vedeš už 5 soutěží — nejdřív '
+            + 'některou smaž (v její Správě).';
+        } else if (e && /HTTP 40[13]/.test(e.message || '')) {
+          zprava.textContent = 'Server založení zamítl — buď je '
+            + 'potřeba se znovu přihlásit, nebo v databázi ještě '
+            + 'neběží nová pravidla (v6).';
+        } else {
+          zprava.textContent = 'Založení se nepovedlo — zkuste '
+            + 'jiný název, nebo to za chvíli zopakujte.';
+        }
       });
     };
     box.appendChild(f);
@@ -1266,6 +1294,25 @@ function vykresliSpravu() {
     mista.onclick = function () { zapniVyberMist(); };
     mistaR.appendChild(mista);
     box.appendChild(mistaR);
+  } else {
+    var poznC = document.createElement('p');
+    poznC.style.color = '#6b6455';
+    poznC.textContent = 'Výběr míst na mapě patří k vlastním '
+      + 'soutěžím — republikové kolo hraje o všechna místa.';
+    box.appendChild(poznC);
+  }
+  if (vlastniSoutez() && soutezDoc.stav === 'konec') {
+    var uklid = document.createElement('p');
+    uklid.style.color = '#8a5a20';
+    var konecP = String((soutezDoc.pravidla || {}).konec || '');
+    var smazatOd = konecP
+      ? new Date(new Date(konecP).getTime() + 180 * 86400000)
+      : null;
+    uklid.textContent = 'Neaktivní skončené soutěže se po půl roce '
+      + 'mažou' + (smazatOd
+          ? ' — tahle ' + smazatOd.toLocaleDateString('cs-CZ') + '.'
+          : '.');
+    box.appendChild(uklid);
   }
 
   // smazání (jen mimo běh) — uvolní slot v registru zalozene
