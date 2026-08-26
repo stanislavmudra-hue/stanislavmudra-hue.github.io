@@ -78,16 +78,45 @@ function barvaTymu() {
 }
 
 function nahrajIkony() {
+  // kreslené ikony kategorií z neherní mapy appky (výška 96 px);
+  // pixelRatio 2 = nominálních 48 px, jemné i na retině
   return Promise.all(Object.keys(IKONA_DRUHU).map(function (kat) {
-    return fetch('data/ikonky/' + kat + '.webp?v=19')
+    return fetch('data/ikonky2/' + kat + '.webp?v=21')
       .then(function (r) { return r.blob(); })
       .then(function (b) { return createImageBitmap(b); })
       .then(function (bmp) {
         if (!mapa.hasImage('ik-' + kat)) {
-          mapa.addImage('ik-' + kat, bmp, { pixelRatio: 1 });
+          mapa.addImage('ik-' + kat, bmp, { pixelRatio: 2 });
         }
       }).catch(function () { /* bez ikonky zůstane tečka */ });
   }));
+}
+
+/* Pásma odkrývání PO DRUZÍCH: v každém druhu se vezme pár nejlepších
+   do dálkového pásma (řazeno hodnotou, remíza deterministickým
+   promícháním), takže zdaleka není vidět „skoro pořád hrady", ale
+   výběr napříč druhy. */
+function spocitejPasma() {
+  var dleDruhu = {};
+  vlajky.forEach(function (v, i) {
+    (dleDruhu[v.k] = dleDruhu[v.k] || []).push(i);
+  });
+  Object.keys(dleDruhu).forEach(function (k) {
+    var idx = dleDruhu[k];
+    idx.sort(function (a, b) {
+      var r = (vlajky[b].h || 1) - (vlajky[a].h || 1);
+      if (r) return r;
+      return (a * 2654435761 % 97) - (b * 2654435761 % 97) || a - b;
+    });
+    var n = idx.length;
+    var p4 = Math.max(2, Math.round(n * 0.02));
+    var p3 = p4 + Math.max(6, Math.round(n * 0.08));
+    var p2 = p3 + Math.round(n * 0.3);
+    idx.forEach(function (fi, poradi) {
+      body.features[fi].properties.p =
+        poradi < p4 ? 4 : poradi < p3 ? 3 : poradi < p2 ? 2 : 1;
+    });
+  });
 }
 
 function pridejVrstvy() {
@@ -135,25 +164,23 @@ function pridejVrstvy() {
   // přiblížení jméno vlajky = jméno oblasti
   mapa.addSource('body', { type: 'geojson', data: body });
 
-  // malované značky podle druhu místa (hrad, vrchol, jeskyně…);
-  // kolize je řídí samy — zblízka jich přibývá
-  // postupné odkrývání jako na běžných mapách (přání 27. 8.):
-  // zdaleka jen hrady (4 b.), přibližováním přibývají další druhy;
-  // hustotu v pásmu řídí kolize symbolů
+  // malované značky z neherní mapy appky; postupné odkrývání řídí
+  // pásmo p (kvóty v každém druhu — viz spocitejPasma) a hustotu
+  // v pásmu kolizní polštář
   [[4, 6], [3, 9.2], [2, 10.8], [1, 12]].forEach(function (p) {
     mapa.addLayer({
       id: 'vlajky-ik' + p[0], type: 'symbol', source: 'body',
       minzoom: p[1],
-      filter: ['==', ['get', 'h'], p[0]],
+      filter: ['==', ['get', 'p'], p[0]],
       layout: {
         'icon-image': ['concat', 'ik-', ['get', 'k']],
         'icon-size': ['interpolate', ['linear'], ['zoom'],
-          6, 0.48, 10, 0.7, 13, 0.92],
+          6, 0.6, 10, 0.85, 13, 1.1],
         // velký kolizní polštář zdaleka = řídká, klidná mapa
         'icon-padding': ['interpolate', ['linear'], ['zoom'],
           6, 26, 9, 14, 12, 4],
       },
-      paint: { 'icon-opacity': 0.92 },
+      paint: { 'icon-opacity': 1 },
     });
   });
   mapa.addLayer({
@@ -429,11 +456,11 @@ function reklamy() {
 
 var POPISKY_DRUHU = {
   castles: 'Hrad, zámek, tvrz', peaks: 'Vrchol',
-  towers: 'Rozhledna, věž', caves: 'Jeskyně', waterfalls: 'Vodopád',
-  rocks: 'Skála', viewpoints: 'Vyhlídka', archaeology: 'Hradiště',
-  mines: 'Štola, důl', fortifications: 'Bunkr',
-  memorial_trees: 'Památný strom', jezera: 'Jezero',
-  prameny: 'Pramen řeky', propasti: 'Propast',
+  towers: 'Rozhledna, věž', caves: 'Jeskyně, propast',
+  waterfalls: 'Vodopád', rocks: 'Skála', viewpoints: 'Vyhlídka',
+  archaeology: 'Hradiště', mines: 'Štola, důl',
+  fortifications: 'Bunkr', memorial_trees: 'Památný strom',
+  jezera: 'Jezero', prameny: 'Pramen řeky',
 };
 
 function pridejLegendu() {
@@ -442,21 +469,25 @@ function pridejLegendu() {
   tl.textContent = 'Legenda';
   tl.style.cssText = 'position:absolute;left:10px;top:10px;z-index:5;'
     + 'padding:5px 10px;border-radius:8px;border:1px solid #b9b2a0;'
-    + 'background:#fffdf6;font:600 12.5px sans-serif;cursor:pointer;';
+    + 'background:rgba(255,253,246,.72);cursor:pointer;'
+    + '-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);'
+    + 'font:600 12.5px sans-serif;';
+  // bez podbarvení panelu — každý řádek nese jen malinko
+  // rozostřený pruh (přání 27. 8.)
+  var PRUH = 'background:rgba(247,244,236,.45);'
+    + '-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);'
+    + 'border-radius:8px;padding:2px 9px;';
   var panel = document.createElement('div');
   panel.style.cssText = 'position:absolute;left:10px;top:44px;'
-    + 'z-index:5;background:#fffdf6;border:1px solid #b9b2a0;'
-    + 'border-radius:10px;padding:8px 12px;display:none;'
-    + 'max-height:70%;overflow:auto;font:12.5px sans-serif;'
-    + 'box-shadow:0 2px 8px rgba(0,0,0,.15);';
+    + 'z-index:5;display:none;max-height:70%;overflow:auto;'
+    + 'font:12.5px sans-serif;';
   for (var kat in POPISKY_DRUHU) {
     var radek = document.createElement('div');
-    radek.style.cssText =
-      'display:flex;align-items:center;gap:8px;margin:3px 0;';
+    radek.style.cssText = PRUH
+      + 'display:flex;align-items:center;gap:8px;margin:3px 0;';
     var im = document.createElement('img');
-    im.src = 'data/ikonky/' + kat + '.webp?v=19';
-    im.width = 18;
-    im.height = 18;
+    im.src = 'data/ikonky2/' + kat + '.webp?v=21';
+    im.style.cssText = 'height:24px;width:auto;';
     im.alt = '';
     radek.appendChild(im);
     radek.appendChild(
@@ -464,9 +495,11 @@ function pridejLegendu() {
     panel.appendChild(radek);
   }
   var pozn = document.createElement('div');
-  pozn.style.cssText = 'margin-top:6px;color:#6b6455;';
-  pozn.textContent = 'Zdaleka jsou vidět jen hrady — přibližováním '
-    + 'přibývají další druhy. Barva území = tým, který je drží.';
+  pozn.style.cssText = PRUH + 'margin-top:6px;color:#6b6455;'
+    + 'max-width:230px;';
+  pozn.textContent = 'Zdaleka vidíš jen výběr nejvýznamnějších míst '
+    + '— přibližováním přibývají další. Barva území = tým, který je '
+    + 'drží.';
   panel.appendChild(pozn);
   var klic = 'dobyvatelLegenda';
   var schovana = false;
@@ -521,6 +554,7 @@ function start() {
           geometry: { type: 'Point', coordinates: [v.lon, v.lat] } };
       }),
     };
+    spocitejPasma();
     for (var i = 0; i < oblasti.features.length; i++) {
       oblasti.features[i].properties.t = '0';
     }
