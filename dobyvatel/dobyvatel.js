@@ -79,7 +79,7 @@ function barvaTymu() {
 
 function nahrajIkony() {
   return Promise.all(Object.keys(IKONA_DRUHU).map(function (kat) {
-    return fetch('data/ikonky/' + kat + '.webp?v=15')
+    return fetch('data/ikonky/' + kat + '.webp?v=18')
       .then(function (r) { return r.blob(); })
       .then(function (b) { return createImageBitmap(b); })
       .then(function (bmp) {
@@ -137,13 +137,21 @@ function pridejVrstvy() {
 
   // malované značky podle druhu místa (hrad, vrchol, jeskyně…);
   // kolize je řídí samy — zblízka jich přibývá
-  mapa.addLayer({
-    id: 'vlajky-ikony', type: 'symbol', source: 'body',
-    layout: {
-      'icon-image': ['concat', 'ik-', ['get', 'k']],
-      'icon-size': ['interpolate', ['linear'], ['zoom'],
-        6, 0.55, 10, 0.8, 13, 1.0],
-    },
+  // postupné odkrývání jako na běžných mapách (přání 27. 8.):
+  // zdaleka jen hrady (4 b.), přibližováním přibývají další druhy;
+  // hustotu v pásmu řídí kolize symbolů
+  [[4, 6], [3, 8.4], [2, 10], [1, 11.3]].forEach(function (p) {
+    mapa.addLayer({
+      id: 'vlajky-ik' + p[0], type: 'symbol', source: 'body',
+      minzoom: p[1],
+      filter: ['==', ['get', 'h'], p[0]],
+      layout: {
+        'icon-image': ['concat', 'ik-', ['get', 'k']],
+        'icon-size': ['interpolate', ['linear'], ['zoom'],
+          6, 0.5, 10, 0.72, 13, 0.95],
+      },
+      paint: { 'icon-opacity': 0.92 },
+    });
   });
   mapa.addLayer({
     id: 'vlajky-jmena', type: 'symbol', source: 'body', minzoom: 10.2,
@@ -183,12 +191,15 @@ function pridejVrstvy() {
       .setDOMContent(obal)
       .addTo(mapa);
   });
-  mapa.on('mouseenter', 'vlajky-ikony', function () {
-    mapa.getCanvas().style.cursor = 'pointer';
-  });
-  mapa.on('mouseleave', 'vlajky-ikony', function () {
-    mapa.getCanvas().style.cursor = '';
-  });
+  ['vlajky-ik4', 'vlajky-ik3', 'vlajky-ik2', 'vlajky-ik1']
+    .forEach(function (id) {
+      mapa.on('mouseenter', id, function () {
+        mapa.getCanvas().style.cursor = 'pointer';
+      });
+      mapa.on('mouseleave', id, function () {
+        mapa.getCanvas().style.cursor = '';
+      });
+    });
 }
 
 function obarvi(drzitele) {
@@ -440,7 +451,7 @@ function pridejLegendu() {
     radek.style.cssText =
       'display:flex;align-items:center;gap:8px;margin:3px 0;';
     var im = document.createElement('img');
-    im.src = 'data/ikonky/' + kat + '.webp?v=15';
+    im.src = 'data/ikonky/' + kat + '.webp?v=18';
     im.width = 18;
     im.height = 18;
     im.alt = '';
@@ -451,8 +462,10 @@ function pridejLegendu() {
   }
   var pozn = document.createElement('div');
   pozn.style.cssText = 'margin-top:6px;color:#6b6455;';
-  pozn.textContent = 'Barva území = tým, který je drží. Tlačítko ⌖ '
-    + 'vpravo ukáže tvou polohu.';
+  pozn.textContent = 'Zdaleka jsou vidět jen hrady — přibližováním '
+    + 'přibývají další druhy. Barva území = tým, který je drží. '
+    + 'Tlačítko ⌖ vpravo ukáže tvou polohu (na PC bez GPS jen '
+    + 'přibližně).';
   panel.appendChild(pozn);
   tl.onclick = function () {
     panel.style.display =
