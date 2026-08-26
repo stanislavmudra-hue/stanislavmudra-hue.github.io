@@ -21,7 +21,10 @@ VEN = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 def platno():
     im = Image.new('RGBA', (S, S), (0, 0, 0, 0))
-    return im, ImageDraw.Draw(im)
+    dr = ImageDraw.Draw(im)
+    # jemný zemní stín sjednocuje sadu a „posadí" značku na mapu
+    dr.ellipse([6*N, 25*N, 26*N, 30*N], fill=(60, 55, 42, 60))
+    return im, dr
 
 
 def uloz(im, jmeno):
@@ -48,6 +51,8 @@ def peaks():
 
 def castles():
     im, dr = platno()
+    dr.rectangle([13*N, 6*N, 19*N, 16*N], fill=TMAVA)     # bergfrit
+    dr.polygon([(12*N, 6*N), (16*N, 2*N), (20*N, 6*N)], fill=TMAVA)
     dr.rectangle([4*N, 10*N, 9*N, 27*N], fill=TMAVA)      # levá věž
     dr.rectangle([23*N, 10*N, 28*N, 27*N], fill=TMAVA)    # pravá věž
     dr.rectangle([9*N, 15*N, 23*N, 27*N], fill=SVETLA)    # hradba

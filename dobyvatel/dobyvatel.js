@@ -140,7 +140,7 @@ function pridejVrstvy() {
   // postupné odkrývání jako na běžných mapách (přání 27. 8.):
   // zdaleka jen hrady (4 b.), přibližováním přibývají další druhy;
   // hustotu v pásmu řídí kolize symbolů
-  [[4, 6], [3, 8.4], [2, 10], [1, 11.3]].forEach(function (p) {
+  [[4, 6], [3, 9.2], [2, 10.8], [1, 12]].forEach(function (p) {
     mapa.addLayer({
       id: 'vlajky-ik' + p[0], type: 'symbol', source: 'body',
       minzoom: p[1],
@@ -148,7 +148,10 @@ function pridejVrstvy() {
       layout: {
         'icon-image': ['concat', 'ik-', ['get', 'k']],
         'icon-size': ['interpolate', ['linear'], ['zoom'],
-          6, 0.5, 10, 0.72, 13, 0.95],
+          6, 0.48, 10, 0.7, 13, 0.92],
+        // velký kolizní polštář zdaleka = řídká, klidná mapa
+        'icon-padding': ['interpolate', ['linear'], ['zoom'],
+          6, 26, 9, 14, 12, 4],
       },
       paint: { 'icon-opacity': 0.92 },
     });
@@ -463,13 +466,18 @@ function pridejLegendu() {
   var pozn = document.createElement('div');
   pozn.style.cssText = 'margin-top:6px;color:#6b6455;';
   pozn.textContent = 'Zdaleka jsou vidět jen hrady — přibližováním '
-    + 'přibývají další druhy. Barva území = tým, který je drží. '
-    + 'Tlačítko ⌖ vpravo ukáže tvou polohu (na PC bez GPS jen '
-    + 'přibližně).';
+    + 'přibývají další druhy. Barva území = tým, který je drží.';
   panel.appendChild(pozn);
+  var klic = 'dobyvatelLegenda';
+  var schovana = false;
+  try { schovana = localStorage.getItem(klic) === 'ne'; }
+  catch (e) { }
+  panel.style.display = schovana ? 'none' : 'block';
   tl.onclick = function () {
-    panel.style.display =
-      panel.style.display === 'none' ? 'block' : 'none';
+    var skryt = panel.style.display !== 'none';
+    panel.style.display = skryt ? 'none' : 'block';
+    try { localStorage.setItem(klic, skryt ? 'ne' : 'ano'); }
+    catch (e) { }
   };
   obal.style.position = 'relative';
   obal.appendChild(tl);
@@ -553,10 +561,15 @@ function start() {
     mapa.addControl(new maplibregl.NavigationControl({
       showCompass: false }), 'top-right');
     mapa.addControl(new maplibregl.FullscreenControl(), 'top-right');
-    mapa.addControl(new maplibregl.GeolocateControl({
-      positionOptions: { enableHighAccuracy: true },
-      showUserLocation: true,
-    }), 'top-right');
+    // na PC bez GPS je poloha z Wi-Fi/IP (km vedle) → tlačítko jen
+    // na dotykových zařízeních (přání 27. 8.)
+    if (window.matchMedia
+        && window.matchMedia('(pointer: coarse)').matches) {
+      mapa.addControl(new maplibregl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        showUserLocation: true,
+      }), 'top-right');
+    }
     pridejLegendu();
     mapa.on('load', function () {
       nahrajIkony().then(function () { pridejVrstvy(); });
