@@ -84,7 +84,7 @@ function nahrajIkony() {
       .then(function (b) { return createImageBitmap(b); })
       .then(function (bmp) {
         if (!mapa.hasImage('ik-' + kat)) {
-          mapa.addImage('ik-' + kat, bmp, { pixelRatio: 2 });
+          mapa.addImage('ik-' + kat, bmp, { pixelRatio: 1 });
         }
       }).catch(function () { /* bez ikonky zůstane tečka */ });
   }));
@@ -134,26 +134,15 @@ function pridejVrstvy() {
   // body vlajek: tečka v barvě držitele (neutrální hnědošedá) — a od
   // přiblížení jméno vlajky = jméno oblasti
   mapa.addSource('body', { type: 'geojson', data: body });
-  mapa.addLayer({
-    id: 'vlajky-body', type: 'circle', source: 'body', maxzoom: 8.6,
-    paint: {
-      'circle-color': ['case', ['==', ['get', 't'], '0'],
-        '#7d7668', barvaTymu()],
-      'circle-radius': ['interpolate', ['linear'], ['zoom'],
-        7, 1.6, 10, 3, 13, 5],
-      'circle-stroke-color': '#f7f4ec',
-      'circle-stroke-width': 1,
-      'circle-opacity': 0.9,
-    },
-  });
+
   // malované značky podle druhu místa (hrad, vrchol, jeskyně…);
   // kolize je řídí samy — zblízka jich přibývá
   mapa.addLayer({
-    id: 'vlajky-ikony', type: 'symbol', source: 'body', minzoom: 8.6,
+    id: 'vlajky-ikony', type: 'symbol', source: 'body',
     layout: {
       'icon-image': ['concat', 'ik-', ['get', 'k']],
       'icon-size': ['interpolate', ['linear'], ['zoom'],
-        8.6, 0.6, 11, 0.85, 13, 1.1],
+        6, 0.55, 10, 0.8, 13, 1.0],
     },
   });
   mapa.addLayer({
@@ -194,10 +183,10 @@ function pridejVrstvy() {
       .setDOMContent(obal)
       .addTo(mapa);
   });
-  mapa.on('mouseenter', 'vlajky-body', function () {
+  mapa.on('mouseenter', 'vlajky-ikony', function () {
     mapa.getCanvas().style.cursor = 'pointer';
   });
-  mapa.on('mouseleave', 'vlajky-body', function () {
+  mapa.on('mouseleave', 'vlajky-ikony', function () {
     mapa.getCanvas().style.cursor = '';
   });
 }
@@ -424,6 +413,56 @@ function reklamy() {
   });
 }
 
+var POPISKY_DRUHU = {
+  castles: 'Hrad, zámek, tvrz', peaks: 'Vrchol',
+  towers: 'Rozhledna, věž', caves: 'Jeskyně', waterfalls: 'Vodopád',
+  rocks: 'Skála', viewpoints: 'Vyhlídka', archaeology: 'Hradiště',
+  mines: 'Štola, důl', fortifications: 'Bunkr',
+  memorial_trees: 'Památný strom', jezera: 'Jezero',
+  prameny: 'Pramen řeky', propasti: 'Propast',
+};
+
+function pridejLegendu() {
+  var obal = document.getElementById('mapa');
+  var tl = document.createElement('button');
+  tl.textContent = 'Legenda';
+  tl.style.cssText = 'position:absolute;left:10px;top:10px;z-index:5;'
+    + 'padding:5px 10px;border-radius:8px;border:1px solid #b9b2a0;'
+    + 'background:#fffdf6;font:600 12.5px sans-serif;cursor:pointer;';
+  var panel = document.createElement('div');
+  panel.style.cssText = 'position:absolute;left:10px;top:44px;'
+    + 'z-index:5;background:#fffdf6;border:1px solid #b9b2a0;'
+    + 'border-radius:10px;padding:8px 12px;display:none;'
+    + 'max-height:70%;overflow:auto;font:12.5px sans-serif;'
+    + 'box-shadow:0 2px 8px rgba(0,0,0,.15);';
+  for (var kat in POPISKY_DRUHU) {
+    var radek = document.createElement('div');
+    radek.style.cssText =
+      'display:flex;align-items:center;gap:8px;margin:3px 0;';
+    var im = document.createElement('img');
+    im.src = 'data/ikonky/' + kat + '.webp?v=15';
+    im.width = 18;
+    im.height = 18;
+    im.alt = '';
+    radek.appendChild(im);
+    radek.appendChild(
+        document.createTextNode(POPISKY_DRUHU[kat]));
+    panel.appendChild(radek);
+  }
+  var pozn = document.createElement('div');
+  pozn.style.cssText = 'margin-top:6px;color:#6b6455;';
+  pozn.textContent = 'Barva území = tým, který je drží. Tlačítko ⌖ '
+    + 'vpravo ukáže tvou polohu.';
+  panel.appendChild(pozn);
+  tl.onclick = function () {
+    panel.style.display =
+      panel.style.display === 'none' ? 'block' : 'none';
+  };
+  obal.style.position = 'relative';
+  obal.appendChild(tl);
+  obal.appendChild(panel);
+}
+
 function nactiSnimek() {
   return fetch(SNIMEK_URL).then(function (r) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -505,6 +544,7 @@ function start() {
       positionOptions: { enableHighAccuracy: true },
       showUserLocation: true,
     }), 'top-right');
+    pridejLegendu();
     mapa.on('load', function () {
       nahrajIkony().then(function () { pridejVrstvy(); });
       nactiSnimek().then(function (s) {
