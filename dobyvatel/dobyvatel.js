@@ -77,19 +77,49 @@ function barvaTymu() {
   return v;
 }
 
+// Bublinky druhů PŘESNĚ jako na neherní mapě v aplikaci (Cestovatel):
+// bílý kroužek s barevným prstencem a emoji; emoji a barvy převzaté
+// z categories.dart. Kreslí se na canvasu — žádné stahování.
+var BUBLINA_DRUHU = {
+  castles: ['🏰', '#5D4037'], peaks: ['⛰️', '#4E6E58'],
+  towers: ['🗼', '#455A64'], caves: ['🦇', '#4E342E'],
+  waterfalls: ['💦', '#0277BD'], rocks: ['🪨', '#6D4C41'],
+  viewpoints: ['🔭', '#00695C'], archaeology: ['🏺', '#8D6E63'],
+  mines: ['⛏️', '#424242'], fortifications: ['🪖', '#4E342E'],
+  memorial_trees: ['🌲', '#2E7D32'], jezera: ['🏞️', '#01579B'],
+  prameny: ['💧', '#0288D1'], propasti: ['🕳️', '#37474F'],
+};
+
+function nakresliBublinu(emoji, barva) {
+  var s = 128;
+  var p = document.createElement('canvas');
+  p.width = s;
+  p.height = s;
+  var ctx = p.getContext('2d');
+  ctx.beginPath();
+  ctx.arc(64, 64, 52, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = barva;
+  ctx.stroke();
+  ctx.font = '64px "Segoe UI Emoji", "Noto Color Emoji", '
+    + '"Apple Color Emoji", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(emoji, 64, 70);
+  return ctx.getImageData(0, 0, s, s);
+}
+
 function nahrajIkony() {
-  // kreslené ikony kategorií z neherní mapy appky (výška 96 px);
-  // pixelRatio 2 = nominálních 48 px, jemné i na retině
-  return Promise.all(Object.keys(IKONA_DRUHU).map(function (kat) {
-    return fetch('data/ikonky2/' + kat + '.webp?v=21')
-      .then(function (r) { return r.blob(); })
-      .then(function (b) { return createImageBitmap(b); })
-      .then(function (bmp) {
-        if (!mapa.hasImage('ik-' + kat)) {
-          mapa.addImage('ik-' + kat, bmp, { pixelRatio: 2 });
-        }
-      }).catch(function () { /* bez ikonky zůstane tečka */ });
-  }));
+  Object.keys(BUBLINA_DRUHU).forEach(function (kat) {
+    if (!mapa.hasImage('ik-' + kat)) {
+      var b = BUBLINA_DRUHU[kat];
+      mapa.addImage('ik-' + kat, nakresliBublinu(b[0], b[1]),
+          { pixelRatio: 2 });
+    }
+  });
+  return Promise.resolve();
 }
 
 /* Pásma odkrývání PO DRUZÍCH: v každém druhu se vezme pár nejlepších
@@ -135,6 +165,10 @@ function pridejVrstvy() {
              'line-opacity': 0.85 },
   });
   mapa.addSource('oblasti', { type: 'geojson', data: oblasti });
+  // POD stínování terénu (beforeId je 2. argument addLayer!) —
+  // jinak výplně území kopce zakryjí a „terén není vidět" (výtka
+  // 27. 8.); ztlumení okolí zůstává NAD stínováním, ať za hranicemi
+  // kopce nesvítí
   mapa.addLayer({
     id: 'uzemi', type: 'fill', source: 'oblasti',
     paint: {
@@ -145,7 +179,7 @@ function pridejVrstvy() {
         ['match', ['get', 'h'], 4, 0.30, 3, 0.20, 2, 0.12, 0.07],
         0.62],
     },
-  });
+  }, 'stinovani');
   mapa.addSource('kraje', { type: 'geojson', data: kraje });
   mapa.addLayer({
     id: 'kraje', type: 'line', source: 'kraje',
@@ -176,7 +210,7 @@ function pridejVrstvy() {
       layout: {
         'icon-image': ['concat', 'ik-', ['get', 'k']],
         'icon-size': ['interpolate', ['linear'], ['zoom'],
-          6, 0.6, 10, 0.85, 13, 1.1],
+          6, 0.4, 10, 0.52, 13, 0.66],
         // velký kolizní polštář zdaleka = řídká, klidná mapa
         'icon-padding': ['interpolate', ['linear'], ['zoom'],
           6, 26, 9, 14, 12, 4],
@@ -457,11 +491,11 @@ function reklamy() {
 
 var POPISKY_DRUHU = {
   castles: 'Hrad, zámek, tvrz', peaks: 'Vrchol',
-  towers: 'Rozhledna, věž', caves: 'Jeskyně, propast',
-  waterfalls: 'Vodopád', rocks: 'Skála', viewpoints: 'Vyhlídka',
-  archaeology: 'Hradiště', mines: 'Štola, důl',
-  fortifications: 'Bunkr', memorial_trees: 'Památný strom',
-  jezera: 'Jezero', prameny: 'Pramen řeky',
+  towers: 'Rozhledna, věž', caves: 'Jeskyně', waterfalls: 'Vodopád',
+  rocks: 'Skála', viewpoints: 'Vyhlídka', archaeology: 'Hradiště',
+  mines: 'Štola, důl', fortifications: 'Bunkr',
+  memorial_trees: 'Památný strom', jezera: 'Jezero',
+  prameny: 'Pramen řeky', propasti: 'Propast',
 };
 
 function pridejLegendu() {
@@ -486,10 +520,13 @@ function pridejLegendu() {
     var radek = document.createElement('div');
     radek.style.cssText = PRUH
       + 'display:flex;align-items:center;gap:8px;margin:3px 0;';
-    var im = document.createElement('img');
-    im.src = 'data/ikonky2/' + kat + '.webp?v=21';
-    im.style.cssText = 'height:24px;width:auto;';
-    im.alt = '';
+    var b = BUBLINA_DRUHU[kat] || ['❓', '#777'];
+    var im = document.createElement('span');
+    im.style.cssText = 'display:inline-flex;align-items:center;'
+      + 'justify-content:center;width:22px;height:22px;'
+      + 'border-radius:50%;background:#fff;border:2.5px solid '
+      + b[1] + ';font-size:12.5px;flex:none;';
+    im.textContent = b[0];
     radek.appendChild(im);
     radek.appendChild(
         document.createTextNode(POPISKY_DRUHU[kat]));
@@ -503,11 +540,27 @@ function pridejLegendu() {
     + 'drží.';
   panel.appendChild(pozn);
   var klic = 'dobyvatelLegenda';
-  var schovana = false;
-  try { schovana = localStorage.getItem(klic) === 'ne'; }
-  catch (e) { }
-  panel.style.display = schovana ? 'none' : 'block';
+  var volba = null;
+  try { volba = localStorage.getItem(klic); } catch (e) { }
+  // INTRO (přání 27. 8.): legenda se ukáže ~2,5 s, sroluje se a
+  // tlačítko zadrnčí — uživatel si všimne, kde ji najde. Kdo si ji
+  // sám otevřel (volba 'ano'), tomu zůstává otevřená bez cirkusu.
+  panel.style.display = 'block';
+  var kf = document.createElement('style');
+  kf.textContent = '@keyframes legenda-drnc{0%,100%{transform:none}'
+    + '25%{transform:translateX(-3px) rotate(-2deg)}'
+    + '75%{transform:translateX(3px) rotate(2deg)}}';
+  document.head.appendChild(kf);
+  var introCasovac = null;
+  if (volba !== 'ano') {
+    introCasovac = setTimeout(function () {
+      panel.style.display = 'none';
+      tl.style.animation = 'legenda-drnc .45s ease 3';
+    }, 2500);
+  }
   tl.onclick = function () {
+    if (introCasovac) { clearTimeout(introCasovac); introCasovac = null; }
+    tl.style.animation = '';
     var skryt = panel.style.display !== 'none';
     panel.style.display = skryt ? 'none' : 'block';
     try { localStorage.setItem(klic, skryt ? 'ne' : 'ano'); }
@@ -582,8 +635,8 @@ function start() {
         }, {
           id: 'stinovani', type: 'hillshade', source: 'teren',
           paint: {
-            'hillshade-exaggeration': 0.42,
-            'hillshade-shadow-color': '#8f8271',
+            'hillshade-exaggeration': 0.62,
+            'hillshade-shadow-color': '#7d705e',
             'hillshade-highlight-color': '#fffdf6',
           },
         }] },
