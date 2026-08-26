@@ -442,6 +442,9 @@ function start() {
         }] },
       bounds: [[12.05, 48.5], [18.9, 51.1]],
       fitBoundsOptions: { padding: 12 },
+      // jen ČR — mapa je jen pro republiku (přání 27. 8.)
+      maxBounds: [[11.6, 48.2], [19.3, 51.4]],
+      minZoom: 6,
     });
     mapa.addControl(new maplibregl.NavigationControl({
       showCompass: false }), 'top-right');
