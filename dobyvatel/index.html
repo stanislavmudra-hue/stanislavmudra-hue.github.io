@@ -34,6 +34,18 @@
            border-radius: 50%; margin-right: 8px;
            border: 1px solid rgba(0,0,0,.25); vertical-align: middle; }
   .legenda { font-size: .9rem; color: var(--slabsi); margin-top: 6px; }
+  .mrizka { display: grid; grid-template-columns: repeat(auto-fit,
+            minmax(230px, 1fr)); gap: 14px; margin: 0 0 20px; }
+  .mrizka .karta { margin: 0; }
+  .karta h3 { margin: 0 0 6px; font-size: 1.05rem; }
+  .stitek { display: inline-block; font-size: .78rem; font-weight: 700;
+            padding: 2px 8px; border-radius: 99px; background: #dcefdc;
+            color: #205b20; margin-bottom: 8px; }
+  .stitek.sedy { background: #eae6da; color: #6b6455; }
+  .reklama { min-height: 90px; margin: 0 0 20px; border: 1px dashed
+             var(--linka); border-radius: 10px; display: flex;
+             align-items: center; justify-content: center;
+             color: var(--slabsi); font-size: .85rem; }
 </style>
 </head>
 <body>
@@ -64,6 +76,31 @@
     <strong>v aplikaci Okolník</strong> (režim Dobyvatel).
   </p>
 
+  <div class="mrizka">
+    <div class="karta">
+      <span class="stitek" id="stavSouteze">…</span>
+      <h3>Česko 2026 — republikové kolo</h3>
+      <p class="drobne">14 krajských týmů se přetahuje o 18 946
+        vlajek po celé republice. Přidat se může každý — tým dostanete
+        podle svého kraje.</p>
+      <p class="drobne"><a href="#mapa">↓ Mapa a žebříčky</a></p>
+    </div>
+    <div class="karta" id="kartaMoje">
+      <span class="stitek sedy">moje soutěže</span>
+      <h3>Moje soutěže</h3>
+      <p class="drobne" id="mojeObsah">Načítám…</p>
+    </div>
+    <div class="karta">
+      <span class="stitek sedy">připravujeme</span>
+      <h3>Vlastní dobývání</h3>
+      <p class="drobne">Soutěže part, firem či obcí s vlastními
+        pravidly a vlajkami — založíte je přímo tady, kapitán bude
+        schvalovat členy. Pracujeme na tom.</p>
+    </div>
+  </div>
+
+  <div class="reklama" data-reklama>reklamní plocha</div>
+
   <div id="mapa" role="img" aria-label="Mapa území týmů"></div>
   <p class="stavovy" id="stav">Načítám mapu…</p>
 
@@ -72,11 +109,17 @@
     <table class="tabulka" id="skore">
       <tr><th>Tým</th><th style="text-align:right">Body území</th></tr>
     </table>
+    <h2 style="margin-top:18px">Nejlepší dobyvatelé</h2>
+    <table class="tabulka" id="hraci">
+      <tr><th>#</th><th>Hráč</th><th style="text-align:right">Zabráno
+        vlajek</th><th style="text-align:right">Body</th></tr>
+    </table>
     <p class="legenda" id="dobyto"></p>
     <p class="legenda">Body = součet hodnot držených vlajek (hrad 4,
       vrchol 3, vyhlídka 2, bunkr 1…). Kraj se považuje za dobytý,
       když jeden tým drží nadpoloviční součet bodů jeho vlajek.</p>
   </div>
+  <div class="reklama" data-reklama>reklamní plocha</div>
 </main>
 
 <footer class="pata">
@@ -96,6 +139,6 @@
   </div>
 </footer>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="dobyvatel.js?v=11"></script>
+<script src="dobyvatel.js?v=12"></script>
 </body>
 </html>

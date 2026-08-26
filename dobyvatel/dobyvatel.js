@@ -17,6 +17,9 @@ var PROJEKT = 'sarcher-b32a1';
 // + Identity Toolkit + Token Service)
 var KLIC = 'AIzaSyB3sj8qS-Lh4lHow6AUrWH-JayEtJ70igQ';
 var SOUTEZ = 'cesko-2026';
+// AdSense: po schválení účtu sem přijde client id (ca-pub-…);
+// prázdné = plochy se schovají. Premium hráči reklamy nevidí vůbec.
+var ADSENSE_CLIENT = '';
 var SNIMEK_URL = 'https://firestore.googleapis.com/v1/projects/'
   + PROJEKT + '/databases/(default)/documents/souteze/' + SOUTEZ
   + '/stav/snimek?key=' + KLIC;
@@ -225,6 +228,152 @@ function vypisDobyto(dobyto) {
     : 'Žádný kraj zatím není dobytý celý.';
 }
 
+/* Přihlášení sdílené s Můj Okolník (localStorage okolnikUcet1). */
+function nactiRelaci() {
+  try {
+    var s = localStorage.getItem('okolnikUcet1');
+    return s ? JSON.parse(s) : null;
+  } catch (e) { return null; }
+}
+
+function ctiDoc(url, token) {
+  var hlavicky = token ? { Authorization: 'Bearer ' + token } : {};
+  return fetch(url, { headers: hlavicky }).then(function (r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function (doc) {
+    var d = {};
+    var f = doc.fields || {};
+    for (var k in f) d[k] = cti(f[k]);
+    return d;
+  });
+}
+
+var ZAKLAD_DOK = 'https://firestore.googleapis.com/v1/projects/'
+  + PROJEKT + '/databases/(default)/documents/';
+
+function mojeSouteze() {
+  var box = el('mojeObsah');
+  var relace = nactiRelaci();
+  if (!relace || !relace.uid) {
+    box.textContent = '';
+    var odkaz = document.createElement('a');
+    odkaz.href = '/ucet/';
+    odkaz.textContent = 'Přihlaste se na Můj Okolník';
+    box.appendChild(odkaz);
+    box.appendChild(document.createTextNode(
+        ' — uvidíte tu svůj tým a soutěže, kterých se účastníte.'));
+    return;
+  }
+  ctiDoc(ZAKLAD_DOK + 'clenstvi/' + relace.uid + '_' + SOUTEZ
+      + '?key=' + KLIC, relace.idToken).then(function (c) {
+    box.textContent = 'Česko 2026 — hraješ za tým '
+      + jmenoTymu(c.tym) + '.';
+  }).catch(function () {
+    box.textContent = 'Zatím nejsi v žádné soutěži. Otevři v aplikaci '
+      + 'režim Dobyvatel a tým dostaneš podle svého kraje.';
+  });
+}
+
+function stavSouteze() {
+  ctiDoc(ZAKLAD_DOK + 'souteze/' + SOUTEZ + '?key=' + KLIC)
+    .then(function (d) {
+      var st = el('stavSouteze');
+      if (d.stav === 'bezi') {
+        st.textContent = 'právě běží';
+      } else {
+        st.textContent = 'připravuje se';
+        st.className = 'stitek sedy';
+      }
+    }).catch(function () {
+      el('stavSouteze').textContent = 'připravuje se';
+      el('stavSouteze').className = 'stitek sedy';
+    });
+}
+
+/* Žebříček hráčů: zásluhy ze stav/hraci + přezdívky ze žebříčku. */
+function zebricekHracu() {
+  Promise.all([
+    ctiDoc(ZAKLAD_DOK + 'souteze/' + SOUTEZ + '/stav/hraci?key=' + KLIC)
+      .catch(function () { return null; }),
+    fetch(ZAKLAD_DOK + 'zebricek?pageSize=300&key=' + KLIC)
+      .then(function (r) { return r.json(); })
+      .catch(function () { return {}; }),
+  ]).then(function (v) {
+    var hraci = v[0] && v[0].json ? JSON.parse(v[0].json) : {};
+    var jmena = {};
+    (v[1].documents || []).forEach(function (doc) {
+      var f = doc.fields || {};
+      var uid = f.hrac && f.hrac.stringValue;
+      var jm = f.prezdivka && f.prezdivka.stringValue;
+      if (uid && jm) jmena[uid] = jm;
+    });
+    var radky = Object.keys(hraci).map(function (uid) {
+      return { uid: uid, z: hraci[uid].z || 0, b: hraci[uid].b || 0 };
+    }).sort(function (a, b) { return b.b - a.b || b.z - a.z; })
+      .slice(0, 20);
+    var tab = el('hraci');
+    if (!radky.length) {
+      var r0 = document.createElement('tr');
+      var t0 = document.createElement('td');
+      t0.colSpan = 4;
+      t0.textContent = 'Zatím nikdo nic nezabral — buď první.';
+      r0.appendChild(t0);
+      tab.appendChild(r0);
+      return;
+    }
+    radky.forEach(function (h, i) {
+      var r = document.createElement('tr');
+      [String(i + 1) + '.',
+       jmena[h.uid] || 'dobyvatel bez přezdívky',
+       String(h.z), String(h.b)].forEach(function (text, j) {
+        var td = document.createElement('td');
+        td.textContent = text;
+        if (j >= 2) td.className = 'body';
+        r.appendChild(td);
+      });
+      tab.appendChild(r);
+    });
+  });
+}
+
+/* Reklamy: bez AdSense id nebo s Premium se plochy schovají. */
+function reklamy() {
+  var plochy = document.querySelectorAll('[data-reklama]');
+  function schovej() {
+    plochy.forEach(function (p) { p.remove(); });
+  }
+  if (!ADSENSE_CLIENT) { schovej(); return; }
+  var relace = nactiRelaci();
+  var rozhodni = Promise.resolve(false);
+  if (relace && relace.uid && relace.idToken) {
+    rozhodni = ctiDoc(ZAKLAD_DOK + 'hraci/' + relace.uid
+        + '?key=' + KLIC, relace.idToken)
+      .then(function (d) { return d.premium === true; })
+      .catch(function () { return false; });
+  }
+  rozhodni.then(function (premium) {
+    if (premium) { schovej(); return; }
+    var sk = document.createElement('script');
+    sk.async = true;
+    sk.src = 'https://pagead2.googlesyndication.com/pagead/js/'
+      + 'adsbygoogle.js?client=' + ADSENSE_CLIENT;
+    sk.crossOrigin = 'anonymous';
+    document.head.appendChild(sk);
+    plochy.forEach(function (p) {
+      p.textContent = '';
+      var ins = document.createElement('ins');
+      ins.className = 'adsbygoogle';
+      ins.style.display = 'block';
+      ins.setAttribute('data-ad-client', ADSENSE_CLIENT);
+      ins.setAttribute('data-ad-format', 'auto');
+      ins.setAttribute('data-full-width-responsive', 'true');
+      p.appendChild(ins);
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    });
+  });
+}
+
 function nactiSnimek() {
   return fetch(SNIMEK_URL).then(function (r) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -238,6 +387,10 @@ function nactiSnimek() {
 }
 
 function start() {
+  stavSouteze();
+  mojeSouteze();
+  zebricekHracu();
+  reklamy();
   Promise.all([
     fetch('data/tymy.json?v=10').then(function (r) { return r.json(); }),
     fetch('data/vlajky_oblasti.json?v=10').then(function (r) { return r.json(); }),
