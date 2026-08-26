@@ -32,6 +32,43 @@ var SNIMEK_URL = 'https://firestore.googleapis.com/v1/projects/'
 
 function el(id) { return document.getElementById(id); }
 
+/* Záložky (jedna obrazovka bez rolování, přání 28. 8.). */
+function prepniZalozku(z) {
+  document.querySelectorAll('.zalozky button').forEach(function (b) {
+    b.classList.toggle('aktivni', b.getAttribute('data-z') === z);
+  });
+  document.querySelectorAll('.zalozka').forEach(function (s) {
+    s.classList.toggle('aktivni', s.id === 'z-' + z);
+  });
+  if (z === 'mapa' && mapa) {
+    setTimeout(function () { try { mapa.resize(); } catch (e) { } }, 60);
+  }
+}
+
+function pripravZalozky() {
+  document.querySelectorAll('.zalozky button').forEach(function (b) {
+    b.onclick = function () {
+      prepniZalozku(b.getAttribute('data-z'));
+    };
+  });
+}
+
+/* Plocha přesně do okna — ať se nikdy neroluje celá stránka. */
+function napasujVysku() {
+  var m = document.querySelector('main.plocha');
+  if (!m) return;
+  if (window.matchMedia('(max-width: 820px)').matches) {
+    m.style.height = '';
+    return;
+  }
+  var vrch = m.getBoundingClientRect().top + window.scrollY;
+  m.style.height = Math.max(430, window.innerHeight - vrch - 8) + 'px';
+}
+window.addEventListener('resize', function () {
+  napasujVysku();
+  if (mapa) { try { mapa.resize(); } catch (e) { } }
+});
+
 /* Firestore JSON → obyčejná hodnota (jen typy, které snímek nosí). */
 function cti(v) {
   if (!v || typeof v !== 'object') return null;
@@ -97,23 +134,25 @@ var BUBLINA_DRUHU = {
 };
 
 function nakresliBublinu(emoji, barva) {
-  var s = 128;
+  // 256 px / pixelRatio 4 = základ 64 CSS px; při „růstu s mapou"
+  // do z17 zůstane bublina ostrá
+  var s = 256;
   var p = document.createElement('canvas');
   p.width = s;
   p.height = s;
   var ctx = p.getContext('2d');
   ctx.beginPath();
-  ctx.arc(64, 64, 52, 0, Math.PI * 2);
+  ctx.arc(128, 128, 104, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
-  ctx.lineWidth = 8;
+  ctx.lineWidth = 16;
   ctx.strokeStyle = barva;
   ctx.stroke();
-  ctx.font = '64px "Segoe UI Emoji", "Noto Color Emoji", '
+  ctx.font = '128px "Segoe UI Emoji", "Noto Color Emoji", '
     + '"Apple Color Emoji", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(emoji, 64, 70);
+  ctx.fillText(emoji, 128, 140);
   return ctx.getImageData(0, 0, s, s);
 }
 
@@ -122,7 +161,7 @@ function nahrajIkony() {
     if (!mapa.hasImage('ik-' + kat)) {
       var b = BUBLINA_DRUHU[kat];
       mapa.addImage('ik-' + kat, nakresliBublinu(b[0], b[1]),
-          { pixelRatio: 2 });
+          { pixelRatio: 4 });
     }
   });
   return Promise.resolve();
@@ -215,8 +254,10 @@ function pridejVrstvy() {
       filter: ['==', ['get', 'p'], p[0]],
       layout: {
         'icon-image': ['concat', 'ik-', ['get', 'k']],
-        'icon-size': ['interpolate', ['linear'], ['zoom'],
-          6, 0.4, 10, 0.52, 13, 0.66],
+        // od z13 rostou SPOLEČNĚ S MAPOU (přání 28. 8.) —
+        // exponenciála se blíží „přilepení" k zemi
+        'icon-size': ['interpolate', ['exponential', 1.5], ['zoom'],
+          6, 0.4, 10, 0.52, 13, 0.66, 17, 2.3],
         // velký kolizní polštář zdaleka = řídká, klidná mapa
         'icon-padding': ['interpolate', ['linear'], ['zoom'],
           6, 26, 9, 14, 12, 4],
@@ -561,7 +602,10 @@ function verejneSouteze() {
   if (!box) return;
   dotaz('souteze', 'verejna', true).then(function (vs) {
     var ziva = vs.filter(function (s2) {
-      return s2._id !== 'cesko-2026' && s2.stav !== 'konec';
+      // proti spamu: cizí soutěž se ve veřejném seznamu ukáže až po
+      // schválení (pole schvaleno nastavuje správce Okolníku)
+      return s2._id !== 'cesko-2026' && s2.stav !== 'konec'
+        && s2.schvaleno === true;
     });
     if (!ziva.length) return;
     var nadpis = document.createElement('p');
@@ -773,22 +817,40 @@ function vykresliZalozeni() {
         nazvy[r.klic] = r.nm.value.trim().slice(0, 24)
           || jmenoTymu(r.klic);
       });
-      zapisDoc('souteze/' + sid, {
-        nazev: jmeno.value.trim(),
-        stav: 'priprava',
-        zakladatel: relace.uid,
-        verejna: !!verCh.checked,
-        pravidla: { dosahM: 150, zabraniDenne: 40,
-                    zmenaTymuDni: 30, prahNadoblasti: 0.5 },
-        tymyPoradi: vybrane.map(function (r) { return r.klic; }),
-        tymyNazvy: nazvy,
-        vytvoreno: new Date(),
-      }, true).then(function () {
+      // ŘÁD PROTI SPAMU: každý účet nejvýš 3 soutěže — registr
+      // zalozene/{uid} hlídají i serverová pravidla
+      platnyToken().then(function (token) {
+        return ctiDoc(ZAKLAD_DOK + 'zalozene/' + relace.uid
+            + '?key=' + KLIC, token)
+          .catch(function () { return { sids: [] }; });
+      }).then(function (reg) {
+        var sids = reg.sids || [];
+        if (sids.length >= 3) {
+          throw new Error('kvota');
+        }
+        return zapisDoc('zalozene/' + relace.uid,
+            { sids: sids.concat([sid]) });
+      }).then(function () {
+        return zapisDoc('souteze/' + sid, {
+          nazev: jmeno.value.trim(),
+          stav: 'priprava',
+          zakladatel: relace.uid,
+          verejna: !!verCh.checked,
+          pravidla: { dosahM: 150, zabraniDenne: 40,
+                      zmenaTymuDni: 30, prahNadoblasti: 0.5 },
+          tymyPoradi: vybrane.map(function (r) { return r.klic; }),
+          tymyNazvy: nazvy,
+          vytvoreno: new Date(),
+        }, true);
+      }).then(function () {
         location.href = '?s=' + sid;
-      }).catch(function () {
+      }).catch(function (e) {
         zaloz.disabled = false;
-        zprava.textContent = 'Založení se nepovedlo — zkuste jiný '
-          + 'název, nebo se přihlaste znovu.';
+        zprava.textContent = (e && e.message === 'kvota')
+          ? 'Vedeš už 3 soutěže — nejdřív některou smaž (v její '
+            + 'Správě).'
+          : 'Založení se nepovedlo — zkuste jiný název, nebo se '
+            + 'přihlaste znovu.';
       });
     };
     box.appendChild(f);
@@ -802,9 +864,31 @@ function vykresliSpravu() {
   var box = el('spravaObsah');
   if (!karta || !box || !soutezDoc) return;
   var relace = nactiRelaci();
-  if (!relace || relace.uid !== soutezDoc.zakladatel) return;
+  var jsemSpravce = relace && relace.uid === soutezDoc.zakladatel;
+  // admin Okolníku schvaluje zveřejnění cizích soutěží
+  var jsemAdmin = relace
+    && relace.mail === 'stanislavmudra@gmail.com';
+  if (!jsemSpravce && !(jsemAdmin && vlastniSoutez())) return;
   karta.style.display = '';
+  var zal = el('zalozkaSprava');
+  if (zal) zal.style.display = '';
   box.textContent = '';
+
+  if (jsemAdmin && vlastniSoutez() && soutezDoc.verejna
+      && soutezDoc.schvaleno !== true) {
+    var schvalR = document.createElement('p');
+    var schval = document.createElement('button');
+    schval.textContent = 'Schválit zveřejnění (admin)';
+    schval.onclick = function () {
+      schval.disabled = true;
+      zapisDoc('souteze/' + SOUTEZ, { schvaleno: true })
+        .then(function () { schval.textContent = 'Schváleno ✓'; })
+        .catch(function () { schval.disabled = false; });
+    };
+    schvalR.appendChild(schval);
+    box.appendChild(schvalR);
+    if (!jsemSpravce) return;
+  }
 
   // stav soutěže
   var stavR = document.createElement('p');
@@ -857,6 +941,41 @@ function vykresliSpravu() {
   };
   lhutaR.appendChild(ulozL);
   box.appendChild(lhutaR);
+
+  // smazání (jen mimo běh) — uvolní slot v registru zalozene
+  if (vlastniSoutez() && soutezDoc.stav !== 'bezi') {
+    var smazR = document.createElement('p');
+    var smaz = document.createElement('button');
+    smaz.textContent = 'Smazat soutěž';
+    smaz.onclick = function () {
+      if (!confirm('Opravdu smazat celou soutěž? Nejde to vrátit.')) {
+        return;
+      }
+      smaz.disabled = true;
+      platnyToken().then(function (token) {
+        return fetch(ZAKLAD_DOK + 'souteze/' + SOUTEZ + '?key='
+            + KLIC, { method: 'DELETE',
+              headers: { Authorization: 'Bearer ' + token } })
+          .then(function () {
+            return ctiDoc(ZAKLAD_DOK + 'zalozene/' + relace.uid
+                + '?key=' + KLIC, token)
+              .catch(function () { return null; });
+          })
+          .then(function (reg) {
+            if (!reg) return null;
+            return zapisDoc('zalozene/' + relace.uid, {
+              sids: (reg.sids || []).filter(function (x) {
+                return x !== SOUTEZ;
+              }),
+            });
+          });
+      }).then(function () {
+        location.href = '/dobyvatel/';
+      }).catch(function () { smaz.disabled = false; });
+    };
+    smazR.appendChild(smaz);
+    box.appendChild(smazR);
+  }
 
   // členové: změna týmu + předání správy
   var klice = (soutezDoc.tymyPoradi && soutezDoc.tymyPoradi.length)
@@ -1118,13 +1237,15 @@ function nactiSnimek() {
 }
 
 function start() {
+  pripravZalozky();
+  napasujVysku();
   reklamy();
   vykresliZalozeni();
   verejneSouteze();
   Promise.all([
     fetch('data/tymy.json?v=10').then(function (r) { return r.json(); }),
     fetch('data/vlajky_oblasti.json?v=10').then(function (r) { return r.json(); }),
-    fetch('data/kraje.json?v=11').then(function (r) { return r.json(); }),
+    fetch('data/kraje.json?v=25').then(function (r) { return r.json(); }),
     fetch('data/vlajky.json').then(function (r) { return r.json(); }),
     fetch('data/obrys.json?v=14').then(function (r) { return r.json(); }),
   ]).then(function (vysledky) {
