@@ -16,7 +16,13 @@ var PROJEKT = 'sarcher-b32a1';
 // týž webový klíč jako žebříček (omezený na okolnik.cz, jen Firestore
 // + Identity Toolkit + Token Service)
 var KLIC = 'AIzaSyB3sj8qS-Lh4lHow6AUrWH-JayEtJ70igQ';
-var SOUTEZ = 'cesko-2026';
+// ?s=<id> přepne celou stránku (mapu, skóre, hráče) na jinou
+// soutěž; bez parametru republikové kolo
+var SOUTEZ = (function () {
+  var s = new URLSearchParams(location.search).get('s') || '';
+  return /^[a-z0-9][a-z0-9-]{2,39}$/.test(s) ? s : 'cesko-2026';
+})();
+var soutezDoc = null;   // dokument soutěže (názvy týmů, zakladatel…)
 // AdSense: po schválení účtu sem přijde client id (ca-pub-…);
 // prázdné = plochy se schovají. Premium hráči reklamy nevidí vůbec.
 var ADSENSE_CLIENT = '';
@@ -283,7 +289,16 @@ function obarvi(drzitele) {
 
 function vypisSkore(skore) {
   var tab = el('skore');
-  var radky = tymy.map(function (t) {
+  while (tab.rows.length > 1) tab.deleteRow(1);
+  // vlastní soutěž hraje jen vybrané týmy (tymyPoradi)
+  var sada = tymy;
+  if (soutezDoc && soutezDoc.tymyPoradi
+      && soutezDoc.tymyPoradi.length) {
+    sada = tymy.filter(function (t) {
+      return soutezDoc.tymyPoradi.indexOf(t.klic) >= 0;
+    });
+  }
+  var radky = sada.map(function (t) {
     return { t: t, body: (skore && skore[t.klic]) || 0 };
   }).sort(function (a, b) { return b.body - a.body; });
   // procenta = podíl na dobytí CELÉ republiky (součet hodnot všech
@@ -293,16 +308,19 @@ function vypisSkore(skore) {
   for (var i = 0; i < radky.length; i++) {
     var r = document.createElement('tr');
     var jm = document.createElement('td');
-    var z = document.createElement('img');
-    z.className = 'znak';
-    z.src = 'data/' + radky[i].t.znak;
-    z.alt = '';
+    if (!vlastniSoutez()) {
+      var z = document.createElement('img');
+      z.className = 'znak';
+      z.src = 'data/' + radky[i].t.znak;
+      z.alt = '';
+      jm.appendChild(z);
+    }
     var tecka = document.createElement('span');
     tecka.className = 'tecka';
     tecka.style.background = radky[i].t.barva;
-    jm.appendChild(z);
     jm.appendChild(tecka);
-    jm.appendChild(document.createTextNode(radky[i].t.kratky));
+    jm.appendChild(document.createTextNode(
+        jmenoTymu(radky[i].t.klic)));
     var body = document.createElement('td');
     body.className = 'body';
     body.textContent = String(radky[i].body);
@@ -319,10 +337,17 @@ function vypisSkore(skore) {
 }
 
 function jmenoTymu(klic) {
+  if (soutezDoc && soutezDoc.tymyNazvy && soutezDoc.tymyNazvy[klic]) {
+    return soutezDoc.tymyNazvy[klic];
+  }
   for (var i = 0; i < tymy.length; i++) {
     if (tymy[i].klic === klic) return tymy[i].kratky;
   }
   return klic;
+}
+
+function vlastniSoutez() {
+  return SOUTEZ !== 'cesko-2026';
 }
 
 function nazevKraje(klic) {
@@ -367,6 +392,101 @@ function ctiDoc(url, token) {
 var ZAKLAD_DOK = 'https://firestore.googleapis.com/v1/projects/'
   + PROJEKT + '/databases/(default)/documents/';
 
+/* Obyčejná hodnota → Firestore JSON (zrcadlo cti()). */
+function ven(v) {
+  if (typeof v === 'boolean') return { booleanValue: v };
+  if (typeof v === 'number') {
+    return (v % 1 === 0) ? { integerValue: String(v) }
+                         : { doubleValue: v };
+  }
+  if (v instanceof Date) return { timestampValue: v.toISOString() };
+  if (Array.isArray(v)) {
+    return { arrayValue: { values: v.map(ven) } };
+  }
+  if (v && typeof v === 'object') {
+    var f = {};
+    for (var k in v) f[k] = ven(v[k]);
+    return { mapValue: { fields: f } };
+  }
+  return { stringValue: String(v) };
+}
+
+/* Platný idToken jako na /ucet/: hodinové tokeny se před zápisem
+   obnoví přes refreshToken a uloží zpět. */
+function platnyToken() {
+  var r = nactiRelaci();
+  if (!r) return Promise.reject(new Error('bez přihlášení'));
+  if (r.idToken && r.vyprsi > Date.now() + 60000) {
+    return Promise.resolve(r.idToken);
+  }
+  return fetch('https://securetoken.googleapis.com/v1/token?key='
+      + KLIC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'grant_type=refresh_token&refresh_token='
+      + encodeURIComponent(r.refreshToken),
+  }).then(function (o) { return o.json(); }).then(function (d) {
+    if (!d.id_token) throw new Error('obnova tokenu selhala');
+    r.idToken = d.id_token;
+    r.refreshToken = d.refresh_token || r.refreshToken;
+    r.vyprsi = Date.now() + (parseInt(d.expires_in, 10) || 3600) * 1000;
+    try { localStorage.setItem('okolnikUcet1', JSON.stringify(r)); }
+    catch (e) { }
+    return r.idToken;
+  });
+}
+
+/* PATCH dokumentu s updateMask (bez masky by PŘEPSAL celý dokument).
+   `jenNovy` = precondition exists=false (založení). */
+function zapisDoc(cesta, data, jenNovy) {
+  return platnyToken().then(function (token) {
+    var url = ZAKLAD_DOK + cesta + '?key=' + KLIC;
+    for (var k in data) url += '&updateMask.fieldPaths=' + k;
+    if (jenNovy) url += '&currentDocument.exists=false';
+    var f = {};
+    for (var k2 in data) f[k2] = ven(data[k2]);
+    return fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json',
+                 Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ fields: f }),
+    });
+  }).then(function (o) {
+    if (!o.ok) throw new Error('HTTP ' + o.status);
+    return true;
+  });
+}
+
+/* runQuery: kolekce WHERE pole == hodnota (rovnost stačí všude tady). */
+function dotaz(kolekce, pole, hodnota, token) {
+  var telo = { structuredQuery: {
+    from: [{ collectionId: kolekce }],
+    where: { fieldFilter: { field: { fieldPath: pole }, op: 'EQUAL',
+      value: { stringValue: hodnota } } },
+    limit: 200,
+  } };
+  if (typeof hodnota === 'boolean') {
+    telo.structuredQuery.where.fieldFilter.value =
+      { booleanValue: hodnota };
+  }
+  var hlavicky = { 'Content-Type': 'application/json' };
+  if (token) hlavicky.Authorization = 'Bearer ' + token;
+  return fetch(ZAKLAD_DOK.slice(0, -1) + ':runQuery?key=' + KLIC, {
+    method: 'POST', headers: hlavicky, body: JSON.stringify(telo),
+  }).then(function (o) { return o.json(); }).then(function (vysl) {
+    var ven2 = [];
+    (vysl || []).forEach(function (radek) {
+      if (!radek.document) return;
+      var d = {};
+      var f = radek.document.fields || {};
+      for (var k in f) d[k] = cti(f[k]);
+      d._id = radek.document.name.split('/').pop();
+      ven2.push(d);
+    });
+    return ven2;
+  });
+}
+
 function mojeSouteze() {
   var box = el('mojeObsah');
   var relace = nactiRelaci();
@@ -380,30 +500,438 @@ function mojeSouteze() {
         ' — uvidíte tu svůj tým a soutěže, kterých se účastníte.'));
     return;
   }
-  ctiDoc(ZAKLAD_DOK + 'clenstvi/' + relace.uid + '_' + SOUTEZ
-      + '?key=' + KLIC, relace.idToken).then(function (c) {
-    box.textContent = 'Česko 2026 — hraješ za tým '
-      + jmenoTymu(c.tym) + '.';
+  platnyToken().then(function (token) {
+    return Promise.all([
+      // založené mnou
+      dotaz('souteze', 'zakladatel', relace.uid, token),
+      // členství v republikovém kole
+      ctiDoc(ZAKLAD_DOK + 'clenstvi/' + relace.uid + '_cesko-2026'
+        + '?key=' + KLIC, token).catch(function () { return null; }),
+      // členství ve veřejných soutěžích (po jedné — je jich málo)
+      dotaz('souteze', 'verejna', true).then(function (vs) {
+        return Promise.all(vs.filter(function (s2) {
+          return s2._id !== 'cesko-2026';
+        }).map(function (s2) {
+          return ctiDoc(ZAKLAD_DOK + 'clenstvi/' + relace.uid + '_'
+              + s2._id + '?key=' + KLIC, token)
+            .then(function (c) { return { s: s2, c: c }; })
+            .catch(function () { return null; });
+        }));
+      }),
+    ]);
+  }).then(function (v) {
+    box.textContent = '';
+    var radky = [];
+    if (v[1]) {
+      radky.push(['cesko-2026', 'Česko 2026 — hraješ za tým '
+        + jmenoTymu(v[1].tym) + '.']);
+    }
+    v[2].filter(Boolean).forEach(function (p) {
+      radky.push([p.s._id, (p.s.nazev || p.s._id) + ' — tým '
+        + ((p.s.tymyNazvy || {})[p.c.tym] || jmenoTymu(p.c.tym))
+        + '.']);
+    });
+    v[0].forEach(function (s2) {
+      radky.push([s2._id, (s2.nazev || s2._id) + ' — jsi správce ('
+        + (s2.stav === 'bezi' ? 'běží' : s2.stav) + ').']);
+    });
+    if (!radky.length) {
+      box.textContent = 'Zatím nejsi v žádné soutěži. Otevři '
+        + 'v aplikaci režim Dobyvatel, nebo si soutěž založ vedle.';
+      return;
+    }
+    radky.forEach(function (r) {
+      var p = document.createElement('p');
+      p.style.margin = '4px 0';
+      var a = document.createElement('a');
+      a.href = '?s=' + r[0];
+      a.textContent = r[1];
+      p.appendChild(a);
+      box.appendChild(p);
+    });
   }).catch(function () {
-    box.textContent = 'Zatím nejsi v žádné soutěži. Otevři v aplikaci '
-      + 'režim Dobyvatel a tým dostaneš podle svého kraje.';
+    box.textContent = 'Soutěže se nepodařilo načíst — zkuste to '
+      + 'za chvíli.';
   });
+}
+
+/* Seznam veřejných dobývání (odkazy na mapy soutěží). */
+function verejneSouteze() {
+  var box = el('verejneBox');
+  if (!box) return;
+  dotaz('souteze', 'verejna', true).then(function (vs) {
+    var ziva = vs.filter(function (s2) {
+      return s2._id !== 'cesko-2026' && s2.stav !== 'konec';
+    });
+    if (!ziva.length) return;
+    var nadpis = document.createElement('p');
+    nadpis.style.cssText = 'margin:10px 0 2px;font-weight:700;';
+    nadpis.textContent = 'Veřejná dobývání:';
+    box.appendChild(nadpis);
+    ziva.forEach(function (s2) {
+      var p = document.createElement('p');
+      p.style.margin = '3px 0';
+      var a = document.createElement('a');
+      a.href = '?s=' + s2._id;
+      a.textContent = (s2.nazev || s2._id)
+        + (s2.stav === 'bezi' ? ' (běží)' : ' (příprava)');
+      p.appendChild(a);
+      box.appendChild(p);
+    });
+  }).catch(function () { });
 }
 
 function stavSouteze() {
   ctiDoc(ZAKLAD_DOK + 'souteze/' + SOUTEZ + '?key=' + KLIC)
     .then(function (d) {
+      soutezDoc = d;
       var st = el('stavSouteze');
       if (d.stav === 'bezi') {
         st.textContent = 'právě běží';
+      } else if (d.stav === 'konec') {
+        st.textContent = 'skončila';
+        st.className = 'stitek sedy';
       } else {
         st.textContent = 'připravuje se';
         st.className = 'stitek sedy';
       }
+      if (vlastniSoutez()) {
+        document.title = (d.nazev || SOUTEZ) + ' – Dobyvatel';
+        var h1 = document.querySelector('main h1');
+        if (h1) h1.textContent = 'Dobyvatel — ' + (d.nazev || SOUTEZ);
+        el('soutezNazev').textContent = d.nazev || SOUTEZ;
+        var pocet = (d.tymyPoradi || []).length;
+        el('soutezPopis').textContent = 'Vlastní dobývání o stejných '
+          + '18 946 vlajek — hraje ' + pocet + ' týmů. Tým jde změnit '
+          + 'po ' + (((d.pravidla || {}).zmenaTymuDni) || 30)
+          + ' dnech, dřív jen rozhodnutím správce.';
+        var vb = el('verejneBox');
+        if (vb) vb.style.display = 'none';
+      }
+      vykresliSpravu();
+      vykresliPridani();
+      vypisSkoreZnovu();
     }).catch(function () {
-      el('stavSouteze').textContent = 'připravuje se';
+      el('stavSouteze').textContent = vlastniSoutez()
+        ? 'soutěž nenalezena' : 'připravuje se';
       el('stavSouteze').className = 'stitek sedy';
     });
+}
+
+/* Skóre se poprvé kreslí ze snímku; po načtení dokumentu soutěže se
+   překreslí s vlastními názvy a podmnožinou týmů. */
+var posledniSkore = null;
+function vypisSkoreZnovu() {
+  if (posledniSkore && tymy.length) vypisSkore(posledniSkore);
+}
+
+/* „Přidat se" — jen u vlastních soutěží (v republikovém kole dává
+   tým aplikace podle kraje v profilu). */
+function vykresliPridani() {
+  var box = el('pridaniBox');
+  if (!box || !vlastniSoutez() || !soutezDoc) return;
+  var relace = nactiRelaci();
+  box.textContent = '';
+  if (!relace || !relace.uid) {
+    var a = document.createElement('a');
+    a.href = '/ucet/';
+    a.textContent = 'Přihlaste se';
+    box.appendChild(a);
+    box.appendChild(document.createTextNode(
+        ' a můžete se přidat k některému týmu.'));
+    return;
+  }
+  platnyToken().then(function (token) {
+    return ctiDoc(ZAKLAD_DOK + 'clenstvi/' + relace.uid + '_'
+        + SOUTEZ + '?key=' + KLIC, token);
+  })
+    .then(function (c) {
+      box.textContent = 'Hraješ za tým '
+        + jmenoTymu(c.tym) + '.';
+    })
+    .catch(function () {
+      var vyber = document.createElement('select');
+      (soutezDoc.tymyPoradi || []).forEach(function (klic) {
+        var o = document.createElement('option');
+        o.value = klic;
+        o.textContent = jmenoTymu(klic);
+        vyber.appendChild(o);
+      });
+      var tl = document.createElement('button');
+      tl.textContent = 'Přidat se';
+      tl.style.marginLeft = '8px';
+      tl.onclick = function () {
+        tl.disabled = true;
+        zapisDoc('clenstvi/' + relace.uid + '_' + SOUTEZ, {
+          soutez: SOUTEZ,
+          tym: vyber.value,
+          od: new Date(),
+          tymZmena: new Date(),
+        }).then(function () {
+          box.textContent = 'Hraješ za tým ' + jmenoTymu(vyber.value)
+            + '. Vyraž do terénu s aplikací Okolník!';
+        }).catch(function () {
+          tl.disabled = false;
+          alert('Přidání se nepovedlo — zkuste to znovu.');
+        });
+      };
+      box.appendChild(document.createTextNode('Tvůj tým: '));
+      box.appendChild(vyber);
+      box.appendChild(tl);
+    });
+}
+
+/* ── ZAKLÁDÁNÍ SOUTĚŽE (Etapa 3) ── */
+function slugSouteze(nazev) {
+  var s = nazev.toLowerCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '').slice(0, 30);
+  return (s || 'soutez') + '-'
+    + Math.random().toString(36).slice(2, 6);
+}
+
+function vykresliZalozeni() {
+  var box = el('zalozeniBox');
+  if (!box) return;
+  var relace = nactiRelaci();
+  box.textContent = '';
+  if (!relace || !relace.uid) {
+    var a = document.createElement('a');
+    a.href = '/ucet/';
+    a.textContent = 'Přihlaste se na Můj Okolník';
+    box.appendChild(a);
+    box.appendChild(document.createTextNode(
+        ' a soutěž založíte na tři kliknutí.'));
+    return;
+  }
+  var tl = document.createElement('button');
+  tl.textContent = 'Založit soutěž';
+  tl.onclick = function () {
+    tl.style.display = 'none';
+    var f = document.createElement('div');
+    var jmeno = document.createElement('input');
+    jmeno.placeholder = 'Název soutěže (např. Rodinné dobývání)';
+    jmeno.maxLength = 60;
+    jmeno.style.cssText = 'width:100%;margin:6px 0;padding:6px;';
+    f.appendChild(jmeno);
+    var ver = document.createElement('label');
+    ver.style.cssText = 'display:block;margin:4px 0;';
+    var verCh = document.createElement('input');
+    verCh.type = 'checkbox';
+    ver.appendChild(verCh);
+    ver.appendChild(document.createTextNode(
+        ' veřejná (uvidí ji a přidá se každý; jinak jen s odkazem)'));
+    f.appendChild(ver);
+    var pozn = document.createElement('p');
+    pozn.style.cssText = 'margin:6px 0 2px;font-weight:700;';
+    pozn.textContent = 'Týmy (vyber 2–14, názvy si přepiš):';
+    f.appendChild(pozn);
+    var radkyTymu = [];
+    tymy.forEach(function (t) {
+      var r = document.createElement('div');
+      r.style.cssText =
+        'display:flex;align-items:center;gap:6px;margin:2px 0;';
+      var ch = document.createElement('input');
+      ch.type = 'checkbox';
+      var tecka = document.createElement('span');
+      tecka.style.cssText = 'width:12px;height:12px;border-radius:'
+        + '50%;flex:none;background:' + t.barva + ';';
+      var nm = document.createElement('input');
+      nm.value = t.kratky;
+      nm.maxLength = 24;
+      nm.style.cssText = 'flex:1;padding:3px 6px;';
+      r.appendChild(ch);
+      r.appendChild(tecka);
+      r.appendChild(nm);
+      f.appendChild(r);
+      radkyTymu.push({ klic: t.klic, ch: ch, nm: nm });
+    });
+    var zaloz = document.createElement('button');
+    zaloz.textContent = 'Založit';
+    zaloz.style.marginTop = '8px';
+    var zprava = document.createElement('p');
+    f.appendChild(zaloz);
+    f.appendChild(zprava);
+    zaloz.onclick = function () {
+      var vybrane = radkyTymu.filter(function (r) {
+        return r.ch.checked;
+      });
+      if (jmeno.value.trim().length < 3) {
+        zprava.textContent = 'Zadejte název (aspoň 3 znaky).';
+        return;
+      }
+      if (vybrane.length < 2 || vybrane.length > 14) {
+        zprava.textContent = 'Vyberte 2 až 14 týmů.';
+        return;
+      }
+      zaloz.disabled = true;
+      zprava.textContent = 'Zakládám…';
+      var sid = slugSouteze(jmeno.value.trim());
+      var nazvy = {};
+      vybrane.forEach(function (r) {
+        nazvy[r.klic] = r.nm.value.trim().slice(0, 24)
+          || jmenoTymu(r.klic);
+      });
+      zapisDoc('souteze/' + sid, {
+        nazev: jmeno.value.trim(),
+        stav: 'priprava',
+        zakladatel: relace.uid,
+        verejna: !!verCh.checked,
+        pravidla: { dosahM: 150, zabraniDenne: 40,
+                    zmenaTymuDni: 30, prahNadoblasti: 0.5 },
+        tymyPoradi: vybrane.map(function (r) { return r.klic; }),
+        tymyNazvy: nazvy,
+        vytvoreno: new Date(),
+      }, true).then(function () {
+        location.href = '?s=' + sid;
+      }).catch(function () {
+        zaloz.disabled = false;
+        zprava.textContent = 'Založení se nepovedlo — zkuste jiný '
+          + 'název, nebo se přihlaste znovu.';
+      });
+    };
+    box.appendChild(f);
+  };
+  box.appendChild(tl);
+}
+
+/* ── PANEL SPRÁVCE (zakladatele) ── */
+function vykresliSpravu() {
+  var karta = el('sprava');
+  var box = el('spravaObsah');
+  if (!karta || !box || !soutezDoc) return;
+  var relace = nactiRelaci();
+  if (!relace || relace.uid !== soutezDoc.zakladatel) return;
+  karta.style.display = '';
+  box.textContent = '';
+
+  // stav soutěže
+  var stavR = document.createElement('p');
+  stavR.textContent = 'Stav: ' + (soutezDoc.stav || '?') + ' ';
+  if (soutezDoc.stav !== 'bezi') {
+    var spust = document.createElement('button');
+    spust.textContent = 'Spustit soutěž';
+    spust.onclick = function () {
+      spust.disabled = true;
+      zapisDoc('souteze/' + SOUTEZ, { stav: 'bezi' })
+        .then(function () { location.reload(); })
+        .catch(function () { spust.disabled = false; });
+    };
+    stavR.appendChild(spust);
+  }
+  if (soutezDoc.stav === 'bezi') {
+    var konec = document.createElement('button');
+    konec.textContent = 'Ukončit soutěž';
+    konec.onclick = function () {
+      if (!confirm('Opravdu ukončit? Mapa zamrzne v posledním '
+          + 'stavu.')) return;
+      zapisDoc('souteze/' + SOUTEZ, { stav: 'konec' })
+        .then(function () { location.reload(); });
+    };
+    stavR.appendChild(konec);
+  }
+  box.appendChild(stavR);
+
+  // lhůta změny týmu
+  var lhutaR = document.createElement('p');
+  lhutaR.appendChild(document.createTextNode(
+      'Hráč smí změnit tým jednou za '));
+  var dny = document.createElement('input');
+  dny.type = 'number';
+  dny.min = 0;
+  dny.max = 365;
+  dny.value = ((soutezDoc.pravidla || {}).zmenaTymuDni) || 30;
+  dny.style.cssText = 'width:64px;margin:0 4px;';
+  lhutaR.appendChild(dny);
+  lhutaR.appendChild(document.createTextNode(' dní '));
+  var ulozL = document.createElement('button');
+  ulozL.textContent = 'Uložit';
+  ulozL.onclick = function () {
+    var prav = soutezDoc.pravidla || {};
+    prav.zmenaTymuDni = parseInt(dny.value, 10) || 30;
+    ulozL.disabled = true;
+    zapisDoc('souteze/' + SOUTEZ, { pravidla: prav })
+      .then(function () { ulozL.disabled = false; ulozL.textContent = 'Uloženo ✓'; })
+      .catch(function () { ulozL.disabled = false; });
+  };
+  lhutaR.appendChild(ulozL);
+  box.appendChild(lhutaR);
+
+  // členové: změna týmu + předání správy
+  var klice = (soutezDoc.tymyPoradi && soutezDoc.tymyPoradi.length)
+    ? soutezDoc.tymyPoradi
+    : tymy.map(function (t) { return t.klic; });
+  platnyToken().then(function (token) {
+    return Promise.all([
+      dotaz('clenstvi', 'soutez', SOUTEZ, token),
+      fetch(ZAKLAD_DOK + 'zebricek?pageSize=300&key=' + KLIC)
+        .then(function (r) { return r.json(); })
+        .catch(function () { return {}; }),
+    ]);
+  }).then(function (v) {
+    var jmena = {};
+    (v[1].documents || []).forEach(function (doc) {
+      var f = doc.fields || {};
+      var uid = f.hrac && f.hrac.stringValue;
+      var jm2 = f.prezdivka && f.prezdivka.stringValue;
+      if (uid && jm2) jmena[uid] = jm2;
+    });
+    var nadpis = document.createElement('p');
+    nadpis.style.fontWeight = '700';
+    nadpis.textContent = 'Členové (' + v[0].length + '):';
+    box.appendChild(nadpis);
+    if (!v[0].length) {
+      var pr = document.createElement('p');
+      pr.textContent = 'Zatím nikdo — pošlete odkaz na tuhle '
+        + 'stránku.';
+      box.appendChild(pr);
+    }
+    v[0].forEach(function (c) {
+      var uid = c._id.split('_')[0];
+      var r = document.createElement('p');
+      r.style.cssText =
+        'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+      r.appendChild(document.createTextNode(
+          (jmena[uid] || ('hráč ' + uid.slice(0, 6) + '…')) + ' — '));
+      var vyber = document.createElement('select');
+      klice.forEach(function (klic) {
+        var o = document.createElement('option');
+        o.value = klic;
+        o.textContent = jmenoTymu(klic);
+        if (klic === c.tym) o.selected = true;
+        vyber.appendChild(o);
+      });
+      r.appendChild(vyber);
+      var uloz = document.createElement('button');
+      uloz.textContent = 'Změnit tým';
+      uloz.onclick = function () {
+        uloz.disabled = true;
+        zapisDoc('clenstvi/' + c._id, {
+          soutez: SOUTEZ,
+          tym: vyber.value,
+          od: new Date(),
+          tymZmena: new Date(),
+        }).then(function () {
+          uloz.textContent = 'Změněno ✓';
+        }).catch(function () { uloz.disabled = false; });
+      };
+      r.appendChild(uloz);
+      if (uid !== relace.uid) {
+        var predej = document.createElement('button');
+        predej.textContent = 'Předat správu';
+        predej.onclick = function () {
+          if (!confirm('Předat správu soutěže hráči '
+              + (jmena[uid] || uid.slice(0, 8)) + '? Tobě zůstane '
+              + 'jen role hráče.')) return;
+          zapisDoc('souteze/' + SOUTEZ, { zakladatel: uid })
+            .then(function () { location.reload(); });
+        };
+        r.appendChild(predej);
+      }
+      box.appendChild(r);
+    });
+  }).catch(function () { });
 }
 
 /* Žebříček hráčů: zásluhy ze stav/hraci + přezdívky ze žebříčku. */
@@ -571,6 +1099,12 @@ function pridejLegendu() {
   obal.appendChild(panel);
 }
 
+var _puvodniVypisSkore = vypisSkore;
+vypisSkore = function (skore) {
+  posledniSkore = skore;
+  _puvodniVypisSkore(skore);
+};
+
 function nactiSnimek() {
   return fetch(SNIMEK_URL).then(function (r) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -584,10 +1118,9 @@ function nactiSnimek() {
 }
 
 function start() {
-  stavSouteze();
-  mojeSouteze();
-  zebricekHracu();
   reklamy();
+  vykresliZalozeni();
+  verejneSouteze();
   Promise.all([
     fetch('data/tymy.json?v=10').then(function (r) { return r.json(); }),
     fetch('data/vlajky_oblasti.json?v=10').then(function (r) { return r.json(); }),
@@ -597,6 +1130,10 @@ function start() {
   ]).then(function (vysledky) {
     obrys = vysledky[4];
     tymy = vysledky[0].tymy;
+    // až po načtení týmů — jména týmů v textech by jinak byla klíče
+    stavSouteze();
+    mojeSouteze();
+    zebricekHracu();
     oblasti = vysledky[1];
     kraje = vysledky[2];
     vlajky = vysledky[3].vlajky;

@@ -88,11 +88,13 @@
   <div class="mrizka">
     <div class="karta">
       <span class="stitek" id="stavSouteze">…</span>
-      <h3>Česko 2026 — republikové kolo</h3>
-      <p class="drobne">14 krajských týmů se přetahuje o 18 946
-        vlajek po celé republice. Přidat se může každý — tým dostanete
-        podle svého kraje.</p>
+      <h3 id="soutezNazev">Česko 2026 — republikové kolo</h3>
+      <p class="drobne" id="soutezPopis">14 krajských týmů se přetahuje
+        o 18 946 vlajek po celé republice. Přidat se může každý — tým
+        dostanete podle svého kraje.</p>
       <p class="drobne"><a href="#mapa">↓ Mapa a žebříčky</a></p>
+      <div class="drobne" id="pridaniBox"></div>
+      <div class="drobne" id="verejneBox"></div>
     </div>
     <div class="karta" id="kartaMoje">
       <span class="stitek sedy">moje soutěže</span>
@@ -100,12 +102,19 @@
       <p class="drobne" id="mojeObsah">Načítám…</p>
     </div>
     <div class="karta">
-      <span class="stitek sedy">připravujeme</span>
+      <span class="stitek sedy">nové</span>
       <h3>Vlastní dobývání</h3>
-      <p class="drobne">Soutěže part, firem či obcí s vlastními
-        pravidly a vlajkami — založíte je přímo tady, kapitán bude
-        schvalovat členy. Pracujeme na tom.</p>
+      <p class="drobne">Soutěž party, firmy či obce o stejných
+        18 946 vlajek: vyberete si týmy, pojmenujete je a pošlete
+        odkaz. Tým jde po vstupu měnit až po lhůtě — nebo ho změní
+        správce, který může správu i předat.</p>
+      <div id="zalozeniBox" class="drobne">Načítám…</div>
     </div>
+  </div>
+
+  <div class="karta" id="sprava" style="display:none">
+    <h2>Správa soutěže</h2>
+    <div id="spravaObsah" class="drobne"></div>
   </div>
 
   <div class="reklama" data-reklama>reklamní plocha</div>
@@ -157,6 +166,6 @@
   </div>
 </footer>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="dobyvatel.js?v=23"></script>
+<script src="dobyvatel.js?v=24"></script>
 </body>
 </html>
