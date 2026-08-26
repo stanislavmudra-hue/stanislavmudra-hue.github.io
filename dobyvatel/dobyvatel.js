@@ -75,6 +75,7 @@ function pridejVrstvy() {
   mapa.addLayer({
     id: 'uzemi', type: 'fill', source: 'oblasti',
     paint: {
+      'fill-antialias': false,
       'fill-color': barvaTymu(),
       // neutrální jemně podle hodnoty vlajky (jako náhledy z generátoru)
       'fill-opacity': ['case', ['==', ['get', 't'], '0'],
@@ -232,8 +233,8 @@ function nactiSnimek() {
 function start() {
   Promise.all([
     fetch('data/tymy.json').then(function (r) { return r.json(); }),
-    fetch('data/vlajky_oblasti.json?v=8').then(function (r) { return r.json(); }),
-    fetch('data/kraje.json').then(function (r) { return r.json(); }),
+    fetch('data/vlajky_oblasti.json?v=9').then(function (r) { return r.json(); }),
+    fetch('data/kraje.json?v=9').then(function (r) { return r.json(); }),
     fetch('data/vlajky.json').then(function (r) { return r.json(); }),
   ]).then(function (vysledky) {
     tymy = vysledky[0].tymy;
