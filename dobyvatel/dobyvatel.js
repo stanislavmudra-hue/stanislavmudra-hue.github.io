@@ -76,15 +76,15 @@ function pridejVrstvy() {
       'fill-color': barvaTymu(),
       // neutrální jemně podle hodnoty vlajky (jako náhledy z generátoru)
       'fill-opacity': ['case', ['==', ['get', 't'], '0'],
-        ['match', ['get', 'h'], 4, 0.30, 3, 0.20, 2, 0.12, 0.07],
-        0.62],
+        ['match', ['get', 'h'], 4, 0.16, 3, 0.10, 2, 0.06, 0.04],
+        0.45],
     },
   });
   mapa.addSource('kraje', { type: 'geojson', data: kraje });
   mapa.addLayer({
     id: 'kraje', type: 'line', source: 'kraje',
-    paint: { 'line-color': '#5f574a', 'line-width': 1.4,
-             'line-opacity': 0.75 },
+    paint: { 'line-color': '#4a443a', 'line-width': 1.6,
+             'line-opacity': 0.55 },
   });
   mapa.addLayer({
     id: 'hranice', type: 'line', source: 'oblasti',
@@ -177,14 +177,11 @@ function start() {
     }
     mapa = new maplibregl.Map({
       container: 'mapa',
-      // prázdný styl — kreslíme jen vlastní území, žádné cizí dlaždice
-      style: { version: 8, sources: {}, layers: [{
-        id: 'pozadi', type: 'background',
-        paint: { 'background-color': '#f2efe6' },
-      }] },
+      // stejný podklad jako aplikace (OpenFreeMap/OSM, styl Liberty)
+      // — území se kreslí průsvitně nad skutečnou mapou
+      style: 'https://tiles.openfreemap.org/styles/liberty',
       bounds: [[12.05, 48.5], [18.9, 51.1]],
       fitBoundsOptions: { padding: 12 },
-      attributionControl: false,
       cooperativeGestures: true,
     });
     mapa.addControl(new maplibregl.NavigationControl({
