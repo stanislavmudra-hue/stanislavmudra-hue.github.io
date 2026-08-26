@@ -1,5 +1,5 @@
 /* =====================================================================
-   DOBYVATEL – mapa války (okolnik.cz/dobyvatel)
+   DOBYVATEL – mapa soutěže (okolnik.cz/dobyvatel)
 
    Kreslí Voroného území všech vlajek (data/vlajky_oblasti.json,
    generuje tools/gen_vlajky.py — POŘADÍ VLAJEK JE SMLOUVA, feature id
@@ -57,6 +57,7 @@ function rozbalDrzitele(b64, poradi) {
 var mapa = null;
 var tymy = [];
 var oblasti = null;
+var kraje = null;
 
 function barvaTymu() {
   var v = ['match', ['get', 't']];
@@ -78,6 +79,12 @@ function pridejVrstvy() {
         ['match', ['get', 'h'], 4, 0.30, 3, 0.20, 2, 0.12, 0.07],
         0.62],
     },
+  });
+  mapa.addSource('kraje', { type: 'geojson', data: kraje });
+  mapa.addLayer({
+    id: 'kraje', type: 'line', source: 'kraje',
+    paint: { 'line-color': '#5f574a', 'line-width': 1.4,
+             'line-opacity': 0.75 },
   });
   mapa.addLayer({
     id: 'hranice', type: 'line', source: 'oblasti',
@@ -126,6 +133,24 @@ function vypisSkore(skore) {
   }
 }
 
+function jmenoTymu(klic) {
+  for (var i = 0; i < tymy.length; i++) {
+    if (tymy[i].klic === klic) return tymy[i].kratky;
+  }
+  return klic;
+}
+
+function vypisDobyto(dobyto) {
+  var kraje2 = dobyto.kraje || {};
+  var kusy = [];
+  for (var k in kraje2) {
+    kusy.push(jmenoTymu(k) + ' kraj drží ' + jmenoTymu(kraje2[k]));
+  }
+  el('dobyto').textContent = kusy.length
+    ? 'Dobyté kraje: ' + kusy.join(' · ')
+    : 'Žádný kraj zatím není dobytý celý.';
+}
+
 function nactiSnimek() {
   return fetch(SNIMEK_URL).then(function (r) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -142,9 +167,11 @@ function start() {
   Promise.all([
     fetch('data/tymy.json').then(function (r) { return r.json(); }),
     fetch('data/vlajky_oblasti.json').then(function (r) { return r.json(); }),
+    fetch('data/kraje.json').then(function (r) { return r.json(); }),
   ]).then(function (vysledky) {
     tymy = vysledky[0].tymy;
     oblasti = vysledky[1];
+    kraje = vysledky[2];
     for (var i = 0; i < oblasti.features.length; i++) {
       oblasti.features[i].properties.t = '0';
     }
@@ -170,8 +197,9 @@ function start() {
           ? rozbalDrzitele(s.drzitele, poradi) : null;
         obarvi(drzitele);
         vypisSkore(s.skore || {});
+        vypisDobyto(s.dobyto || {});
         var kdy = s.ts ? new Date(s.ts) : null;
-        el('stav').textContent = 'Stav bojiště k '
+        el('stav').textContent = 'Stav území k '
           + (kdy ? kdy.toLocaleString('cs-CZ') : 'poslednímu snímku')
           + ' · obsazovat lze v aplikaci Okolník (režim Dobyvatel).';
       }).catch(function () {
