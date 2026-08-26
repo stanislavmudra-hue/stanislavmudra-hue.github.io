@@ -677,6 +677,53 @@ function vypisDobyto(dobyto) {
     : 'Žádný kraj zatím není dobytý celý.';
 }
 
+/* ── PŘEPÍNAČ SOUTĚŽE NA KARTĚ MAPA (přání 27. 8.) ──
+   Uživatel musí IHNED vědět, na co se dívá, a rychle přepnout. */
+var mojeVolby = null;      // {hraju: [...], spravuju: [...]}
+var verejneCache = null;   // schválené veřejné soutěže
+
+function naplnVolbuSouteze() {
+  var box = el('soutezVolba');
+  if (!box) return;
+  box.textContent = '';
+  var stitek = document.createElement('strong');
+  stitek.textContent = 'Díváš se na soutěž:';
+  box.appendChild(stitek);
+  var sel = document.createElement('select');
+  sel.style.cssText = 'padding:5px 8px;max-width:340px;';
+  function pridat(sid, text) {
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === sid) return;
+    }
+    var o = document.createElement('option');
+    o.value = sid;
+    o.textContent = text;
+    if (sid === SOUTEZ) o.selected = true;
+    sel.appendChild(o);
+  }
+  pridat('cesko-2026', 'Česko 2026 — republikové kolo');
+  if (mojeVolby) {
+    mojeVolby.hraju.forEach(function (r) {
+      pridat(r.sid, r.text);
+    });
+    mojeVolby.spravuju.forEach(function (r) {
+      pridat(r.sid, r.text + ' — spravuji');
+    });
+  }
+  (verejneCache || []).forEach(function (s2) {
+    pridat(s2._id, (s2.nazev || s2._id) + ' — veřejná');
+  });
+  if (vlastniSoutez()) {
+    pridat(SOUTEZ, (soutezDoc && soutezDoc.nazev) || SOUTEZ);
+  }
+  sel.onchange = function () {
+    location.href = sel.value === 'cesko-2026'
+      ? '/dobyvatel/'
+      : '/dobyvatel/?s=' + sel.value;
+  };
+  box.appendChild(sel);
+}
+
 /* Přihlášení sdílené s Můj Okolník (localStorage okolnikUcet1). */
 function nactiRelaci() {
   try {
@@ -830,34 +877,58 @@ function mojeSouteze() {
     ]);
   }).then(function (v) {
     box.textContent = '';
-    var radky = [];
+    // HRAJU × SPRAVUJI odděleně (smíchané to byl bordel — 27. 8.)
+    var hraju = [];
     if (v[1]) {
-      radky.push(['cesko-2026', 'Česko 2026 — hraješ za tým '
-        + jmenoTymu(v[1].tym) + '.']);
+      hraju.push({ sid: 'cesko-2026',
+        text: 'Česko 2026 — tým ' + jmenoTymu(v[1].tym) });
     }
     v[2].filter(Boolean).forEach(function (p) {
-      radky.push([p.s._id, (p.s.nazev || p.s._id) + ' — tým '
-        + ((p.s.tymyNazvy || {})[p.c.tym] || jmenoTymu(p.c.tym))
-        + '.']);
+      hraju.push({ sid: p.s._id,
+        text: (p.s.nazev || p.s._id) + ' — tým '
+          + ((p.s.tymyNazvy || {})[p.c.tym]
+             || jmenoTymu(p.c.tym)) });
     });
-    v[0].forEach(function (s2) {
-      radky.push([s2._id, (s2.nazev || s2._id) + ' — jsi správce ('
-        + (s2.stav === 'bezi' ? 'běží' : s2.stav) + ').']);
+    var spravuju = v[0].map(function (s2) {
+      return { sid: s2._id,
+        text: (s2.nazev || s2._id) + ' ('
+          + (s2.stav === 'bezi' ? 'běží'
+             : s2.stav === 'konec' ? 'skončila' : 'příprava')
+          + ')' };
     });
-    if (!radky.length) {
+    mojeVolby = { hraju: hraju, spravuju: spravuju };
+    naplnVolbuSouteze();
+    function sekce(nadpis, seznam, poznamka) {
+      if (!seznam.length) return;
+      var h = document.createElement('p');
+      h.style.cssText = 'margin:8px 0 2px;font-weight:700;';
+      h.textContent = nadpis;
+      box.appendChild(h);
+      seznam.forEach(function (r) {
+        var p = document.createElement('p');
+        p.style.margin = '3px 0 3px 12px';
+        var a = document.createElement('a');
+        a.href = '?s=' + r.sid;
+        a.textContent = r.text;
+        p.appendChild(a);
+        if (poznamka) {
+          p.appendChild(document.createTextNode(' · '));
+          var a2 = document.createElement('a');
+          a2.href = '?s=' + r.sid;
+          a2.textContent = 'Správa';
+          p.appendChild(a2);
+        }
+        box.appendChild(p);
+      });
+    }
+    if (!hraju.length && !spravuju.length) {
       box.textContent = 'Zatím nejsi v žádné soutěži. Otevři '
-        + 'v aplikaci režim Dobyvatel, nebo si soutěž založ vedle.';
+        + 'v aplikaci režim Dobyvatel, nebo si soutěž založ '
+        + 'v záložce Založit.';
       return;
     }
-    radky.forEach(function (r) {
-      var p = document.createElement('p');
-      p.style.margin = '4px 0';
-      var a = document.createElement('a');
-      a.href = '?s=' + r[0];
-      a.textContent = r[1];
-      p.appendChild(a);
-      box.appendChild(p);
-    });
+    sekce('Hraju', hraju, false);
+    sekce('Spravuji', spravuju, true);
   }).catch(function () {
     box.textContent = 'Soutěže se nepodařilo načíst — zkuste to '
       + 'za chvíli.';
@@ -875,6 +946,8 @@ function verejneSouteze() {
       return s2._id !== 'cesko-2026' && s2.stav !== 'konec'
         && s2.schvaleno === true;
     });
+    verejneCache = ziva;
+    naplnVolbuSouteze();
     if (!ziva.length) return;
     var nadpis = document.createElement('p');
     nadpis.style.cssText = 'margin:10px 0 2px;font-weight:700;';
@@ -923,6 +996,7 @@ function stavSouteze() {
       maskaAktivni = (vlastniSoutez() && d.maska)
         ? rozbalMasku(d.maska) : null;
       if (maskaAktivni) aplikujMasku(maskaAktivni);
+      naplnVolbuSouteze();
       vykresliSpravu();
       vykresliPridani();
       vypisSkoreZnovu();
@@ -1681,6 +1755,7 @@ function nactiSnimek() {
 function start() {
   pripravZalozky();
   napasujVysku();
+  naplnVolbuSouteze();
   reklamy();
   vykresliZalozeni();
   verejneSouteze();
