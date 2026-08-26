@@ -58,6 +58,8 @@ var mapa = null;
 var tymy = [];
 var oblasti = null;
 var kraje = null;
+var vlajky = [];      // [{n, h, lat, lon}] dle indexu (jména oblastí)
+var body = null;      // FeatureCollection bodů vlajek
 
 function barvaTymu() {
   var v = ['match', ['get', 't']];
@@ -95,6 +97,65 @@ function pridejVrstvy() {
       'line-width': ['case', ['==', ['get', 't'], '0'], 0.4, 1.2],
     },
   });
+  // body vlajek: tečka v barvě držitele (neutrální hnědošedá) — a od
+  // přiblížení jméno vlajky = jméno oblasti
+  mapa.addSource('body', { type: 'geojson', data: body });
+  mapa.addLayer({
+    id: 'vlajky-body', type: 'circle', source: 'body',
+    paint: {
+      'circle-color': ['case', ['==', ['get', 't'], '0'],
+        '#7d7668', barvaTymu()],
+      'circle-radius': ['interpolate', ['linear'], ['zoom'],
+        7, 1.6, 10, 3, 13, 5],
+      'circle-stroke-color': '#f7f4ec',
+      'circle-stroke-width': 1,
+      'circle-opacity': 0.9,
+    },
+  });
+  mapa.addLayer({
+    id: 'vlajky-jmena', type: 'symbol', source: 'body', minzoom: 10.2,
+    layout: {
+      'text-field': ['get', 'n'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': 12,
+      'text-offset': [0, 0.9],
+      'text-anchor': 'top',
+      'text-max-width': 9,
+    },
+    paint: {
+      'text-color': '#4a443a',
+      'text-halo-color': '#f2efe6',
+      'text-halo-width': 1.3,
+    },
+  });
+
+  // klik kamkoli do území → bublina se jménem, hodnotou a držitelem
+  mapa.on('click', 'uzemi', function (e) {
+    var f = e.features && e.features[0];
+    if (!f || f.id === undefined) return;
+    var v = vlajky[f.id];
+    if (!v) return;
+    var drzitel = (f.properties && f.properties.t) || '0';
+    var obal = document.createElement('div');
+    var jm = document.createElement('strong');
+    jm.textContent = v.n;
+    obal.appendChild(jm);
+    obal.appendChild(document.createElement('br'));
+    obal.appendChild(document.createTextNode(
+        v.h + ' b. · ' + (drzitel === '0'
+            ? 'neutrální'
+            : 'drží ' + jmenoTymu(drzitel) + ' kraj')));
+    new maplibregl.Popup({ closeButton: false, maxWidth: '260px' })
+      .setLngLat([v.lon, v.lat])
+      .setDOMContent(obal)
+      .addTo(mapa);
+  });
+  mapa.on('mouseenter', 'vlajky-body', function () {
+    mapa.getCanvas().style.cursor = 'pointer';
+  });
+  mapa.on('mouseleave', 'vlajky-body', function () {
+    mapa.getCanvas().style.cursor = '';
+  });
 }
 
 function obarvi(drzitele) {
@@ -102,8 +163,13 @@ function obarvi(drzitele) {
     var f = oblasti.features[i];
     f.properties.t = (drzitele && drzitele[f.id]) || '0';
   }
+  for (var j = 0; j < body.features.length; j++) {
+    body.features[j].properties.t = (drzitele && drzitele[j]) || '0';
+  }
   var zdroj = mapa.getSource('oblasti');
   if (zdroj) zdroj.setData(oblasti);
+  var zdrojB = mapa.getSource('body');
+  if (zdrojB) zdrojB.setData(body);
 }
 
 function vypisSkore(skore) {
@@ -168,10 +234,20 @@ function start() {
     fetch('data/tymy.json').then(function (r) { return r.json(); }),
     fetch('data/vlajky_oblasti.json').then(function (r) { return r.json(); }),
     fetch('data/kraje.json').then(function (r) { return r.json(); }),
+    fetch('data/vlajky.json').then(function (r) { return r.json(); }),
   ]).then(function (vysledky) {
     tymy = vysledky[0].tymy;
     oblasti = vysledky[1];
     kraje = vysledky[2];
+    vlajky = vysledky[3].vlajky;
+    body = {
+      type: 'FeatureCollection',
+      features: vlajky.map(function (v, i) {
+        return { type: 'Feature', id: i,
+          properties: { n: v.n, h: v.h, t: '0' },
+          geometry: { type: 'Point', coordinates: [v.lon, v.lat] } };
+      }),
+    };
     for (var i = 0; i < oblasti.features.length; i++) {
       oblasti.features[i].properties.t = '0';
     }
@@ -179,17 +255,40 @@ function start() {
       container: 'mapa',
       // vlastní čistý podklad — území jsou hlavní obsah (Liberty
       // podklad je přebíjel, výtka 26. 8. večer)
-      style: { version: 8, sources: {}, layers: [{
-        id: 'pozadi', type: 'background',
-        paint: { 'background-color': '#f2efe6' },
-      }] },
+      style: { version: 8,
+        glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+        sources: {
+          teren: {
+            type: 'raster-dem',
+            tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/'
+              + 'terrarium/{z}/{x}/{y}.png'],
+            encoding: 'terrarium',
+            tileSize: 256,
+            maxzoom: 14,
+            attribution: 'Terén: Mapzen / AWS Open Data',
+          },
+        },
+        layers: [{
+          id: 'pozadi', type: 'background',
+          paint: { 'background-color': '#f2efe6' },
+        }, {
+          id: 'stinovani', type: 'hillshade', source: 'teren',
+          paint: {
+            'hillshade-exaggeration': 0.42,
+            'hillshade-shadow-color': '#8f8271',
+            'hillshade-highlight-color': '#fffdf6',
+          },
+        }] },
       bounds: [[12.05, 48.5], [18.9, 51.1]],
       fitBoundsOptions: { padding: 12 },
-      attributionControl: false,
-      cooperativeGestures: true,
     });
     mapa.addControl(new maplibregl.NavigationControl({
       showCompass: false }), 'top-right');
+    mapa.addControl(new maplibregl.FullscreenControl(), 'top-right');
+    mapa.addControl(new maplibregl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true },
+      showUserLocation: true,
+    }), 'top-right');
     mapa.on('load', function () {
       pridejVrstvy();
       nactiSnimek().then(function (s) {
