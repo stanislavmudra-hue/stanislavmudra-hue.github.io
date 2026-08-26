@@ -251,7 +251,9 @@ function pridejVrstvy() {
     mapa.addLayer({
       id: 'vlajky-ik' + p[0], type: 'symbol', source: 'body',
       minzoom: p[1],
-      filter: ['==', ['get', 'p'], p[0]],
+      maxzoom: 13.8,
+      filter: ['all', ['==', ['get', 'p'], p[0]],
+        ['!=', ['coalesce', ['get', 'akt'], 1], 0]],
       layout: {
         'icon-image': ['concat', 'ik-', ['get', 'k']],
         // od z13 rostou SPOLEČNĚ S MAPOU (přání 28. 8.) —
@@ -264,6 +266,31 @@ function pridejVrstvy() {
       },
       paint: { 'icon-opacity': 1 },
     });
+  });
+  // od z13,8 má KAŽDÁ oblast svůj obrázek (přání 28. 8.: „ať má
+  // každá oblast po přiblížení viditelný svůj obrázek") — kolize
+  // se vypínají a kreslí se úplně všechny vlajky
+  mapa.addLayer({
+    id: 'vlajky-ik-vse', type: 'symbol', source: 'body',
+    minzoom: 13.8,
+    filter: ['!=', ['coalesce', ['get', 'akt'], 1], 0],
+    layout: {
+      'icon-image': ['concat', 'ik-', ['get', 'k']],
+      'icon-size': ['interpolate', ['exponential', 1.5], ['zoom'],
+        13.8, 0.85, 17, 2.3],
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+    paint: { 'icon-opacity': 1 },
+  });
+  // ztlumení oblastí mimo výběr míst soutěže (maska)
+  mapa.addLayer({
+    id: 'mrtve', type: 'fill', source: 'oblasti',
+    paint: {
+      'fill-color': '#8d8778',
+      'fill-opacity': ['case',
+        ['==', ['coalesce', ['get', 'akt'], 1], 0], 0.35, 0],
+    },
   });
   mapa.addLayer({
     id: 'vlajky-jmena', type: 'symbol', source: 'body', minzoom: 10.2,
@@ -286,6 +313,7 @@ function pridejVrstvy() {
   mapa.on('click', 'uzemi', function (e) {
     var f = e.features && e.features[0];
     if (!f || f.id === undefined) return;
+    if (rezimVyberu) { prepniMisto(f.id); return; }
     var v = vlajky[f.id];
     if (!v) return;
     var drzitel = (f.properties && f.properties.t) || '0';
@@ -303,7 +331,8 @@ function pridejVrstvy() {
       .setDOMContent(obal)
       .addTo(mapa);
   });
-  ['vlajky-ik4', 'vlajky-ik3', 'vlajky-ik2', 'vlajky-ik1']
+  ['vlajky-ik4', 'vlajky-ik3', 'vlajky-ik2', 'vlajky-ik1',
+   'vlajky-ik-vse']
     .forEach(function (id) {
       mapa.on('mouseenter', id, function () {
         mapa.getCanvas().style.cursor = 'pointer';
@@ -312,6 +341,162 @@ function pridejVrstvy() {
         mapa.getCanvas().style.cursor = '';
       });
     });
+}
+
+/* ── VÝBĚR MÍST (maska soutěže) ── */
+var maskaAktivni = null;   // pole bool dle indexu vlajky (null = vše)
+var rezimVyberu = false;   // správce právě kliká výběr na mapě
+var vyberDruhu = null;     // {druh: bool} — kterých druhů se klik týká
+
+function rozbalMasku(b64) {
+  try {
+    var bin = atob(b64);
+    var ven = new Array(vlajky.length);
+    for (var i = 0; i < vlajky.length; i++) {
+      var bajt = bin.charCodeAt(i >> 3) || 0;
+      ven[i] = !!(bajt & (1 << (i & 7)));
+    }
+    return ven;
+  } catch (e) { return null; }
+}
+
+function zabalMasku(pole) {
+  var bajty = new Uint8Array(Math.ceil(pole.length / 8));
+  for (var i = 0; i < pole.length; i++) {
+    if (pole[i]) bajty[i >> 3] |= (1 << (i & 7));
+  }
+  var bin = '';
+  for (var j = 0; j < bajty.length; j++) {
+    bin += String.fromCharCode(bajty[j]);
+  }
+  return btoa(bin);
+}
+
+/* Promítne masku (nebo rozpracovaný výběr) do vlastnosti `akt`. */
+function aplikujMasku(pole) {
+  if (!body || !oblasti) return;
+  for (var i = 0; i < body.features.length; i++) {
+    var a = (!pole || pole[i]) ? 1 : 0;
+    body.features[i].properties.akt = a;
+    oblasti.features[i].properties.akt = a;
+  }
+  if (mapa) {
+    var z1 = mapa.getSource('body');
+    var z2 = mapa.getSource('oblasti');
+    if (z1) z1.setData(body);
+    if (z2) z2.setData(oblasti);
+  }
+  vypisSkoreZnovu();
+}
+
+function prepniMisto(idx) {
+  if (!maskaRozpracovana) return;
+  var druh = vlajky[idx] && vlajky[idx].k;
+  if (vyberDruhu && druh && vyberDruhu[druh] === false) return;
+  maskaRozpracovana[idx] = !maskaRozpracovana[idx];
+  aplikujMasku(maskaRozpracovana);
+  obnovPocetVyberu();
+}
+
+var maskaRozpracovana = null;
+var panelVyberu = null;
+
+function obnovPocetVyberu() {
+  var pocet = 0;
+  for (var i = 0; i < maskaRozpracovana.length; i++) {
+    if (maskaRozpracovana[i]) pocet++;
+  }
+  var b = document.getElementById('vyberUlozit');
+  if (b) b.textContent = 'Uložit výběr (' + pocet + ' míst)';
+}
+
+/* Editor výběru míst: panel nad mapou + klikání do území. */
+function zapniVyberMist() {
+  prepniZalozku('mapa');
+  rezimVyberu = true;
+  maskaRozpracovana = maskaAktivni
+    ? maskaAktivni.slice()
+    : vlajky.map(function () { return true; });
+  vyberDruhu = {};
+  Object.keys(POPISKY_DRUHU).forEach(function (k) {
+    vyberDruhu[k] = true;
+  });
+  var obal = el('mapa');
+  panelVyberu = document.createElement('div');
+  panelVyberu.style.cssText = 'position:absolute;right:10px;top:10px;'
+    + 'z-index:6;background:rgba(255,253,246,.94);border:1px solid '
+    + '#b9b2a0;border-radius:10px;padding:8px 10px;max-height:82%;'
+    + 'overflow:auto;font:12.5px sans-serif;max-width:240px;';
+  var nadpis = document.createElement('p');
+  nadpis.style.cssText = 'margin:0 0 4px;font-weight:700;';
+  nadpis.textContent = 'Výběr míst — klikej do mapy';
+  panelVyberu.appendChild(nadpis);
+  var pozn = document.createElement('p');
+  pozn.style.cssText = 'margin:0 0 6px;color:#6b6455;';
+  pozn.textContent = 'Klik přepíná oblast. Zaškrtnutí říká, kterých '
+    + 'druhů se klik a hromadná tlačítka týkají.';
+  panelVyberu.appendChild(pozn);
+  Object.keys(POPISKY_DRUHU).forEach(function (k) {
+    var radek = document.createElement('label');
+    radek.style.cssText = 'display:flex;gap:6px;align-items:center;'
+      + 'margin:1px 0;';
+    var ch = document.createElement('input');
+    ch.type = 'checkbox';
+    ch.checked = true;
+    ch.onchange = function () { vyberDruhu[k] = ch.checked; };
+    radek.appendChild(ch);
+    radek.appendChild(
+        document.createTextNode(POPISKY_DRUHU[k]));
+    panelVyberu.appendChild(radek);
+  });
+  function hromadne(zapnout) {
+    for (var i = 0; i < vlajky.length; i++) {
+      if (vyberDruhu[vlajky[i].k]) maskaRozpracovana[i] = zapnout;
+    }
+    aplikujMasku(maskaRozpracovana);
+    obnovPocetVyberu();
+  }
+  var radekTl = document.createElement('p');
+  radekTl.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;'
+    + 'margin:8px 0 0;';
+  [['Zapnout druhy', true], ['Vypnout druhy', false]]
+    .forEach(function (par) {
+      var t = document.createElement('button');
+      t.textContent = par[0];
+      t.onclick = function () { hromadne(par[1]); };
+      radekTl.appendChild(t);
+    });
+  var uloz = document.createElement('button');
+  uloz.id = 'vyberUlozit';
+  uloz.style.fontWeight = '700';
+  uloz.onclick = function () {
+    var vsechna = maskaRozpracovana.every(function (x) { return x; });
+    uloz.disabled = true;
+    zapisDoc('souteze/' + SOUTEZ,
+        { maska: vsechna ? '' : zabalMasku(maskaRozpracovana) })
+      .then(function () {
+        maskaAktivni = vsechna ? null : maskaRozpracovana;
+        soutezDoc.maska = vsechna ? '' : 'x';
+        vypniVyberMist(true);
+      })
+      .catch(function () { uloz.disabled = false; });
+  };
+  var zrus = document.createElement('button');
+  zrus.textContent = 'Zrušit';
+  zrus.onclick = function () { vypniVyberMist(false); };
+  radekTl.appendChild(uloz);
+  radekTl.appendChild(zrus);
+  panelVyberu.appendChild(radekTl);
+  obal.appendChild(panelVyberu);
+  obnovPocetVyberu();
+  aplikujMasku(maskaRozpracovana);
+}
+
+function vypniVyberMist(ulozeno) {
+  rezimVyberu = false;
+  if (panelVyberu) { panelVyberu.remove(); panelVyberu = null; }
+  maskaRozpracovana = null;
+  aplikujMasku(ulozeno ? maskaAktivni : maskaAktivni);
 }
 
 function obarvi(drzitele) {
@@ -345,7 +530,9 @@ function vypisSkore(skore) {
   // procenta = podíl na dobytí CELÉ republiky (součet hodnot všech
   // vlajek), přání 27. 8.
   var suma = 0;
-  for (var v = 0; v < vlajky.length; v++) suma += vlajky[v].h || 0;
+  for (var v = 0; v < vlajky.length; v++) {
+    if (!maskaAktivni || maskaAktivni[v]) suma += vlajky[v].h || 0;
+  }
   for (var i = 0; i < radky.length; i++) {
     var r = document.createElement('tr');
     var jm = document.createElement('td');
@@ -652,6 +839,9 @@ function stavSouteze() {
         var vb = el('verejneBox');
         if (vb) vb.style.display = 'none';
       }
+      maskaAktivni = (vlastniSoutez() && d.maska)
+        ? rozbalMasku(d.maska) : null;
+      if (maskaAktivni) aplikujMasku(maskaAktivni);
       vykresliSpravu();
       vykresliPridani();
       vypisSkoreZnovu();
@@ -767,30 +957,139 @@ function vykresliZalozeni() {
     ver.appendChild(document.createTextNode(
         ' veřejná (uvidí ji a přidá se každý; jinak jen s odkazem)'));
     f.appendChild(ver);
+
+    // TÝMY: jeden řádek a plus (přání 28. 8.); barva se mění
+    // klepnutím na tečku, název je prázdný s nápovědou
     var pozn = document.createElement('p');
     pozn.style.cssText = 'margin:6px 0 2px;font-weight:700;';
-    pozn.textContent = 'Týmy (vyber 2–14, názvy si přepiš):';
+    pozn.textContent = 'Týmy (2–14):';
     f.appendChild(pozn);
+    var tymBox = document.createElement('div');
+    f.appendChild(tymBox);
     var radkyTymu = [];
-    tymy.forEach(function (t) {
+
+    function volnaBarva(od) {
+      for (var i = 0; i < tymy.length; i++) {
+        var kand = tymy[(od + i) % tymy.length].klic;
+        var obsazena = radkyTymu.some(function (r) {
+          return r.klic === kand;
+        });
+        if (!obsazena) return kand;
+      }
+      return null;
+    }
+
+    function barvaKlic(klic) {
+      for (var i = 0; i < tymy.length; i++) {
+        if (tymy[i].klic === klic) return tymy[i].barva;
+      }
+      return '#888';
+    }
+
+    function pridejTymRadek() {
+      if (radkyTymu.length >= 14) return;
+      var klic = volnaBarva(radkyTymu.length);
+      if (!klic) return;
       var r = document.createElement('div');
       r.style.cssText =
-        'display:flex;align-items:center;gap:6px;margin:2px 0;';
-      var ch = document.createElement('input');
-      ch.type = 'checkbox';
+        'display:flex;align-items:center;gap:6px;margin:3px 0;';
+      var zaznam = { klic: klic, nm: null, radek: r };
       var tecka = document.createElement('span');
-      tecka.style.cssText = 'width:12px;height:12px;border-radius:'
-        + '50%;flex:none;background:' + t.barva + ';';
+      tecka.title = 'Klepnutím změníš barvu';
+      function obarviTecku() {
+        tecka.style.cssText = 'width:16px;height:16px;border-radius:'
+          + '50%;flex:none;cursor:pointer;border:1px solid '
+          + 'rgba(0,0,0,.3);background:' + barvaKlic(zaznam.klic)
+          + ';';
+      }
+      obarviTecku();
+      tecka.onclick = function () {
+        var dalsi = volnaBarva(
+            tymy.findIndex(function (t) {
+              return t.klic === zaznam.klic;
+            }) + 1);
+        if (dalsi) { zaznam.klic = dalsi; obarviTecku(); }
+      };
       var nm = document.createElement('input');
-      nm.value = t.kratky;
+      nm.placeholder = 'Vyplň název týmu';
       nm.maxLength = 24;
       nm.style.cssText = 'flex:1;padding:3px 6px;';
-      r.appendChild(ch);
+      zaznam.nm = nm;
+      var pryc = document.createElement('button');
+      pryc.textContent = '×';
+      pryc.title = 'Odebrat tým';
+      pryc.onclick = function () {
+        if (radkyTymu.length <= 1) return;
+        radkyTymu.splice(radkyTymu.indexOf(zaznam), 1);
+        r.remove();
+      };
       r.appendChild(tecka);
       r.appendChild(nm);
-      f.appendChild(r);
-      radkyTymu.push({ klic: t.klic, ch: ch, nm: nm });
-    });
+      r.appendChild(pryc);
+      tymBox.appendChild(r);
+      radkyTymu.push(zaznam);
+    }
+    pridejTymRadek();
+    var plus = document.createElement('button');
+    plus.textContent = '+ Přidat tým';
+    plus.onclick = function () { pridejTymRadek(); };
+    f.appendChild(plus);
+
+    // DALŠÍ NASTAVENÍ (rozbalovací)
+    var dalsi = document.createElement('details');
+    var shrn = document.createElement('summary');
+    shrn.textContent = 'Další nastavení';
+    shrn.style.cssText = 'cursor:pointer;font-weight:700;margin:8px 0 4px;';
+    dalsi.appendChild(shrn);
+    function cislo(popis, vychozi, min, max) {
+      var radek = document.createElement('label');
+      radek.style.cssText =
+        'display:flex;align-items:center;gap:6px;margin:3px 0;';
+      var vstup = document.createElement('input');
+      vstup.type = 'number';
+      vstup.value = vychozi;
+      vstup.min = min;
+      vstup.max = max;
+      vstup.style.cssText = 'width:70px;padding:2px 6px;';
+      radek.appendChild(vstup);
+      radek.appendChild(document.createTextNode(' ' + popis));
+      dalsi.appendChild(radek);
+      return vstup;
+    }
+    var vObsazeni = cislo('minut na dobytí neutrální vlajky', 10, 1, 240);
+    var vNeutral = cislo('minut navíc na sebrání držené vlajky', 10, 0, 240);
+    var vDenne = cislo('nejvýš zabraných vlajek na hráče a den', 40, 1, 500);
+    var vDosah = cislo('metrů dosah od vlajky', 150, 50, 2000);
+    var vLhuta = cislo('dní lhůta pro změnu týmu', 30, 0, 365);
+    function datum(popis) {
+      var radek = document.createElement('label');
+      radek.style.cssText =
+        'display:flex;align-items:center;gap:6px;margin:3px 0;';
+      var vstup = document.createElement('input');
+      vstup.type = 'datetime-local';
+      radek.appendChild(vstup);
+      radek.appendChild(document.createTextNode(' ' + popis));
+      dalsi.appendChild(radek);
+      return vstup;
+    }
+    var vZacatek = datum('začátek soutěže (nepovinné)');
+    var vKonec = datum('konec soutěže (nepovinné)');
+    var ffa = document.createElement('label');
+    ffa.style.cssText = 'display:block;margin:4px 0;color:#6b6455;';
+    var ffaCh = document.createElement('input');
+    ffaCh.type = 'checkbox';
+    ffaCh.disabled = true;
+    ffa.appendChild(ffaCh);
+    ffa.appendChild(document.createTextNode(
+        ' všichni proti všem (připravujeme)'));
+    dalsi.appendChild(ffa);
+    var poznMista = document.createElement('p');
+    poznMista.style.cssText = 'margin:4px 0;color:#6b6455;';
+    poznMista.textContent = 'Výběr míst na mapě (jen část republiky) '
+      + 'naklikáš po založení ve Správě soutěže.';
+    dalsi.appendChild(poznMista);
+    f.appendChild(dalsi);
+
     var zaloz = document.createElement('button');
     zaloz.textContent = 'Založit';
     zaloz.style.marginTop = '8px';
@@ -799,14 +1098,15 @@ function vykresliZalozeni() {
     f.appendChild(zprava);
     zaloz.onclick = function () {
       var vybrane = radkyTymu.filter(function (r) {
-        return r.ch.checked;
+        return r.nm.value.trim().length > 0;
       });
       if (jmeno.value.trim().length < 3) {
         zprava.textContent = 'Zadejte název (aspoň 3 znaky).';
         return;
       }
-      if (vybrane.length < 2 || vybrane.length > 14) {
-        zprava.textContent = 'Vyberte 2 až 14 týmů.';
+      if (vybrane.length < 2) {
+        zprava.textContent =
+          'Přidej aspoň dva týmy a vyplň jim názvy.';
         return;
       }
       zaloz.disabled = true;
@@ -814,10 +1114,9 @@ function vykresliZalozeni() {
       var sid = slugSouteze(jmeno.value.trim());
       var nazvy = {};
       vybrane.forEach(function (r) {
-        nazvy[r.klic] = r.nm.value.trim().slice(0, 24)
-          || jmenoTymu(r.klic);
+        nazvy[r.klic] = r.nm.value.trim().slice(0, 24);
       });
-      // ŘÁD PROTI SPAMU: každý účet nejvýš 3 soutěže — registr
+      // ŘÁD PROTI SPAMU: každý účet nejvýš 5 soutěží — registr
       // zalozene/{uid} hlídají i serverová pravidla
       platnyToken().then(function (token) {
         return ctiDoc(ZAKLAD_DOK + 'zalozene/' + relace.uid
@@ -825,19 +1124,34 @@ function vykresliZalozeni() {
           .catch(function () { return { sids: [] }; });
       }).then(function (reg) {
         var sids = reg.sids || [];
-        if (sids.length >= 3) {
+        if (sids.length >= 5) {
           throw new Error('kvota');
         }
         return zapisDoc('zalozene/' + relace.uid,
             { sids: sids.concat([sid]) });
       }).then(function () {
+        var prav = {
+          obsazeniMin: parseInt(vObsazeni.value, 10) || 10,
+          neutralizaceMin: parseInt(vNeutral.value, 10) || 0,
+          zabraniDenne: parseInt(vDenne.value, 10) || 40,
+          dosahM: parseInt(vDosah.value, 10) || 150,
+          zmenaTymuDni: parseInt(vLhuta.value, 10) || 30,
+          prahNadoblasti: 0.5,
+        };
+        if (vZacatek.value) {
+          prav.zacatek = new Date(vZacatek.value).toISOString()
+            .split('.')[0] + 'Z';
+        }
+        if (vKonec.value) {
+          prav.konec = new Date(vKonec.value).toISOString()
+            .split('.')[0] + 'Z';
+        }
         return zapisDoc('souteze/' + sid, {
           nazev: jmeno.value.trim(),
           stav: 'priprava',
           zakladatel: relace.uid,
           verejna: !!verCh.checked,
-          pravidla: { dosahM: 150, zabraniDenne: 40,
-                      zmenaTymuDni: 30, prahNadoblasti: 0.5 },
+          pravidla: prav,
           tymyPoradi: vybrane.map(function (r) { return r.klic; }),
           tymyNazvy: nazvy,
           vytvoreno: new Date(),
@@ -847,7 +1161,7 @@ function vykresliZalozeni() {
       }).catch(function (e) {
         zaloz.disabled = false;
         zprava.textContent = (e && e.message === 'kvota')
-          ? 'Vedeš už 3 soutěže — nejdřív některou smaž (v její '
+          ? 'Vedeš už 5 soutěží — nejdřív některou smaž (v její '
             + 'Správě).'
           : 'Založení se nepovedlo — zkuste jiný název, nebo se '
             + 'přihlaste znovu.';
@@ -941,6 +1255,18 @@ function vykresliSpravu() {
   };
   lhutaR.appendChild(ulozL);
   box.appendChild(lhutaR);
+
+  // výběr míst na mapě (jen vlastní soutěže)
+  if (vlastniSoutez()) {
+    var mistaR = document.createElement('p');
+    var mista = document.createElement('button');
+    mista.textContent = soutezDoc.maska
+      ? 'Upravit výběr míst na mapě'
+      : 'Vybrat místa na mapě (teď hrají všechna)';
+    mista.onclick = function () { zapniVyberMist(); };
+    mistaR.appendChild(mista);
+    box.appendChild(mistaR);
+  }
 
   // smazání (jen mimo běh) — uvolní slot v registru zalozene
   if (vlastniSoutez() && soutezDoc.stav !== 'bezi') {
