@@ -207,11 +207,18 @@ function jmenoTymu(klic) {
   return klic;
 }
 
+function nazevKraje(klic) {
+  for (var i = 0; i < tymy.length; i++) {
+    if (tymy[i].klic === klic) return tymy[i].nazev;
+  }
+  return klic;
+}
+
 function vypisDobyto(dobyto) {
   var kraje2 = dobyto.kraje || {};
   var kusy = [];
   for (var k in kraje2) {
-    kusy.push(jmenoTymu(k) + ' kraj drží ' + jmenoTymu(kraje2[k]));
+    kusy.push(nazevKraje(k) + ' drží ' + jmenoTymu(kraje2[k]));
   }
   el('dobyto').textContent = kusy.length
     ? 'Dobyté kraje: ' + kusy.join(' · ')
@@ -232,8 +239,8 @@ function nactiSnimek() {
 
 function start() {
   Promise.all([
-    fetch('data/tymy.json').then(function (r) { return r.json(); }),
-    fetch('data/vlajky_oblasti.json?v=9').then(function (r) { return r.json(); }),
+    fetch('data/tymy.json?v=10').then(function (r) { return r.json(); }),
+    fetch('data/vlajky_oblasti.json?v=10').then(function (r) { return r.json(); }),
     fetch('data/kraje.json?v=9').then(function (r) { return r.json(); }),
     fetch('data/vlajky.json').then(function (r) { return r.json(); }),
   ]).then(function (vysledky) {

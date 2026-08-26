@@ -4,98 +4,112 @@
   {
    "klic": "praha",
    "nazev": "Hlavní město Praha",
-   "kratky": "Praha",
+   "kratky": "Pražáci",
+   "kraj": "Praha",
    "barva": "#E53935",
    "znak": "znaky/praha.webp"
   },
   {
    "klic": "stredocesky",
    "nazev": "Středočeský kraj",
-   "kratky": "Středočeský",
+   "kratky": "Středočeši",
+   "kraj": "Středočeský",
    "barva": "#1E88E5",
    "znak": "znaky/stredocesky.webp"
   },
   {
    "klic": "jihocesky",
    "nazev": "Jihočeský kraj",
-   "kratky": "Jihočeský",
+   "kratky": "Jihočeši",
+   "kraj": "Jihočeský",
    "barva": "#FDD835",
    "znak": "znaky/jihocesky.webp"
   },
   {
    "klic": "plzensky",
    "nazev": "Plzeňský kraj",
-   "kratky": "Plzeňský",
+   "kratky": "Plzeňáci",
+   "kraj": "Plzeňský",
    "barva": "#43A047",
    "znak": "znaky/plzensky.webp"
   },
   {
    "klic": "karlovarsky",
    "nazev": "Karlovarský kraj",
-   "kratky": "Karlovarský",
+   "kratky": "Karlovaráci",
+   "kraj": "Karlovarský",
    "barva": "#8E24AA",
    "znak": "znaky/karlovarsky.webp"
   },
   {
    "klic": "ustecky",
    "nazev": "Ústecký kraj",
-   "kratky": "Ústecký",
+   "kratky": "Ústečáci",
+   "kraj": "Ústecký",
    "barva": "#EF6C00",
    "znak": "znaky/ustecky.webp"
   },
   {
    "klic": "liberecky",
    "nazev": "Liberecký kraj",
-   "kratky": "Liberecký",
+   "kratky": "Liberečáci",
+   "kraj": "Liberecký",
    "barva": "#9E9D24",
    "znak": "znaky/liberecky.webp"
   },
   {
    "klic": "kralovehradecky",
    "nazev": "Královéhradecký kraj",
-   "kratky": "Královéhradecký",
+   "kratky": "Hradečáci",
+   "kraj": "Královéhradecký",
    "barva": "#D81B60",
    "znak": "znaky/kralovehradecky.webp"
   },
   {
    "klic": "pardubicky",
    "nazev": "Pardubický kraj",
-   "kratky": "Pardubický",
+   "kratky": "Pardubičáci",
+   "kraj": "Pardubický",
    "barva": "#5E35B1",
    "znak": "znaky/pardubicky.webp"
   },
   {
    "klic": "vysocina",
    "nazev": "Kraj Vysočina",
-   "kratky": "Vysočina",
+   "kratky": "Vysočináři",
+   "kraj": "Vysočina",
    "barva": "#7CB342",
    "znak": "znaky/vysocina.webp"
   },
   {
    "klic": "jihomoravsky",
    "nazev": "Jihomoravský kraj",
-   "kratky": "Jihomoravský",
+   "kratky": "Jihomoravané",
+   "kraj": "Jihomoravský",
    "barva": "#B71C1C",
    "znak": "znaky/jihomoravsky.webp"
   },
   {
    "klic": "olomoucky",
    "nazev": "Olomoucký kraj",
-   "kratky": "Olomoucký",
+   "kratky": "Olomoučáci",
+   "kraj": "Olomoucký",
    "barva": "#00ACC1",
    "znak": "znaky/olomoucky.webp"
   },
   {
    "klic": "zlinsky",
    "nazev": "Zlínský kraj",
-   "kratky": "Zlínský",
+   "kratky": "Zlíňáci",
+   "kraj": "Zlínský",
    "barva": "#FFA000",
    "znak": "znaky/zlinsky.webp"
   },
   {
    "klic": "moravskoslezsky",
    "nazev": "Moravskoslezský kraj",
-   "kratky": "Moravskoslezský",
+   "kratky": "Moravskoslezané",
+   "kraj": "Moravskoslezský",
    "barva": "#546E7A",
    "znak": "znaky/moravskoslezsky.webp"
   }
