@@ -109,8 +109,9 @@ function spocitejPasma() {
       return (a * 2654435761 % 97) - (b * 2654435761 % 97) || a - b;
     });
     var n = idx.length;
-    var p4 = Math.max(2, Math.round(n * 0.02));
-    var p3 = p4 + Math.max(6, Math.round(n * 0.08));
+    // strop kvót: bez něj by obří druhy (vrcholy) zase přebily mapu
+    var p4 = Math.min(Math.max(2, Math.round(n * 0.02)), 36);
+    var p3 = p4 + Math.min(Math.max(6, Math.round(n * 0.08)), 150);
     var p2 = p3 + Math.round(n * 0.3);
     idx.forEach(function (fi, poradi) {
       body.features[fi].properties.p =
