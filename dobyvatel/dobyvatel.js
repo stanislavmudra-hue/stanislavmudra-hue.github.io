@@ -79,7 +79,7 @@ function barvaTymu() {
 
 function nahrajIkony() {
   return Promise.all(Object.keys(IKONA_DRUHU).map(function (kat) {
-    return fetch('data/ikonky/' + kat + '.webp?v=18')
+    return fetch('data/ikonky/' + kat + '.webp?v=19')
       .then(function (r) { return r.blob(); })
       .then(function (b) { return createImageBitmap(b); })
       .then(function (bmp) {
@@ -454,7 +454,7 @@ function pridejLegendu() {
     radek.style.cssText =
       'display:flex;align-items:center;gap:8px;margin:3px 0;';
     var im = document.createElement('img');
-    im.src = 'data/ikonky/' + kat + '.webp?v=18';
+    im.src = 'data/ikonky/' + kat + '.webp?v=19';
     im.width = 18;
     im.height = 18;
     im.alt = '';
