@@ -232,7 +232,7 @@ function nactiSnimek() {
 function start() {
   Promise.all([
     fetch('data/tymy.json').then(function (r) { return r.json(); }),
-    fetch('data/vlajky_oblasti.json').then(function (r) { return r.json(); }),
+    fetch('data/vlajky_oblasti.json?v=8').then(function (r) { return r.json(); }),
     fetch('data/kraje.json').then(function (r) { return r.json(); }),
     fetch('data/vlajky.json').then(function (r) { return r.json(); }),
   ]).then(function (vysledky) {
