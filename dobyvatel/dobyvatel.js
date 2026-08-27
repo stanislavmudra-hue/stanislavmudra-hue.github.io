@@ -557,6 +557,45 @@ try {
 var wikiKes = {};
 var wikiBeh = 0;
 
+/* Zeměpisná vata pryč, historie dopředu (výtka 29. 8.: „že je to
+   15 km od města moc zajímavé čtení není"). */
+function zajimavyUryvek(extract) {
+  var vety = extract.match(/[^.!?]+[.!?]+(\s|$)/g) || [extract];
+  var vata = /(se nach[aá]z[ií]|le[žz][ií]c?[ií]?\s|km\s|kilometr|severn[ěe]|ji[žz]n[ěe]|v[yý]chodn[ěe]|z[aá]padn[ěe]|v okres[eu]|okres\s|kraj[ie]?\s|nadmo[řr]sk|katastr[aá]ln|sou[čc][aá]st[ií]?\s|eviduje se|po[čc]et obyvatel)/i;
+  var zajimave = /(zalo[žz]|zm[ií]nk|stolet[ií]|kr[aá]l|c[ií]sa[řr]|postav|vystav[ěe]|p[řr]estav|vyho[řr]|zbo[řr]|zanik|pov[ěe]st|bitv|obl[eé]h|rod\s|p[aá]n[ůu]|got|renesan|barok|roku?\s\d|v roce)/i;
+  var dobre = [];
+  var ostatni = [];
+  vety.forEach(function (veta) {
+    var t = veta.trim();
+    if (!t) return;
+    if (zajimave.test(t)) dobre.push(t);
+    else if (!vata.test(t)) ostatni.push(t);
+  });
+  var vybrane = dobre.concat(ostatni);
+  if (!vybrane.length) vybrane = [vety[0].trim()];
+  var u = '';
+  for (var i = 0; i < vybrane.length && u.length < 240; i++) {
+    u += (u ? ' ' : '') + vybrane[i];
+  }
+  if (u.length > 320) u = u.slice(0, 317) + '…';
+  return u;
+}
+
+/* Kandidátní názvy článku: „zámek Molitorov" → i „Molitorov";
+   „Vyhlídka · Kostelec…" → i část za tečkou. Každý kandidát se
+   OVĚŘUJE souřadnicemi — špatný článek se nikdy neukáže. */
+function kandidatiWiki(n) {
+  var ven = [n];
+  var bez = n.replace(/^(z[řr][ií]cenina\s+hradu|z[řr][ií]cenina|hrad|z[aá]me[čc]ek|z[aá]mek|tvrz|rozhledna|vodop[aá]d|jeskyn[ěe]|vyhl[ií]dka|propast)\s+/i, '');
+  if (bez !== n && bez.length > 2) ven.push(bez);
+  var casti = n.split('·');
+  if (casti.length > 1) {
+    var za = casti[1].trim();
+    if (za.length > 2 && ven.indexOf(za) < 0) ven.push(za);
+  }
+  return ven.slice(0, 3);
+}
+
 function pridejWiki(box, v) {
   var muj = ++wikiBeh;
   var radek = document.createElement('div');
@@ -580,27 +619,35 @@ function pridejWiki(box, v) {
   }
   if (klic in wikiKes) { vykresli(wikiKes[klic]); return; }
   radek.textContent = 'Hledám popis…';
-  fetch('https://cs.wikipedia.org/api/rest_v1/page/summary/'
-      + encodeURIComponent(v.n.replace(/ /g, '_')))
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (d) {
-      var z = null;
-      // OVĚŘENÍ: článek musí být zeměpisně tam, kde vlajka
-      if (d && d.extract && d.coordinates
-          && Math.abs(d.coordinates.lat - v.lat) < 0.023
-          && Math.abs(d.coordinates.lon - v.lon) < 0.035) {
-        var u = d.extract;
-        if (u.length > 300) u = u.slice(0, 297) + '…';
-        z = { uryvek: u,
-              url: (d.content_urls && d.content_urls.desktop
-                    && d.content_urls.desktop.page)
-                || ('https://cs.wikipedia.org/wiki/'
-                    + encodeURIComponent(v.n)) };
-      }
-      wikiKes[klic] = z;
-      vykresli(z);
-    })
-    .catch(function () { wikiKes[klic] = null; vykresli(null); });
+  var kandidati = kandidatiWiki(v.n);
+  function zkus(i) {
+    if (i >= kandidati.length) {
+      wikiKes[klic] = null;
+      vykresli(null);
+      return;
+    }
+    fetch('https://cs.wikipedia.org/api/rest_v1/page/summary/'
+        + encodeURIComponent(kandidati[i].replace(/ /g, '_')))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        // OVĚŘENÍ: článek musí být zeměpisně tam, kde vlajka
+        if (d && d.extract && d.coordinates
+            && Math.abs(d.coordinates.lat - v.lat) < 0.023
+            && Math.abs(d.coordinates.lon - v.lon) < 0.035) {
+          var z = { uryvek: zajimavyUryvek(d.extract),
+                url: (d.content_urls && d.content_urls.desktop
+                      && d.content_urls.desktop.page)
+                  || ('https://cs.wikipedia.org/wiki/'
+                      + encodeURIComponent(kandidati[i])) };
+          wikiKes[klic] = z;
+          vykresli(z);
+        } else {
+          zkus(i + 1);
+        }
+      })
+      .catch(function () { zkus(i + 1); });
+  }
+  zkus(0);
 }
 
 /* ── VÝBĚR MÍST (maska soutěže) ── */
