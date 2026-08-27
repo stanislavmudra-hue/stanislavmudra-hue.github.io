@@ -273,9 +273,9 @@ function pridejVrstvy() {
     paint: {
       // výrazněji — hranice území se pletly s kresbou mapy (29. 8.)
       'line-color': ['case', ['==', ['get', 't'], '0'],
-        '#6d6350', barvaTymu()],
-      'line-opacity': ['case', ['==', ['get', 't'], '0'], 0.55, 0.95],
-      'line-width': ['case', ['==', ['get', 't'], '0'], 0.8, 1.7],
+        '#5f574a', barvaTymu()],
+      'line-opacity': ['case', ['==', ['get', 't'], '0'], 0.7, 0.95],
+      'line-width': ['case', ['==', ['get', 't'], '0'], 1.1, 2.0],
     },
   });
   // zvýraznění kliknuté oblasti (přání 27. 8.) — filtr plní klik,
@@ -417,6 +417,18 @@ function pridejVrstvy() {
     if (!box) return;
     box.style.display = '';
     box.textContent = '';
+    // bliknutí, ať si karty nejde nevšimnout (výtka 29. 8.)
+    box.classList.remove('blik');
+    void box.offsetWidth;
+    box.classList.add('blik');
+    var stitekV = document.createElement('div');
+    stitekV.style.cssText = 'font-size:.72rem;font-weight:800;'
+      + 'letter-spacing:.8px;color:#8a5a20;text-transform:uppercase;';
+    stitekV.textContent = 'Vybrané místo';
+    box.appendChild(stitekV);
+    if (window.matchMedia('(max-width: 820px)').matches) {
+      try { box.scrollIntoView({ block: 'nearest' }); } catch (eS) { }
+    }
     var horni = document.createElement('div');
     horni.style.cssText =
       'display:flex;align-items:baseline;gap:8px;';
@@ -2335,7 +2347,9 @@ function start() {
           paint: {
             'hillshade-exaggeration': 0.62,
             'hillshade-shadow-color': '#7d705e',
-            'hillshade-highlight-color': '#fffdf6',
+            // odlesk = barva papíru: vady v DEM (mosty, zářezy) se
+            // s bílou vysvěcovaly jako „díry v mapě" (u Poříčan)
+            'hillshade-highlight-color': '#f5f1e4',
           },
         }, {
           id: 'voda', type: 'fill', source: 'omt',
@@ -2365,11 +2379,13 @@ function start() {
             'text-field': ['coalesce', ['get', 'name:cs'],
               ['get', 'name']],
             'text-font': ['Noto Sans Bold'],
+            // větší a barevně odlišená od jmen míst (29. 8.)
             'text-size': ['match', ['get', 'class'],
-              'city', 14, 12],
+              'city', 16.5, 13.5],
+            'text-padding': 6,
           },
-          paint: { 'text-color': '#8a8271',
-            'text-halo-color': '#f2efe6', 'text-halo-width': 1.4 },
+          paint: { 'text-color': '#5d7285',
+            'text-halo-color': '#f2efe6', 'text-halo-width': 1.6 },
         }, {
           id: 'cesty', type: 'line', source: 'omt',
           'source-layer': 'transportation', minzoom: 12,
