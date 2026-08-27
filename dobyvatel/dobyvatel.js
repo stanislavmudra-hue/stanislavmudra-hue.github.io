@@ -292,6 +292,29 @@ function pridejVrstvy() {
   // přiblížení jméno vlajky = jméno oblasti
   mapa.addSource('body', { type: 'geojson', data: body });
 
+  // ⚠️ JMÉNA MUSÍ BÝT POD IKONAMI: vrstva výš se rozmisťuje
+  // DŘÍV — když byla jména nahoře (v34–v39), zabrala místo a ikony
+  // z mapy ZMIZELY (změřeno: z12,4 → 8 jmen, 0 ikon)
+  mapa.addLayer({
+    id: 'vlajky-jmena', type: 'symbol', source: 'body', minzoom: 10.2,
+    layout: {
+      'text-field': ['get', 'n'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': ['interpolate', ['linear'], ['zoom'],
+        10, 12.5, 13, 14.5, 17, 24],
+      'text-offset': ['interpolate', ['exponential', 1.5], ['zoom'],
+        10, ['literal', [0, 0.9]], 13, ['literal', [0, 1.7]],
+        17, ['literal', [0, 7.5]]],
+      'text-anchor': 'top',
+      'text-max-width': 9,
+    },
+    paint: {
+      'text-color': '#4a443a',
+      'text-halo-color': '#f2efe6',
+      'text-halo-width': 1.3,
+    },
+  });
+
   // malované značky z neherní mapy appky; postupné odkrývání řídí
   // pásmo p (kvóty v každém druhu — viz spocitejPasma) a hustotu
   // v pásmu kolizní polštář
@@ -375,29 +398,7 @@ function pridejVrstvy() {
     },
     paint: { 'icon-opacity': 0.4 },
   });
-  // jména míst: drží si místo mezi sebou (žádné překryvy), ale
-  // kreslí se POD ikonami — ikony mají při rozmisťování přednost
-  mapa.addLayer({
-    id: 'vlajky-jmena', type: 'symbol', source: 'body', minzoom: 10.2,
-    layout: {
-      'text-field': ['get', 'n'],
-      'text-font': ['Noto Sans Regular'],
-      // větší a se zoomem rostou (výtka „texty jsou stále malé")
-      'text-size': ['interpolate', ['linear'], ['zoom'],
-        10, 12.5, 13, 14.5, 17, 24],
-      // popisek ustupuje s růstem bublin, ať do nich neleze
-      'text-offset': ['interpolate', ['exponential', 1.5], ['zoom'],
-        10, ['literal', [0, 0.9]], 13, ['literal', [0, 1.7]],
-        17, ['literal', [0, 7.5]]],
-      'text-anchor': 'top',
-      'text-max-width': 9,
-    },
-    paint: {
-      'text-color': '#4a443a',
-      'text-halo-color': '#f2efe6',
-      'text-halo-width': 1.3,
-    },
-  });
+
   // klik kamkoli do území → bublina se jménem, hodnotou a držitelem
   function naKlikOblasti(e) {
     var f = e.features && e.features[0];
@@ -410,15 +411,34 @@ function pridejVrstvy() {
     var v = vlajky[f.id];
     if (!v) return;
     var drzitel = (f.properties && f.properties.t) || '0';
-    var obal = document.createElement('div');
+    // INFO BOKEM (přání 29. 8.): karta nad Skóre — nic nepřekrývá
+    // mapu a mapa pod kurzorem dál žije
+    var box = el('mistoInfo');
+    if (!box) return;
+    box.style.display = '';
+    box.textContent = '';
+    var horni = document.createElement('div');
+    horni.style.cssText =
+      'display:flex;align-items:baseline;gap:8px;';
     var jm = document.createElement('strong');
     jm.textContent = v.n;
-    obal.appendChild(jm);
+    horni.appendChild(jm);
+    var krizek = document.createElement('button');
+    krizek.textContent = '×';
+    krizek.style.cssText = 'margin-left:auto;padding:0 8px;';
+    krizek.onclick = function () {
+      box.style.display = 'none';
+      ['zvyraz-vypln', 'zvyraz-cara'].forEach(function (id) {
+        try { mapa.setFilter(id, ['==', ['id'], -1]); } catch (er) { }
+      });
+    };
+    horni.appendChild(krizek);
+    box.appendChild(horni);
     function radekI(text) {
-      obal.appendChild(document.createElement('br'));
-      obal.appendChild(document.createTextNode(text));
+      var p2 = document.createElement('div');
+      p2.textContent = text;
+      box.appendChild(p2);
     }
-    // krátké info o místě (přání 28. 8.): druh, hodnota, okres
     radekI((POPISKY_DRUHU[v.k] || 'Místo') + ' · ' + v.h + ' b.');
     var ok = (v.o !== undefined) ? okresyLegenda[v.o] : null;
     if (ok) {
@@ -432,16 +452,6 @@ function pridejVrstvy() {
         : 'Drží ' + jmenoTymu(drzitel) + '.');
     ['zvyraz-vypln', 'zvyraz-cara'].forEach(function (id) {
       try { mapa.setFilter(id, ['==', ['id'], f.id]); } catch (er) { }
-    });
-    var bublina = new maplibregl.Popup(
-        { closeButton: false, maxWidth: '260px' })
-      .setLngLat([v.lon, v.lat])
-      .setDOMContent(obal)
-      .addTo(mapa);
-    bublina.on('close', function () {
-      ['zvyraz-vypln', 'zvyraz-cara'].forEach(function (id) {
-        try { mapa.setFilter(id, ['==', ['id'], -1]); } catch (er) { }
-      });
     });
   }
   aplikujFiltrDruhu();
@@ -2375,7 +2385,15 @@ function start() {
       // jen ČR — mapa je jen pro republiku (přání 27. 8.)
       maxBounds: [[11.6, 48.2], [19.3, 51.4]],
       minZoom: 6,
+      dragRotate: false,   // rotace na webu zrušena (přání 29. 8.)
+      pitchWithRotate: false,
     });
+    try {
+      mapa.touchZoomRotate.disableRotation();
+      if (mapa.keyboard && mapa.keyboard.disableRotation) {
+        mapa.keyboard.disableRotation();
+      }
+    } catch (eR) { }
     mapa.addControl(new maplibregl.NavigationControl({
       showCompass: false }), 'top-right');
     mapa.addControl(new maplibregl.FullscreenControl(), 'top-right');
