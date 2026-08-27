@@ -67,7 +67,7 @@ function prepniPodzalozku(p) {
     .forEach(function (b) {
       b.classList.toggle('aktivni', b.getAttribute('data-p') === p);
     });
-  ['prehled', 'sprava', 'zalozit'].forEach(function (x) {
+  ['prehled', 'zalozit'].forEach(function (x) {
     var e2 = el('p-' + x);
     if (e2) e2.classList.toggle('aktivni', x === p);
   });
@@ -1187,7 +1187,7 @@ function mojeSouteze() {
              || jmenoTymu(p.c.tym)) });
     });
     var spravuju = v[0].map(function (s2) {
-      return { sid: s2._id,
+      return { sid: s2._id, doc: s2,
         text: (s2.nazev || s2._id) + ' ('
           + (s2.stav === 'bezi' ? 'běží'
              : s2.stav === 'konec' ? 'skončila' : 'příprava')
@@ -1225,7 +1225,38 @@ function mojeSouteze() {
       return;
     }
     sekce('Hraju', hraju, false);
-    sekce('Spravuji', spravuju, true);
+    if (spravuju.length) {
+      var hS = document.createElement('p');
+      hS.style.cssText = 'margin:8px 0 2px;font-weight:700;';
+      hS.textContent = 'Spravuji';
+      box.appendChild(hS);
+      spravuju.forEach(function (r) {
+        var p = document.createElement('p');
+        p.style.margin = '3px 0 3px 12px';
+        var a = document.createElement('a');
+        a.href = '?s=' + r.sid;
+        a.textContent = r.text;
+        p.appendChild(a);
+        p.appendChild(document.createTextNode(' '));
+        var tl = document.createElement('button');
+        tl.textContent = 'Spravovat';
+        var rozbal = document.createElement('div');
+        rozbal.style.cssText = 'display:none;margin:6px 0 10px 12px;'
+          + 'padding:10px 12px;border:1px solid var(--linka);'
+          + 'border-radius:10px;background:#faf7ee;';
+        tl.onclick = function () {
+          var otevrit = rozbal.style.display === 'none';
+          if (otevrit && !rozbal.hasChildNodes()) {
+            renderSprava(r.sid, r.doc, rozbal);
+          }
+          rozbal.style.display = otevrit ? 'block' : 'none';
+          tl.textContent = otevrit ? 'Skrýt správu' : 'Spravovat';
+        };
+        p.appendChild(tl);
+        box.appendChild(p);
+        box.appendChild(rozbal);
+      });
+    }
   }).catch(function () {
     box.textContent = 'Soutěže se nepodařilo načíst — zkuste to '
       + 'za chvíli.';
@@ -1298,6 +1329,24 @@ function stavSouteze() {
         aplikujMasku(maskaAktivni);
       }
       naplnVolbuSouteze();
+      var relaceA = nactiRelaci();
+      if (relaceA && relaceA.mail === 'stanislavmudra@gmail.com'
+          && vlastniSoutez() && d.verejna && d.schvaleno !== true) {
+        var boxV = el('soutezVolba');
+        if (boxV) {
+          var schval = document.createElement('button');
+          schval.textContent = 'Schválit zveřejnění (admin)';
+          schval.onclick = function () {
+            schval.disabled = true;
+            zapisDoc('souteze/' + SOUTEZ, { schvaleno: true })
+              .then(function () {
+                schval.textContent = 'Schváleno ✓';
+              })
+              .catch(function () { schval.disabled = false; });
+          };
+          boxV.appendChild(schval);
+        }
+      }
       vykresliSpravu();
       vykresliPridani();
       vypisSkoreZnovu();
@@ -1687,59 +1736,50 @@ function vykresliZalozeni() {
   box.appendChild(tl);
 }
 
-/* ── PANEL SPRÁVCE (zakladatele) ── */
+/* Po prokliku „Vybrat místa" ze správy (?editor=1) se editor na
+   mapě té soutěže otevře sám. */
 function vykresliSpravu() {
-  var karta = el('sprava');
-  var box = el('spravaObsah');
-  if (!karta || !box || !soutezDoc) return;
+  if (!soutezDoc) return;
   var relace = nactiRelaci();
-  var jsemSpravce = relace && relace.uid === soutezDoc.zakladatel;
-  // admin Okolníku schvaluje zveřejnění cizích soutěží
-  var jsemAdmin = relace
-    && relace.mail === 'stanislavmudra@gmail.com';
-  if (!jsemSpravce && !(jsemAdmin && vlastniSoutez())) return;
-  karta.style.display = '';
-  var zal = el('zalozkaSprava');
-  if (zal) zal.style.display = '';
-  box.textContent = '';
-
-  if (jsemAdmin && vlastniSoutez() && soutezDoc.verejna
-      && soutezDoc.schvaleno !== true) {
-    var schvalR = document.createElement('p');
-    var schval = document.createElement('button');
-    schval.textContent = 'Schválit zveřejnění (admin)';
-    schval.onclick = function () {
-      schval.disabled = true;
-      zapisDoc('souteze/' + SOUTEZ, { schvaleno: true })
-        .then(function () { schval.textContent = 'Schváleno ✓'; })
-        .catch(function () { schval.disabled = false; });
-    };
-    schvalR.appendChild(schval);
-    box.appendChild(schvalR);
-    if (!jsemSpravce) return;
+  if (!relace || relace.uid !== soutezDoc.zakladatel) return;
+  if (new URLSearchParams(location.search).get('editor') === '1'
+      && !rezimVyberu) {
+    setTimeout(function () {
+      if (!rezimVyberu) zapniVyberMist();
+    }, (mapa && mapa.loaded && mapa.loaded()) ? 300 : 1400);
   }
+}
+
+/* ── SPRÁVA SOUTĚŽE — kreslí se PŘÍMO u soutěže v Přehledu (výtka
+   28. 8.: „ani nevím, co spravuji") ── */
+function renderSprava(sid, d, box) {
+  var relace = nactiRelaci();
+  var jsemSpravce = relace && relace.uid === d.zakladatel;
+  if (!jsemSpravce) return;
+  box.textContent = '';
+  var jeVlastniS = sid !== 'cesko-2026';
 
   // stav soutěže
   var stavR = document.createElement('p');
-  stavR.textContent = 'Stav: ' + (soutezDoc.stav || '?') + ' ';
-  if (soutezDoc.stav !== 'bezi') {
+  stavR.textContent = 'Stav: ' + (d.stav || '?') + ' ';
+  if (d.stav !== 'bezi') {
     var spust = document.createElement('button');
     spust.textContent = 'Spustit soutěž';
     spust.onclick = function () {
       spust.disabled = true;
-      zapisDoc('souteze/' + SOUTEZ, { stav: 'bezi' })
+      zapisDoc('souteze/' + sid, { stav: 'bezi' })
         .then(function () { location.reload(); })
         .catch(function () { spust.disabled = false; });
     };
     stavR.appendChild(spust);
   }
-  if (soutezDoc.stav === 'bezi') {
+  if (d.stav === 'bezi') {
     var konec = document.createElement('button');
     konec.textContent = 'Ukončit soutěž';
     konec.onclick = function () {
       if (!confirm('Opravdu ukončit? Mapa zamrzne v posledním '
           + 'stavu.')) return;
-      zapisDoc('souteze/' + SOUTEZ, { stav: 'konec' })
+      zapisDoc('souteze/' + sid, { stav: 'konec' })
         .then(function () { location.reload(); });
     };
     stavR.appendChild(konec);
@@ -1754,17 +1794,17 @@ function vykresliSpravu() {
   dny.type = 'number';
   dny.min = 0;
   dny.max = 365;
-  dny.value = ((soutezDoc.pravidla || {}).zmenaTymuDni) || 30;
+  dny.value = ((d.pravidla || {}).zmenaTymuDni) || 30;
   dny.style.cssText = 'width:64px;margin:0 4px;';
   lhutaR.appendChild(dny);
   lhutaR.appendChild(document.createTextNode(' dní '));
   var ulozL = document.createElement('button');
   ulozL.textContent = 'Uložit';
   ulozL.onclick = function () {
-    var prav = soutezDoc.pravidla || {};
+    var prav = d.pravidla || {};
     prav.zmenaTymuDni = parseInt(dny.value, 10) || 30;
     ulozL.disabled = true;
-    zapisDoc('souteze/' + SOUTEZ, { pravidla: prav })
+    zapisDoc('souteze/' + sid, { pravidla: prav })
       .then(function () { ulozL.disabled = false; ulozL.textContent = 'Uloženo ✓'; })
       .catch(function () { ulozL.disabled = false; });
   };
@@ -1772,13 +1812,20 @@ function vykresliSpravu() {
   box.appendChild(lhutaR);
 
   // výběr míst na mapě (jen vlastní soutěže)
-  if (vlastniSoutez()) {
+  if (jeVlastniS) {
     var mistaR = document.createElement('p');
     var mista = document.createElement('button');
-    mista.textContent = soutezDoc.maska
+    mista.textContent = (d.maska || (d.vlastni && d.vlastni.length))
       ? 'Upravit výběr míst na mapě'
       : 'Vybrat místa na mapě (teď hrají všechna)';
-    mista.onclick = function () { zapniVyberMist(); };
+    mista.onclick = function () {
+      if (sid === SOUTEZ) {
+        zapniVyberMist();
+        prepniZalozku('mapa');
+      } else {
+        location.href = '/dobyvatel/?s=' + sid + '&editor=1';
+      }
+    };
     mistaR.appendChild(mista);
     box.appendChild(mistaR);
   } else {
@@ -1788,10 +1835,10 @@ function vykresliSpravu() {
       + 'soutěžím — republikové kolo hraje o všechna místa.';
     box.appendChild(poznC);
   }
-  if (vlastniSoutez() && soutezDoc.stav === 'konec') {
+  if (jeVlastniS && d.stav === 'konec') {
     var uklid = document.createElement('p');
     uklid.style.color = '#8a5a20';
-    var konecP = String((soutezDoc.pravidla || {}).konec || '');
+    var konecP = String((d.pravidla || {}).konec || '');
     var smazatOd = konecP
       ? new Date(new Date(konecP).getTime() + 180 * 86400000)
       : null;
@@ -1803,7 +1850,7 @@ function vykresliSpravu() {
   }
 
   // smazání (jen mimo běh) — uvolní slot v registru zalozene
-  if (vlastniSoutez() && soutezDoc.stav !== 'bezi') {
+  if (jeVlastniS && d.stav !== 'bezi') {
     var smazR = document.createElement('p');
     var smaz = document.createElement('button');
     smaz.textContent = 'Smazat soutěž';
@@ -1813,7 +1860,7 @@ function vykresliSpravu() {
       }
       smaz.disabled = true;
       platnyToken().then(function (token) {
-        return fetch(ZAKLAD_DOK + 'souteze/' + SOUTEZ + '?key='
+        return fetch(ZAKLAD_DOK + 'souteze/' + sid + '?key='
             + KLIC, { method: 'DELETE',
               headers: { Authorization: 'Bearer ' + token } })
           .then(function () {
@@ -1825,7 +1872,7 @@ function vykresliSpravu() {
             if (!reg) return null;
             return zapisDoc('zalozene/' + relace.uid, {
               sids: (reg.sids || []).filter(function (x) {
-                return x !== SOUTEZ;
+                return x !== sid;
               }),
             });
           });
@@ -1838,12 +1885,12 @@ function vykresliSpravu() {
   }
 
   // členové: změna týmu + předání správy
-  var klice = (soutezDoc.tymyPoradi && soutezDoc.tymyPoradi.length)
-    ? soutezDoc.tymyPoradi
+  var klice = (d.tymyPoradi && d.tymyPoradi.length)
+    ? d.tymyPoradi
     : tymy.map(function (t) { return t.klic; });
   platnyToken().then(function (token) {
     return Promise.all([
-      dotaz('clenstvi', 'soutez', SOUTEZ, token),
+      dotaz('clenstvi', 'soutez', sid, token),
       fetch(ZAKLAD_DOK + 'zebricek?pageSize=300&key=' + KLIC)
         .then(function (r) { return r.json(); })
         .catch(function () { return {}; }),
@@ -1887,7 +1934,7 @@ function vykresliSpravu() {
       uloz.onclick = function () {
         uloz.disabled = true;
         zapisDoc('clenstvi/' + c._id, {
-          soutez: SOUTEZ,
+          soutez: sid,
           tym: vyber.value,
           od: new Date(),
           tymZmena: new Date(),
@@ -1903,7 +1950,7 @@ function vykresliSpravu() {
           if (!confirm('Předat správu soutěže hráči '
               + (jmena[uid] || uid.slice(0, 8)) + '? Tobě zůstane '
               + 'jen role hráče.')) return;
-          zapisDoc('souteze/' + SOUTEZ, { zakladatel: uid })
+          zapisDoc('souteze/' + sid, { zakladatel: uid })
             .then(function () { location.reload(); });
         };
         r.appendChild(predej);
