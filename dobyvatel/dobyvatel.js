@@ -495,6 +495,15 @@ function pridejVrstvy() {
   mapa.on('click', 'uzemi', naKlikOblasti);
   mapa.on('click', 'vlastni-uzemi', naKlikOblasti);
   aplikujFiltrDruhu();
+  // zapamatované trasy z minula
+  try {
+    if (localStorage.getItem('dobyvatelTrasy') === 'ano'
+        && !trasyStav.zapnuto) {
+      trasyStav.zapnuto = true;
+      obnovTlacitkoTras();
+      nactiTrasy();
+    }
+  } catch (e) { }
   // v editoru jmenovka i při najetí na BUŇKU (přání 28. 8.)
   mapa.on('mousemove', 'uzemi', function (e) {
     if (!rezimVyberu) return;
@@ -557,6 +566,76 @@ try {
 var wikiKes = {};
 var wikiBeh = 0;
 
+/* ── TURISTICKÉ TRASY KČT (30. 8.) — líně načítaná vrstva ── */
+var trasyStav = { nacteno: false, zapnuto: false, nacita: false };
+var tlacitkoTras = null;
+
+function obnovTlacitkoTras() {
+  if (!tlacitkoTras) return;
+  tlacitkoTras.style.background = trasyStav.zapnuto
+    ? '#efe9da' : '#fffdf6';
+  tlacitkoTras.style.borderColor = trasyStav.zapnuto
+    ? '#4e6e58' : '#b9b2a0';
+}
+
+function prepniTrasy() {
+  if (mapaMrtva) return;
+  trasyStav.zapnuto = !trasyStav.zapnuto;
+  obnovTlacitkoTras();
+  try {
+    localStorage.setItem('dobyvatelTrasy',
+        trasyStav.zapnuto ? 'ano' : 'ne');
+  } catch (e) { }
+  if (!trasyStav.nacteno) { nactiTrasy(); return; }
+  ['r', 'b', 'g', 'y'].forEach(function (k) {
+    try {
+      mapa.setLayoutProperty('trasa-' + k, 'visibility',
+          trasyStav.zapnuto ? 'visible' : 'none');
+    } catch (e) { }
+  });
+}
+
+function nactiTrasy() {
+  if (trasyStav.nacita) return;
+  trasyStav.nacita = true;
+  if (tlacitkoTras) tlacitkoTras.textContent = 'Trasy…';
+  fetch('data/trasy.json?v=48')
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      trasyStav.nacteno = true;
+      trasyStav.nacita = false;
+      if (tlacitkoTras) tlacitkoTras.textContent = 'Trasy';
+      var barvy = { r: '#c62f2f', b: '#1668b4',
+                    g: '#2c8f43', y: '#c9a50e' };
+      Object.keys(barvy).forEach(function (k) {
+        var fc = { type: 'FeatureCollection',
+          features: (d[k] || []).map(function (u) {
+            var body2 = [];
+            for (var i = 0; i < u.length - 1; i += 2) {
+              body2.push([u[i + 1] / 1e5, u[i] / 1e5]);
+            }
+            return { type: 'Feature',
+              geometry: { type: 'LineString', coordinates: body2 } };
+          }) };
+        mapa.addSource('trasa-' + k, { type: 'geojson', data: fc });
+        mapa.addLayer({ id: 'trasa-' + k, type: 'line',
+          source: 'trasa-' + k, minzoom: 9,
+          layout: { visibility: trasyStav.zapnuto
+              ? 'visible' : 'none', 'line-cap': 'round' },
+          paint: { 'line-color': barvy[k],
+            'line-width': ['interpolate', ['linear'], ['zoom'],
+              9, 1, 13, 2.2, 16, 3.4],
+            'line-opacity': 0.8 } }, 'vlajky-jmena');
+      });
+    })
+    .catch(function () {
+      trasyStav.nacita = false;
+      trasyStav.zapnuto = false;
+      obnovTlacitkoTras();
+      if (tlacitkoTras) tlacitkoTras.textContent = 'Trasy';
+    });
+}
+
 /* Zeměpisná vata pryč, historie dopředu (výtka 29. 8.: „že je to
    15 km od města moc zajímavé čtení není"). */
 function zajimavyUryvek(extract) {
@@ -614,16 +693,54 @@ function pridejWiki(box, v) {
     a.href = z.url;
     a.target = '_blank';
     a.rel = 'noopener';
-    a.textContent = 'Wikipedie →';
+    a.textContent = (z.titul ? z.titul + ' — Wikipedie'
+                             : 'Wikipedie') + ' →';
     radek.appendChild(a);
   }
   if (klic in wikiKes) { vykresli(wikiKes[klic]); return; }
   radek.textContent = 'Hledám popis…';
   var kandidati = kandidatiWiki(v.n);
+  // poslední záchrana: NEJBLIŽŠÍ článek podle souřadnic (350 m) —
+  // vzdálenost je ověření sama o sobě (přání 30. 8.: „dost obrázků
+  // stále nemá žádnou informaci")
+  function geoHledej() {
+    fetch('https://cs.wikipedia.org/w/api.php?action=query'
+        + '&list=geosearch&gscoord=' + v.lat + '%7C' + v.lon
+        + '&gsradius=350&gslimit=5&format=json&origin=*')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var g = ((d.query || {}).geosearch || []);
+        if (!g.length) {
+          wikiKes[klic] = null;
+          vykresli(null);
+          return;
+        }
+        var titul = g[0].title;
+        return fetch(
+            'https://cs.wikipedia.org/api/rest_v1/page/summary/'
+            + encodeURIComponent(titul.replace(/ /g, '_')))
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (s2) {
+            if (s2 && s2.extract) {
+              var z = { uryvek: zajimavyUryvek(s2.extract),
+                titul: titul,
+                url: (s2.content_urls && s2.content_urls.desktop
+                      && s2.content_urls.desktop.page)
+                  || ('https://cs.wikipedia.org/wiki/'
+                      + encodeURIComponent(titul)) };
+              wikiKes[klic] = z;
+              vykresli(z);
+            } else {
+              wikiKes[klic] = null;
+              vykresli(null);
+            }
+          });
+      })
+      .catch(function () { wikiKes[klic] = null; vykresli(null); });
+  }
   function zkus(i) {
     if (i >= kandidati.length) {
-      wikiKes[klic] = null;
-      vykresli(null);
+      geoHledej();
       return;
     }
     fetch('https://cs.wikipedia.org/api/rest_v1/page/summary/'
@@ -2376,6 +2493,17 @@ function pridejLegendu() {
   };
   obal.style.position = 'relative';
   obal.appendChild(tl);
+  // přepínač turistických tras vedle Legendy (přání 30. 8.)
+  tlacitkoTras = document.createElement('button');
+  tlacitkoTras.textContent = 'Trasy';
+  tlacitkoTras.title = 'Turistické značky KČT';
+  tlacitkoTras.style.cssText = 'position:absolute;left:88px;top:10px;'
+    + 'z-index:5;padding:5px 10px;border-radius:8px;border:1px solid '
+    + '#b9b2a0;background:#fffdf6;cursor:pointer;'
+    + '-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);'
+    + 'font:600 12.5px sans-serif;';
+  tlacitkoTras.onclick = prepniTrasy;
+  obal.appendChild(tlacitkoTras);
   obal.appendChild(panel);
 }
 
