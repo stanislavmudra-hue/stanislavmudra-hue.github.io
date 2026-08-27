@@ -171,9 +171,15 @@ function nahrajIkony() {
    do dálkového pásma (řazeno hodnotou, remíza deterministickým
    promícháním), takže zdaleka není vidět „skoro pořád hrady", ale
    výběr napříč druhy. */
-function spocitejPasma() {
+function spocitejPasma(pole) {
+  // kvóty se počítají JEN z hrajících míst (maska) — malá soutěž
+  // musí mít své obrázky vidět už zdaleka (přání 27. 8.)
   var dleDruhu = {};
   vlajky.forEach(function (v, i) {
+    if (pole && !pole[i]) {
+      body.features[i].properties.p = 1;
+      return;
+    }
     (dleDruhu[v.k] = dleDruhu[v.k] || []).push(i);
   });
   Object.keys(dleDruhu).forEach(function (k) {
@@ -402,6 +408,7 @@ function aplikujMasku(pole) {
     body.features[i].properties.akt = a;
     oblasti.features[i].properties.akt = a;
   }
+  spocitejPasma(pole);
   if (mapa) {
     var z1 = mapa.getSource('body');
     var z2 = mapa.getSource('oblasti');
@@ -436,9 +443,12 @@ function obnovPocetVyberu() {
 function zapniVyberMist() {
   prepniZalozku('mapa');
   rezimVyberu = true;
+  // NOVÝ výběr začíná PRÁZDNÝ a klik místa PŘIDÁVÁ (výtka 27. 8.:
+  // začínalo se vším a klik vypínal — uživatel si „vybraná" místa
+  // omylem vyřadil); uložený výběr se načítá, jak je
   maskaRozpracovana = maskaAktivni
     ? maskaAktivni.slice()
-    : vlajky.map(function () { return true; });
+    : vlajky.map(function () { return false; });
   vyberDruhu = {};
   Object.keys(POPISKY_DRUHU).forEach(function (k) {
     vyberDruhu[k] = true;
@@ -455,8 +465,9 @@ function zapniVyberMist() {
   panelVyberu.appendChild(nadpis);
   var pozn = document.createElement('p');
   pozn.style.cssText = 'margin:0 0 6px;color:#6b6455;';
-  pozn.textContent = 'Klik přepíná oblast. Zaškrtnutí říká, kterých '
-    + 'druhů se klik a hromadná tlačítka týkají.';
+  pozn.textContent = 'Klikem PŘIDÁŠ místo do soutěže (další klik '
+    + 'ho zase vyřadí). Barevná místa hrají, ztlumená ne. Zaškrtnutí '
+    + 'říká, kterých druhů se klik a hromadná tlačítka týkají.';
   panelVyberu.appendChild(pozn);
   Object.keys(POPISKY_DRUHU).forEach(function (k) {
     var radek = document.createElement('label');
@@ -488,11 +499,25 @@ function zapniVyberMist() {
       t.onclick = function () { hromadne(par[1]); };
       radekTl.appendChild(t);
     });
+  var obrat = document.createElement('button');
+  obrat.textContent = 'Obrátit výběr';
+  obrat.onclick = function () {
+    for (var i = 0; i < maskaRozpracovana.length; i++) {
+      maskaRozpracovana[i] = !maskaRozpracovana[i];
+    }
+    aplikujMasku(maskaRozpracovana);
+    obnovPocetVyberu();
+  };
+  radekTl.appendChild(obrat);
   var uloz = document.createElement('button');
   uloz.id = 'vyberUlozit';
   uloz.style.fontWeight = '700';
   uloz.onclick = function () {
     var vsechna = maskaRozpracovana.every(function (x) { return x; });
+    if (!maskaRozpracovana.some(function (x) { return x; })) {
+      alert('Vyber aspoň jedno místo — soutěž bez míst nejde hrát.');
+      return;
+    }
     uloz.disabled = true;
     zapisDoc('souteze/' + SOUTEZ,
         { maska: vsechna ? '' : zabalMasku(maskaRozpracovana) })
