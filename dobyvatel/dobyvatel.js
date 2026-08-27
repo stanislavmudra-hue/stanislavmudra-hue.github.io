@@ -401,6 +401,57 @@ function pridejVrstvy() {
     paint: { 'icon-opacity': 0.4 },
   });
 
+  // karta informativního místa (bez dobývání)
+  function ukazInfoMisto(f) {
+    var p = f.properties || {};
+    var box = el('mistoInfo');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'mistoInfo';
+      box.className = 'legenda';
+      box.style.cssText = 'position:absolute;left:10px;bottom:36px;'
+        + 'z-index:6;max-width:250px;background:rgba(250,247,238,.96);'
+        + 'border:1px solid #b9b2a0;border-left:4px solid #C99B3F;'
+        + 'border-radius:10px;padding:8px 10px;'
+        + 'box-shadow:0 3px 10px rgba(0,0,0,.18);';
+      el('mapa').appendChild(box);
+    }
+    box.style.display = '';
+    box.textContent = '';
+    box.classList.remove('blik');
+    void box.offsetWidth;
+    box.classList.add('blik');
+    var stitekV = document.createElement('div');
+    stitekV.style.cssText = 'font-size:.72rem;font-weight:800;'
+      + 'letter-spacing:.8px;color:#5f6f66;text-transform:uppercase;';
+    stitekV.textContent = 'Informativní místo';
+    box.appendChild(stitekV);
+    var horni = document.createElement('div');
+    horni.style.cssText = 'display:flex;align-items:baseline;gap:8px;';
+    var jm = document.createElement('strong');
+    jm.textContent = p.n || '';
+    horni.appendChild(jm);
+    var krizek = document.createElement('button');
+    krizek.textContent = '×';
+    krizek.style.cssText = 'margin-left:auto;padding:0 8px;';
+    krizek.onclick = function () { box.style.display = 'none'; };
+    horni.appendChild(krizek);
+    box.appendChild(horni);
+    var druh = document.createElement('div');
+    druh.textContent = (POPISKY_DRUHU[p.k] || 'Místo')
+      + ' · nedobývá se';
+    box.appendChild(druh);
+    var pozn = document.createElement('div');
+    pozn.style.cssText = 'font-size:.82rem;color:#6a6152;';
+    pozn.textContent = 'Přítomnost se počítá jen u hlavního '
+      + 'bodu oblasti.';
+    box.appendChild(pozn);
+    pridejWiki(box, { n: p.n, lat: +p.lat, lon: +p.lon });
+    ['zvyraz-vypln', 'zvyraz-cara'].forEach(function (id) {
+      try { mapa.setFilter(id, ['==', ['id'], -1]); } catch (er) { }
+    });
+  }
+
   // klik kamkoli do území → bublina se jménem, hodnotou a držitelem
   function naKlikOblasti(e) {
     var f = e.features && e.features[0];
@@ -417,8 +468,16 @@ function pridejVrstvy() {
       var ik = mapa.queryRenderedFeatures(
         [[pb.x - 16, pb.y - 16], [pb.x + 16, pb.y + 16]],
         { layers: ['vlajky-ik4', 'vlajky-ik3', 'vlajky-ik2',
-                   'vlajky-ik1', 'vlajky-ik-vse', 'orientacni']
+                   'vlajky-ik1', 'vlajky-ik-vse', 'orientacni',
+                   'info-mista']
             .filter(function (id) { return mapa.getLayer(id); }) });
+      // informativní místo vyhrává, jen když poblíž není vlajka
+      // (kreslí se pode vším, takže vlajka je v poli první)
+      if (ik.length && ik[0].layer
+          && ik[0].layer.id === 'info-mista') {
+        ukazInfoMisto(ik[0]);
+        return;
+      }
       if (ik.length && ik[0].id !== undefined) f = ik[0];
     } catch (eq) { }
     var v = vlajky[f.id];
@@ -504,6 +563,7 @@ function pridejVrstvy() {
       nactiTrasy();
     }
   } catch (e) { }
+  nactiMistaInfo();
   // v editoru jmenovka i při najetí na BUŇKU (přání 28. 8.)
   mapa.on('mousemove', 'uzemi', function (e) {
     if (!rezimVyberu) return;
@@ -568,6 +628,7 @@ var wikiBeh = 0;
 
 /* ── TURISTICKÉ TRASY KČT (30. 8.) — líně načítaná vrstva ── */
 var trasyStav = { nacteno: false, zapnuto: false, nacita: false };
+var trasyVrstvy = [];
 var tlacitkoTras = null;
 
 function obnovTlacitkoTras() {
@@ -587,9 +648,9 @@ function prepniTrasy() {
         trasyStav.zapnuto ? 'ano' : 'ne');
   } catch (e) { }
   if (!trasyStav.nacteno) { nactiTrasy(); return; }
-  ['r', 'b', 'g', 'y'].forEach(function (k) {
+  trasyVrstvy.forEach(function (id) {
     try {
-      mapa.setLayoutProperty('trasa-' + k, 'visibility',
+      mapa.setLayoutProperty(id, 'visibility',
           trasyStav.zapnuto ? 'visible' : 'none');
     } catch (e) { }
   });
@@ -599,7 +660,7 @@ function nactiTrasy() {
   if (trasyStav.nacita) return;
   trasyStav.nacita = true;
   if (tlacitkoTras) tlacitkoTras.textContent = 'Trasy…';
-  fetch('data/trasy.json?v=48')
+  fetch('data/trasy.json?v=49')
     .then(function (r) { return r.json(); })
     .then(function (d) {
       trasyStav.nacteno = true;
@@ -607,25 +668,45 @@ function nactiTrasy() {
       if (tlacitkoTras) tlacitkoTras.textContent = 'Trasy';
       var barvy = { r: '#c62f2f', b: '#1668b4',
                     g: '#2c8f43', y: '#c9a50e' };
+      var viditelnost = trasyStav.zapnuto ? 'visible' : 'none';
+      trasyVrstvy = [];
       Object.keys(barvy).forEach(function (k) {
+        // vlastnosti úseku: z = význam sítě (0 lwn … 3 iwn),
+        // v = 1 když je úsek ZA HRANICÍ ČR (přání 30. 8.: ztlumit)
+        var vlastnosti = d[k + 'p'] || [];
         var fc = { type: 'FeatureCollection',
-          features: (d[k] || []).map(function (u) {
+          features: (d[k] || []).map(function (u, idx) {
             var body2 = [];
             for (var i = 0; i < u.length - 1; i += 2) {
               body2.push([u[i + 1] / 1e5, u[i] / 1e5]);
             }
+            var p = vlastnosti[idx] || 0;
             return { type: 'Feature',
+              properties: { z: p & 3, v: (p & 4) ? 1 : 0 },
               geometry: { type: 'LineString', coordinates: body2 } };
           }) };
         mapa.addSource('trasa-' + k, { type: 'geojson', data: fc });
-        mapa.addLayer({ id: 'trasa-' + k, type: 'line',
-          source: 'trasa-' + k, minzoom: 9,
-          layout: { visibility: trasyStav.zapnuto
-              ? 'visible' : 'none', 'line-cap': 'round' },
+        // velké známé trasy (národní/mezinárodní síť) už z dálky…
+        mapa.addLayer({ id: 'trasa-' + k + '-hl', type: 'line',
+          source: 'trasa-' + k, minzoom: 6.5,
+          filter: ['>=', ['get', 'z'], 2],
+          layout: { visibility: viditelnost, 'line-cap': 'round' },
           paint: { 'line-color': barvy[k],
             'line-width': ['interpolate', ['linear'], ['zoom'],
-              9, 1, 13, 2.2, 16, 3.4],
-            'line-opacity': 0.8 } }, 'vlajky-jmena');
+              6.5, 1.4, 10, 2.3, 13, 3, 16, 4],
+            'line-opacity': ['case', ['==', ['get', 'v'], 1],
+              0.25, 0.92] } }, 'vlajky-jmena');
+        // …ostatní se vykreslí až po přiblížení
+        mapa.addLayer({ id: 'trasa-' + k, type: 'line',
+          source: 'trasa-' + k, minzoom: 9.6,
+          filter: ['<', ['get', 'z'], 2],
+          layout: { visibility: viditelnost, 'line-cap': 'round' },
+          paint: { 'line-color': barvy[k],
+            'line-width': ['interpolate', ['linear'], ['zoom'],
+              9.6, 1, 13, 2.2, 16, 3.4],
+            'line-opacity': ['case', ['==', ['get', 'v'], 1],
+              0.22, 0.8] } }, 'vlajky-jmena');
+        trasyVrstvy.push('trasa-' + k + '-hl', 'trasa-' + k);
       });
     })
     .catch(function () {
@@ -634,6 +715,48 @@ function nactiTrasy() {
       obnovTlacitkoTras();
       if (tlacitkoTras) tlacitkoTras.textContent = 'Trasy';
     });
+}
+
+/* ── INFORMATIVNÍ MÍSTA (přání 30. 8.) — kandidáti, kteří se
+   nestali vlajkou (vyhlídky u silných míst, řopíky, hřebenové
+   kóty…). Jen na koukání: přítomnost se počítá u hlavního bodu. ── */
+function nactiMistaInfo() {
+  fetch('data/mista_info.json?v=49')
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var fc = { type: 'FeatureCollection',
+        features: d.map(function (m) {
+          return { type: 'Feature',
+            properties: { k: m[0], n: m[3],
+              lat: m[1] / 1e5, lon: m[2] / 1e5 },
+            geometry: { type: 'Point',
+              coordinates: [m[2] / 1e5, m[1] / 1e5] } };
+        }) };
+      mapa.addSource('mista-info', { type: 'geojson', data: fc });
+      // pod jmény vlajek = ustoupí všemu, co je důležitější
+      mapa.addLayer({ id: 'info-mista', type: 'symbol',
+        source: 'mista-info', minzoom: 11.6,
+        layout: {
+          'icon-image': ['concat', 'ik-', ['get', 'k']],
+          'icon-size': ['interpolate', ['linear'], ['zoom'],
+            11.6, 0.26, 14, 0.34, 17, 0.6],
+          'icon-padding': 2,
+        },
+        paint: { 'icon-opacity': 0.55 },
+      }, 'vlajky-jmena');
+      mapa.on('mousemove', 'info-mista', function (e) {
+        mapa.getCanvas().style.cursor = 'pointer';
+        var f = e.features && e.features[0];
+        if (!f || !f.properties.n) return;
+        jmenovka.setLngLat(f.geometry.coordinates)
+          .setText(f.properties.n).addTo(mapa);
+      });
+      mapa.on('mouseleave', 'info-mista', function () {
+        mapa.getCanvas().style.cursor = '';
+        jmenovka.remove();
+      });
+    })
+    .catch(function () { });
 }
 
 /* Zeměpisná vata pryč, historie dopředu (výtka 29. 8.: „že je to
