@@ -62,6 +62,12 @@ function pripravZalozky() {
     });
 }
 
+/* Po reloadu (akce správy) se vrátit tam, kde uživatel byl. */
+function zapamatujNavrat() {
+  try { sessionStorage.setItem('dobyvatelNavrat', 'moje'); }
+  catch (e) { }
+}
+
 function prepniPodzalozku(p) {
   document.querySelectorAll('.pod-menu button')
     .forEach(function (b) {
@@ -1312,14 +1318,6 @@ function stavSouteze() {
         document.title = (d.nazev || SOUTEZ) + ' – Dobyvatel';
         var h1 = document.querySelector('main h1');
         if (h1) h1.textContent = 'Dobyvatel — ' + (d.nazev || SOUTEZ);
-        el('soutezNazev').textContent = d.nazev || SOUTEZ;
-        var pocet = (d.tymyPoradi || []).length;
-        el('soutezPopis').textContent = 'Vlastní dobývání o stejných '
-          + '18 946 vlajek — hraje ' + pocet + ' týmů. Tým jde změnit '
-          + 'po ' + (((d.pravidla || {}).zmenaTymuDni) || 30)
-          + ' dnech, dřív jen rozhodnutím správce.';
-        var vb = el('verejneBox');
-        if (vb) vb.style.display = 'none';
       }
       maskaAktivni = (vlastniSoutez() && d.maska)
         ? rozbalMasku(d.maska) : null;
@@ -1385,7 +1383,7 @@ function vykresliPridani() {
         + SOUTEZ + '?key=' + KLIC, token);
   })
     .then(function (c) {
-      box.textContent = 'Hraješ za tým '
+      box.textContent = 'V téhle soutěži hraješ za tým '
         + jmenoTymu(c.tym) + '.';
     })
     .catch(function () {
@@ -1768,7 +1766,7 @@ function renderSprava(sid, d, box) {
     spust.onclick = function () {
       spust.disabled = true;
       zapisDoc('souteze/' + sid, { stav: 'bezi' })
-        .then(function () { location.reload(); })
+        .then(function () { zapamatujNavrat(); location.reload(); })
         .catch(function () { spust.disabled = false; });
     };
     stavR.appendChild(spust);
@@ -1780,7 +1778,7 @@ function renderSprava(sid, d, box) {
       if (!confirm('Opravdu ukončit? Mapa zamrzne v posledním '
           + 'stavu.')) return;
       zapisDoc('souteze/' + sid, { stav: 'konec' })
-        .then(function () { location.reload(); });
+        .then(function () { zapamatujNavrat(); location.reload(); });
     };
     stavR.appendChild(konec);
   }
@@ -1877,6 +1875,7 @@ function renderSprava(sid, d, box) {
             });
           });
       }).then(function () {
+        zapamatujNavrat();
         location.href = '/dobyvatel/';
       }).catch(function () { smaz.disabled = false; });
     };
@@ -1951,7 +1950,10 @@ function renderSprava(sid, d, box) {
               + (jmena[uid] || uid.slice(0, 8)) + '? Tobě zůstane '
               + 'jen role hráče.')) return;
           zapisDoc('souteze/' + sid, { zakladatel: uid })
-            .then(function () { location.reload(); });
+            .then(function () {
+              zapamatujNavrat();
+              location.reload();
+            });
         };
         r.appendChild(predej);
       }
@@ -2143,6 +2145,12 @@ function start() {
   pripravZalozky();
   napasujVysku();
   naplnVolbuSouteze();
+  try {
+    if (sessionStorage.getItem('dobyvatelNavrat') === 'moje') {
+      sessionStorage.removeItem('dobyvatelNavrat');
+      prepniZalozku('moje');
+    }
+  } catch (e) { }
   reklamy();
   vykresliZalozeni();
   verejneSouteze();
