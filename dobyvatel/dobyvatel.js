@@ -715,7 +715,12 @@ function pridejWiki(box, v) {
           vykresli(null);
           return;
         }
-        var titul = g[0].title;
+        // vodní toky mají bod „někde na čáře" — blízkost klame,
+        // přednost dostane skutečné místo (Černochov > Mšenský potok)
+        var pevne = g.filter(function (x) {
+          return !/potok|přítok|řeka/i.test(x.title);
+        });
+        var titul = (pevne.length ? pevne[0] : g[0]).title;
         return fetch(
             'https://cs.wikipedia.org/api/rest_v1/page/summary/'
             + encodeURIComponent(titul.replace(/ /g, '_')))
