@@ -51,6 +51,23 @@ function pripravZalozky() {
       prepniZalozku(b.getAttribute('data-z'));
     };
   });
+  document.querySelectorAll('.podzalozky button')
+    .forEach(function (b) {
+      b.onclick = function () {
+        prepniPodzalozku(b.getAttribute('data-p'));
+      };
+    });
+}
+
+function prepniPodzalozku(p) {
+  document.querySelectorAll('.podzalozky button')
+    .forEach(function (b) {
+      b.classList.toggle('aktivni', b.getAttribute('data-p') === p);
+    });
+  ['prehled', 'sprava', 'zalozit'].forEach(function (x) {
+    var e2 = el('p-' + x);
+    if (e2) e2.classList.toggle('aktivni', x === p);
+  });
 }
 
 /* Plocha přesně do okna — ať se nikdy neroluje celá stránka. */
@@ -319,7 +336,10 @@ function pridejVrstvy() {
       'text-field': ['get', 'n'],
       'text-font': ['Noto Sans Regular'],
       'text-size': 12,
-      'text-offset': [0, 0.9],
+      // popisek ustupuje s růstem bublin, ať do nich neleze
+      'text-offset': ['interpolate', ['exponential', 1.5], ['zoom'],
+        10, ['literal', [0, 0.9]], 13, ['literal', [0, 1.7]],
+        17, ['literal', [0, 7.5]]],
       'text-anchor': 'top',
       'text-max-width': 9,
       // jména se kreslí dřív než ikony (vyšší vrstva) a KRADLA jim
@@ -384,14 +404,21 @@ function pridejVrstvy() {
     obnovSeznamVlastnich();
   });
 
+  var jmenovka = new maplibregl.Popup({ closeButton: false,
+    closeOnClick: false, offset: 14 });
   ['vlajky-ik4', 'vlajky-ik3', 'vlajky-ik2', 'vlajky-ik1',
    'vlajky-ik-vse']
     .forEach(function (id) {
-      mapa.on('mouseenter', id, function () {
+      mapa.on('mousemove', id, function (e) {
         mapa.getCanvas().style.cursor = 'pointer';
+        var f = e.features && e.features[0];
+        if (!f || !f.properties.n) return;
+        jmenovka.setLngLat(f.geometry.coordinates)
+          .setText(f.properties.n).addTo(mapa);
       });
       mapa.on('mouseleave', id, function () {
         mapa.getCanvas().style.cursor = '';
+        jmenovka.remove();
       });
     });
 }
@@ -477,13 +504,16 @@ function zapracujVlastni(pole) {
       properties: { t: '0', akt: 1 },
       geometry: kruhPolygon(v.lat, v.lon, dosah) });
   });
-  aplikujMasku(maskaAktivni);
+  // při editaci se promítá ROZPRACOVANÝ výběr (ostrá maska mazala
+  // rozklikaná místa — výtka „naklikaná z mapy zmizela")
+  aplikujMasku(rezimVyberu && maskaRozpracovana
+      ? maskaRozpracovana : maskaAktivni);
 }
 
 function prepniMisto(idx) {
   if (!maskaRozpracovana) return;
-  var druh = vlajky[idx] && vlajky[idx].k;
-  if (vyberDruhu && druh && vyberDruhu[druh] === false) return;
+  // klik funguje VŽDY (výtka „klikání moc nefunguje" — druhový
+  // filtr tiše blokoval); zaškrtnutí druhů řídí jen hromadná tlačítka
   maskaRozpracovana[idx] = !maskaRozpracovana[idx];
   aplikujMasku(maskaRozpracovana);
   obnovPocetVyberu();
@@ -534,15 +564,41 @@ function obnovSeznamVlastnich() {
 }
 
 /* Editor výběru míst: panel nad mapou + klikání do území. */
-function zapniVyberMist() {
+var vyberVolby = null;   // konfigurace běžícího editoru
+
+/* Editor míst. Bez voleb = SPRÁVA běžící soutěže (uloží rovnou do
+   dokumentu). S volbami {maska, vlastni, dosah, poUlozeni} = výběr
+   při ZAKLÁDÁNÍ (uloží se do formuláře, dokument vznikne až se
+   soutěží). */
+function zapniVyberMist(volby) {
+  vyberVolby = volby || null;
   prepniZalozku('mapa');
   rezimVyberu = true;
+  try {
+    if (!mapa.getLayer('vyber-ram')) {
+      // vybraná místa dostávají zelené orámování — ať je NA PRVNÍ
+      // POHLED vidět, co je vybrané (výtka „složité")
+      mapa.addLayer({ id: 'vyber-ram', type: 'line',
+        source: 'oblasti',
+        filter: ['==', ['coalesce', ['get', 'akt'], 1], 1],
+        paint: { 'line-color': '#2E7D32', 'line-width': 2,
+                 'line-opacity': 0.85 } });
+    }
+  } catch (e) { }
   // NOVÝ výběr začíná PRÁZDNÝ a klik místa PŘIDÁVÁ (výtka 27. 8.:
   // začínalo se vším a klik vypínal — uživatel si „vybraná" místa
   // omylem vyřadil); uložený výběr se načítá, jak je
-  maskaRozpracovana = maskaAktivni
-    ? maskaAktivni.slice()
-    : vlajky.map(function () { return false; });
+  var vychoziMaska = vyberVolby ? vyberVolby.maska : maskaAktivni;
+  maskaRozpracovana = vychoziMaska
+    ? vychoziMaska.slice(0, nStd)
+    : null;
+  if (!maskaRozpracovana || maskaRozpracovana.length !== nStd) {
+    maskaRozpracovana = [];
+    for (var mi = 0; mi < nStd; mi++) {
+      maskaRozpracovana.push(vychoziMaska
+          ? !!vychoziMaska[mi] : false);
+    }
+  }
   vyberDruhu = {};
   Object.keys(POPISKY_DRUHU).forEach(function (k) {
     vyberDruhu[k] = true;
@@ -594,10 +650,13 @@ function zapniVyberMist() {
       radekTl.appendChild(t);
     });
   // vlastní místa (jen v přípravě — po startu je pořadí smlouva)
-  pracovniVlastni = ((soutezDoc && soutezDoc.vlastni) || [])
+  pracovniVlastni = ((vyberVolby
+      ? vyberVolby.vlastni
+      : (soutezDoc && soutezDoc.vlastni)) || [])
     .map(function (v) { return { n: v.n, lat: v.lat, lon: v.lon,
                                  h: v.h || 2 }; });
-  if (soutezDoc && soutezDoc.stav === 'priprava') {
+  if (vyberVolby
+      || (soutezDoc && soutezDoc.stav === 'priprava')) {
     var pridej = document.createElement('button');
     pridej.textContent = '+ Vlastní místo (pak klikni do mapy)';
     pridej.style.cssText = 'margin:6px 0;font-weight:700;';
@@ -634,6 +693,16 @@ function zapniVyberMist() {
       alert('Vyber aspoň jedno místo — soutěž bez míst nejde hrát.');
       return;
     }
+    if (vyberVolby) {
+      // ZALOŽENÍ: výběr si převezme formulář, dokument vznikne až
+      // se soutěží
+      vyberVolby.poUlozeni(vsechna ? null : maskaRozpracovana,
+          pracovniVlastni || []);
+      vypniVyberMist(false);
+      prepniZalozku('moje');
+      prepniPodzalozku('zalozit');
+      return;
+    }
     uloz.disabled = true;
     zapisDoc('souteze/' + SOUTEZ, {
       maska: vsechna ? '' : zabalMasku(maskaRozpracovana),
@@ -642,7 +711,6 @@ function zapniVyberMist() {
         maskaAktivni = vsechna ? null : maskaRozpracovana;
         soutezDoc.maska = vsechna ? '' : 'x';
         soutezDoc.vlastni = pracovniVlastni;
-        zapracujVlastni(pracovniVlastni);
         vypniVyberMist(true);
       })
       .catch(function () { uloz.disabled = false; });
@@ -663,9 +731,15 @@ function zapniVyberMist() {
 function vypniVyberMist(ulozeno) {
   rezimVyberu = false;
   rezimPridani = false;
+  vyberVolby = null;
   if (panelVyberu) { panelVyberu.remove(); panelVyberu = null; }
   maskaRozpracovana = null;
-  aplikujMasku(ulozeno ? maskaAktivni : maskaAktivni);
+  try {
+    if (mapa.getLayer('vyber-ram')) mapa.removeLayer('vyber-ram');
+  } catch (e) { }
+  // zpět pohled uložené soutěže (zrušení zahodí i rozpracovaná
+  // vlastní místa)
+  zapracujVlastni((soutezDoc && soutezDoc.vlastni) || []);
 }
 
 function obarvi(drzitele) {
@@ -1074,7 +1148,7 @@ function mojeSouteze() {
     if (!hraju.length && !spravuju.length) {
       box.textContent = 'Zatím nejsi v žádné soutěži. Otevři '
         + 'v aplikaci režim Dobyvatel, nebo si soutěž založ '
-        + 'v záložce Založit.';
+        + 'v podzáložce Založení.';
       return;
     }
     sekce('Hraju', hraju, false);
@@ -1394,12 +1468,41 @@ function vykresliZalozeni() {
     ffa.appendChild(document.createTextNode(
         ' všichni proti všem (připravujeme)'));
     dalsi.appendChild(ffa);
-    var poznMista = document.createElement('p');
-    poznMista.style.cssText = 'margin:4px 0;color:#6b6455;';
-    poznMista.textContent = 'Výběr míst na mapě (jen část republiky) '
-      + 'naklikáš po založení ve Správě soutěže.';
-    dalsi.appendChild(poznMista);
     f.appendChild(dalsi);
+
+    // VÝBĚR MÍST JE SOUČÁST ZALOŽENÍ (výtka 28. 8.) — bez výběru
+    // hraje celá republika
+    var vybrano = { maska: null, vlastni: [] };
+    var mista = document.createElement('button');
+    mista.style.cssText = 'display:block;margin:8px 0;';
+    function popisVyberu() {
+      if (!vybrano.maska && !vybrano.vlastni.length) {
+        return 'Vybrat místa na mapě (teď hraje celá republika)';
+      }
+      var n = 0;
+      if (vybrano.maska) {
+        for (var i = 0; i < vybrano.maska.length; i++) {
+          if (vybrano.maska[i]) n++;
+        }
+      } else {
+        n = nStd;
+      }
+      return 'Místa: ' + n + ' z mapy + '
+        + vybrano.vlastni.length + ' vlastních — upravit';
+    }
+    mista.textContent = popisVyberu();
+    mista.onclick = function () {
+      zapniVyberMist({
+        maska: vybrano.maska,
+        vlastni: vybrano.vlastni,
+        poUlozeni: function (maska2, vlastni2) {
+          vybrano.maska = maska2;
+          vybrano.vlastni = vlastni2;
+          mista.textContent = popisVyberu();
+        },
+      });
+    };
+    f.appendChild(mista);
 
     var zaloz = document.createElement('button');
     zaloz.textContent = 'Založit';
@@ -1470,6 +1573,15 @@ function vykresliZalozeni() {
           tymyNazvy: nazvy,
           vytvoreno: new Date(),
         }, true);
+      }).then(function () {
+        // výběr míst z formuláře (create ho mít nesmí — hasOnly)
+        if (vybrano.maska || vybrano.vlastni.length) {
+          return zapisDoc('souteze/' + sid, {
+            maska: vybrano.maska ? zabalMasku(vybrano.maska) : '',
+            vlastni: vybrano.vlastni,
+          });
+        }
+        return true;
       }).then(function () {
         location.href = '?s=' + sid;
       }).catch(function (e) {

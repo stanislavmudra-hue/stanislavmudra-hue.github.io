@@ -72,6 +72,15 @@
     cursor: pointer; color: inherit; }
   .zalozky button.aktivni { background: #4e6e58; color: #fff;
     border-color: #4e6e58; }
+  .podzalozky { display: flex; gap: 6px; margin: 0 0 10px; }
+  .podzalozky button { padding: 5px 12px; border-radius: 8px;
+    border: 1px solid var(--linka); background: #fffdf6;
+    font-family: inherit; font-size: .88rem; font-weight: 600;
+    cursor: pointer; color: inherit; }
+  .podzalozky button.aktivni { background: #efe9da;
+    border-color: #4e6e58; }
+  .pod { display: none; }
+  .pod.aktivni { display: block; }
   .zalozka { display: none; flex: 1; min-height: 0; overflow: auto; }
   .zalozka.aktivni { display: block; }
   .zalozka .karta { margin: 0; }
@@ -118,9 +127,6 @@
       <button data-z="mapa" class="aktivni">Mapa</button>
       <button data-z="zebricky">Žebříčky</button>
       <button data-z="moje">Moje soutěže</button>
-      <button data-z="zalozit">Založit</button>
-      <button data-z="sprava" id="zalozkaSprava"
-        style="display:none">Správa</button>
     </nav>
   </div>
 
@@ -162,36 +168,43 @@
   </section>
 
   <section class="zalozka" id="z-moje">
-    <div class="karta">
-      <h2 id="soutezNazev">Česko 2026 — republikové kolo</h2>
-      <p class="drobne" id="soutezPopis">Celá republika je rozdělená
-        mezi 17 688 vlajek — hrady, vrcholy, rozhledny, jeskyně či
-        bunkry. Kdo vlajku obsadí nohama v aplikaci Okolník (režim
-        Dobyvatel), drží její území pro svůj tým.</p>
-      <div class="drobne" id="pridaniBox"></div>
-      <h2 style="margin-top:16px">Moje soutěže</h2>
-      <p class="drobne" id="mojeObsah">Načítám…</p>
-      <div class="drobne" id="verejneBox"></div>
+    <nav class="podzalozky" id="podzalozky">
+      <button data-p="prehled" class="aktivni">Moje soutěže</button>
+      <button data-p="sprava" id="zalozkaSprava">Správa</button>
+      <button data-p="zalozit">Založení</button>
+    </nav>
+    <div class="pod aktivni" id="p-prehled">
+      <div class="karta">
+        <h2 id="soutezNazev">Česko 2026 — republikové kolo</h2>
+        <p class="drobne" id="soutezPopis">Celá republika je
+          rozdělená mezi 17 688 vlajek — hrady, vrcholy, rozhledny,
+          jeskyně či bunkry. Kdo vlajku obsadí nohama v aplikaci
+          Okolník (režim Dobyvatel), drží její území pro svůj tým.</p>
+        <div class="drobne" id="pridaniBox"></div>
+        <h2 style="margin-top:16px">Moje soutěže</h2>
+        <p class="drobne" id="mojeObsah">Načítám…</p>
+        <div class="drobne" id="verejneBox"></div>
+      </div>
     </div>
-  </section>
-
-  <section class="zalozka" id="z-zalozit">
-    <div class="karta">
-      <h2>Vlastní dobývání</h2>
-      <p class="drobne">Soutěž party, firmy či obce o stejných
-        17 688 vlajek: vyberete si týmy, pojmenujete je a pošlete
-        odkaz. Tým jde po vstupu měnit až po lhůtě — nebo ho změní
-        správce, který může správu i předat. Každý účet vede nejvýš
-        pět soutěží; ve veřejném seznamu se cizí soutěž ukáže až po
-        schválení.</p>
-      <div id="zalozeniBox" class="drobne">Načítám…</div>
+    <div class="pod" id="p-sprava">
+      <div class="karta" id="sprava">
+        <h2>Správa soutěže</h2>
+        <div id="spravaObsah" class="drobne">Správa patří soutěži
+          vybrané nahoře na kartě Mapa — vyber svou, nebo ji založ
+          v podzáložce Založení.</div>
+      </div>
     </div>
-  </section>
-
-  <section class="zalozka" id="z-sprava">
-    <div class="karta" id="sprava">
-      <h2>Správa soutěže</h2>
-      <div id="spravaObsah" class="drobne"></div>
+    <div class="pod" id="p-zalozit">
+      <div class="karta">
+        <h2>Vlastní dobývání</h2>
+        <p class="drobne">Soutěž party, firmy či obce: vyber týmy,
+          pojmenuj je, vyber místa (klidně jen pár, nebo si přidej
+          vlastní kamkoli) a pošli odkaz. Tým jde po vstupu měnit až
+          po lhůtě — dřív jen rozhodnutím správce. Každý účet vede
+          nejvýš pět soutěží; ve veřejném seznamu se cizí soutěž
+          ukáže až po schválení.</p>
+        <div id="zalozeniBox" class="drobne">Načítám…</div>
+      </div>
     </div>
   </section>
 </main>
@@ -214,6 +227,6 @@
   </div>
 </footer>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="dobyvatel.js?v=32"></script>
+<script src="dobyvatel.js?v=33"></script>
 </body>
 </html>
