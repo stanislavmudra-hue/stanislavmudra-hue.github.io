@@ -271,10 +271,11 @@ function pridejVrstvy() {
   mapa.addLayer({
     id: 'hranice', type: 'line', source: 'oblasti',
     paint: {
+      // výrazněji — hranice území se pletly s kresbou mapy (29. 8.)
       'line-color': ['case', ['==', ['get', 't'], '0'],
-        '#a89f8a', barvaTymu()],
-      'line-opacity': ['case', ['==', ['get', 't'], '0'], 0.35, 0.9],
-      'line-width': ['case', ['==', ['get', 't'], '0'], 0.4, 1.2],
+        '#6d6350', barvaTymu()],
+      'line-opacity': ['case', ['==', ['get', 't'], '0'], 0.55, 0.95],
+      'line-width': ['case', ['==', ['get', 't'], '0'], 0.8, 1.7],
     },
   });
   // zvýraznění kliknuté oblasti (přání 27. 8.) — filtr plní klik,
@@ -443,6 +444,7 @@ function pridejVrstvy() {
       });
     });
   }
+  aplikujFiltrDruhu();
   mapa.on('click', 'uzemi', naKlikOblasti);
   mapa.on('click', 'vlastni-uzemi', naKlikOblasti);
 
@@ -505,6 +507,32 @@ try {
 /* ── VÝBĚR MÍST (maska soutěže) ── */
 var nStd = 0;              // počet standardních vlajek (bez vlastních)
 var okresyLegenda = [];    // [[okresKlic, krajKlic], …] dle indexu
+var filtrDruhu = null;     // Set zapnutých druhů (null = všechny)
+
+function aplikujFiltrDruhu() {
+  if (!mapa) return;
+  var vse = !filtrDruhu
+    || filtrDruhu.size >= Object.keys(POPISKY_DRUHU).length;
+  var kindF = vse ? null
+    : ['in', ['get', 'k'], ['literal', Array.from(filtrDruhu)]];
+  function slozeny(zaklad) {
+    return kindF ? ['all'].concat(zaklad).concat([kindF])
+                 : ['all'].concat(zaklad);
+  }
+  try {
+    [4, 3, 2, 1].forEach(function (p) {
+      mapa.setFilter('vlajky-ik' + p, slozeny(
+        [['==', ['get', 'p'], p],
+         ['!=', ['coalesce', ['get', 'akt'], 1], 0]]));
+    });
+    mapa.setFilter('vlajky-ik-vse', slozeny(
+      [['!=', ['coalesce', ['get', 'akt'], 1], 0]]));
+    mapa.setFilter('orientacni', slozeny(
+      [['==', ['get', 'p'], 4],
+       ['==', ['coalesce', ['get', 'akt'], 1], 0]]));
+    mapa.setFilter('vlajky-jmena', kindF);
+  } catch (e) { /* vrstvy ještě nestojí */ }
+}
 var vlastniFC = { type: 'FeatureCollection', features: [] };
 var maskaAktivni = null;   // pole bool dle indexu vlajky (null = vše)
 var rezimVyberu = false;   // správce právě kliká výběr na mapě
@@ -617,6 +645,15 @@ function obnovPocetVyberu() {
   }
   var b = document.getElementById('vyberUlozit');
   if (b) b.textContent = 'Uložit výběr (' + pocet + ' míst)';
+  var info = document.getElementById('vyberInfo');
+  if (info) {
+    var dosah = vyberVolby
+      ? 150
+      : (((soutezDoc && soutezDoc.pravidla) || {}).dosahM || 150);
+    info.textContent = 'Vybráno ' + pocet + ' z mapy · '
+      + ((pracovniVlastni && pracovniVlastni.length) || 0)
+      + ' vlastních · dosah ' + dosah + ' m';
+  }
 }
 
 function obnovSeznamVlastnich() {
@@ -656,10 +693,26 @@ var vyberVolby = null;   // konfigurace běžícího editoru
    dokumentu). S volbami {maska, vlastni, dosah, poUlozeni} = výběr
    při ZAKLÁDÁNÍ (uloží se do formuláře, dokument vznikne až se
    soutěží). */
+var titulekPredEditaci = null;
+
 function zapniVyberMist(volby) {
+  if (mapaMrtva) {
+    alert('Bez mapy (WebGL) nejde místa vybírat — viz rada u mapy.');
+    return;
+  }
   vyberVolby = volby || null;
   prepniZalozku('mapa');
   rezimVyberu = true;
+  // VLASTNÍ OBRAZOVKA ÚPRAV (výtka 29. 8.: „vypadá to, že jsem šel
+  // na mapu") — menu se schová a nadpis řekne, co se děje
+  document.body.classList.add('rezim-editace');
+  var tit = el('titulek');
+  if (tit) {
+    titulekPredEditaci = tit.textContent;
+    tit.textContent = '✏️ Úprava míst — '
+      + (vyberVolby ? 'nová soutěž'
+         : ((soutezDoc && soutezDoc.nazev) || SOUTEZ));
+  }
   try {
     if (!mapa.getLayer('vyber-ram')) {
       // vybraná místa dostávají zelené orámování — ať je NA PRVNÍ
@@ -704,23 +757,30 @@ function zapniVyberMist(volby) {
   obal.appendChild(prouzek);
   panelVyberu = document.createElement('div');
   panelVyberu.style.cssText = 'position:absolute;right:10px;top:10px;'
-    + 'z-index:6;background:rgba(255,253,246,.94);border:1px solid '
-    + '#b9b2a0;border-radius:10px;padding:8px 10px;max-height:82%;'
-    + 'overflow:auto;font:12.5px sans-serif;max-width:240px;';
+    + 'z-index:6;background:rgba(255,253,246,.96);border:1px solid '
+    + '#b9b2a0;border-radius:10px;padding:8px 10px;max-height:86%;'
+    + 'overflow:auto;font:12px sans-serif;width:252px;';
   var nadpis = document.createElement('p');
-  nadpis.style.cssText = 'margin:0 0 4px;font-weight:700;';
-  nadpis.textContent = 'Výběr míst — klikej do mapy';
+  nadpis.style.cssText = 'margin:0 0 2px;font-weight:700;'
+    + 'font-size:13px;';
+  nadpis.textContent = 'Místa — klikej do mapy';
   panelVyberu.appendChild(nadpis);
+  var info = document.createElement('p');
+  info.id = 'vyberInfo';
+  info.style.cssText = 'margin:0 0 6px;color:#6b6455;';
+  panelVyberu.appendChild(info);
   var pozn = document.createElement('p');
   pozn.style.cssText = 'margin:0 0 6px;color:#6b6455;';
-  pozn.textContent = 'Klikem PŘIDÁŠ místo do soutěže (další klik '
-    + 'ho zase vyřadí). Barevná místa hrají, ztlumená ne. Zaškrtnutí '
-    + 'říká, kterých druhů se klik a hromadná tlačítka týkají.';
+  pozn.textContent = 'Klik místo přidá, další klik vyřadí. Vybraná '
+    + 'jsou zeleně orámovaná. Druhy níž platí pro hromadná tlačítka.';
   panelVyberu.appendChild(pozn);
+  var mrizkaD = document.createElement('div');
+  mrizkaD.style.cssText = 'display:grid;'
+    + 'grid-template-columns:1fr 1fr;gap:0 6px;';
   Object.keys(POPISKY_DRUHU).forEach(function (k) {
     var radek = document.createElement('label');
-    radek.style.cssText = 'display:flex;gap:6px;align-items:center;'
-      + 'margin:1px 0;';
+    radek.style.cssText = 'display:flex;gap:4px;align-items:center;'
+      + 'margin:1px 0;font-size:11.5px;';
     var ch = document.createElement('input');
     ch.type = 'checkbox';
     ch.checked = true;
@@ -728,8 +788,9 @@ function zapniVyberMist(volby) {
     radek.appendChild(ch);
     radek.appendChild(
         document.createTextNode(POPISKY_DRUHU[k]));
-    panelVyberu.appendChild(radek);
+    mrizkaD.appendChild(radek);
   });
+  panelVyberu.appendChild(mrizkaD);
   function hromadne(zapnout) {
     for (var i = 0; i < vlajky.length; i++) {
       if (vyberDruhu[vlajky[i].k]) maskaRozpracovana[i] = zapnout;
@@ -793,12 +854,10 @@ function zapniVyberMist(volby) {
     }
     if (vyberVolby) {
       // ZALOŽENÍ: výběr si převezme formulář, dokument vznikne až
-      // se soutěží
+      // se soutěží (návrat řeší vypniVyberMist)
       vyberVolby.poUlozeni(vsechna ? null : maskaRozpracovana,
           pracovniVlastni || []);
       vypniVyberMist(false);
-      prepniZalozku('moje');
-      prepniPodzalozku('zalozit');
       return;
     }
     uloz.disabled = true;
@@ -827,9 +886,16 @@ function zapniVyberMist(volby) {
 }
 
 function vypniVyberMist(ulozeno) {
+  var zFormulare = !!vyberVolby;
   rezimVyberu = false;
   rezimPridani = false;
   vyberVolby = null;
+  document.body.classList.remove('rezim-editace');
+  var tit = el('titulek');
+  if (tit && titulekPredEditaci !== null) {
+    tit.textContent = titulekPredEditaci;
+    titulekPredEditaci = null;
+  }
   var prouzek = document.getElementById('editorProuzek');
   if (prouzek) prouzek.remove();
   if (panelVyberu) { panelVyberu.remove(); panelVyberu = null; }
@@ -840,6 +906,9 @@ function vypniVyberMist(ulozeno) {
   // zpět pohled uložené soutěže (zrušení zahodí i rozpracovaná
   // vlastní místa)
   zapracujVlastni((soutezDoc && soutezDoc.vlastni) || []);
+  // návrat do Moje soutěže (přání: úpravy drž tam, ne v Mapě)
+  prepniZalozku('moje');
+  prepniPodzalozku(zFormulare ? 'zalozit' : 'prehled');
 }
 
 function obarvi(drzitele) {
@@ -2104,10 +2173,23 @@ function pridejLegendu() {
   panel.style.cssText = 'position:absolute;left:10px;top:44px;'
     + 'z-index:5;display:none;max-height:70%;overflow:auto;'
     + 'font:12.5px sans-serif;';
-  for (var kat in POPISKY_DRUHU) {
-    var radek = document.createElement('div');
+  filtrDruhu = new Set(Object.keys(POPISKY_DRUHU));
+  Object.keys(POPISKY_DRUHU).forEach(function (kat) {
+    var radek = document.createElement('label');
     radek.style.cssText = PRUH
-      + 'display:flex;align-items:center;gap:8px;margin:3px 0;';
+      + 'display:flex;align-items:center;gap:8px;margin:3px 0;'
+      + 'cursor:pointer;';
+    // LEGENDA JE ZÁROVEŇ FILTR (přání 29. 8.): odškrtnutý druh
+    // z mapy zmizí
+    var ch = document.createElement('input');
+    ch.type = 'checkbox';
+    ch.checked = true;
+    ch.onchange = function () {
+      if (ch.checked) filtrDruhu.add(kat);
+      else filtrDruhu.delete(kat);
+      aplikujFiltrDruhu();
+    };
+    radek.appendChild(ch);
     var b = BUBLINA_DRUHU[kat] || ['❓', '#777'];
     var im = document.createElement('span');
     im.style.cssText = 'display:inline-flex;align-items:center;'
@@ -2119,7 +2201,7 @@ function pridejLegendu() {
     radek.appendChild(
         document.createTextNode(POPISKY_DRUHU[kat]));
     panel.appendChild(radek);
-  }
+  });
   var pozn = document.createElement('div');
   pozn.style.cssText = PRUH + 'margin-top:6px;color:#6b6455;'
     + 'max-width:230px;';
@@ -2264,6 +2346,20 @@ function start() {
           paint: { 'line-color': '#cfc6b2', 'line-opacity': 0.9,
             'line-width': ['interpolate', ['exponential', 1.4],
               ['zoom'], 8, 0.5, 16, 3] },
+        }, {
+          id: 'mesta', type: 'symbol', source: 'omt',
+          'source-layer': 'place', minzoom: 6.5,
+          filter: ['in', ['get', 'class'],
+            ['literal', ['city', 'town']]],
+          layout: {
+            'text-field': ['coalesce', ['get', 'name:cs'],
+              ['get', 'name']],
+            'text-font': ['Noto Sans Bold'],
+            'text-size': ['match', ['get', 'class'],
+              'city', 14, 12],
+          },
+          paint: { 'text-color': '#8a8271',
+            'text-halo-color': '#f2efe6', 'text-halo-width': 1.4 },
         }, {
           id: 'cesty', type: 'line', source: 'omt',
           'source-layer': 'transportation', minzoom: 12,
