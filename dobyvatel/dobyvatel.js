@@ -263,19 +263,21 @@ function pridejVrstvy() {
     },
   }, 'stinovani');
   mapa.addSource('kraje', { type: 'geojson', data: kraje });
+  // KRAJE musí být jasně silnější než hranice buněk (v41 se mezi
+  // nimi ztratily — výtka 29. 8.)
   mapa.addLayer({
     id: 'kraje', type: 'line', source: 'kraje',
-    paint: { 'line-color': '#5f574a', 'line-width': 1.5,
-             'line-opacity': 0.7 },
+    paint: { 'line-color': '#3d382e', 'line-width': 2.6,
+             'line-opacity': 0.85 },
   });
   mapa.addLayer({
     id: 'hranice', type: 'line', source: 'oblasti',
     paint: {
-      // výrazněji — hranice území se pletly s kresbou mapy (29. 8.)
+      // vyladěno 29. 8.: viditelné, ale lehčí než kraje
       'line-color': ['case', ['==', ['get', 't'], '0'],
-        '#5f574a', barvaTymu()],
-      'line-opacity': ['case', ['==', ['get', 't'], '0'], 0.7, 0.95],
-      'line-width': ['case', ['==', ['get', 't'], '0'], 1.1, 2.0],
+        '#6a6152', barvaTymu()],
+      'line-opacity': ['case', ['==', ['get', 't'], '0'], 0.55, 0.95],
+      'line-width': ['case', ['==', ['get', 't'], '0'], 0.9, 1.8],
     },
   });
   // zvýraznění kliknuté oblasti (přání 27. 8.) — filtr plní klik,
@@ -413,8 +415,19 @@ function pridejVrstvy() {
     var drzitel = (f.properties && f.properties.t) || '0';
     // INFO BOKEM (přání 29. 8.): karta nad Skóre — nic nepřekrývá
     // mapu a mapa pod kurzorem dál žije
+    // plovoucí karta PŘÍMO V MAPĚ (vlevo dole) — vidět, nepřekáží
     var box = el('mistoInfo');
-    if (!box) return;
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'mistoInfo';
+      box.className = 'legenda';
+      box.style.cssText = 'position:absolute;left:10px;bottom:36px;'
+        + 'z-index:6;max-width:250px;background:rgba(250,247,238,.96);'
+        + 'border:1px solid #b9b2a0;border-left:4px solid #C99B3F;'
+        + 'border-radius:10px;padding:8px 10px;'
+        + 'box-shadow:0 3px 10px rgba(0,0,0,.18);';
+      el('mapa').appendChild(box);
+    }
     box.style.display = '';
     box.textContent = '';
     // bliknutí, ať si karty nejde nevšimnout (výtka 29. 8.)
