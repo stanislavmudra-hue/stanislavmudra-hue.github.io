@@ -381,7 +381,9 @@ function pridejVrstvy() {
     layout: {
       'text-field': ['get', 'n'],
       'text-font': ['Noto Sans Regular'],
-      'text-size': 12,
+      // větší a se zoomem rostou (výtka „texty jsou stále malé")
+      'text-size': ['interpolate', ['linear'], ['zoom'],
+        10, 12.5, 13, 14.5, 17, 24],
       // popisek ustupuje s růstem bublin, ať do nich neleze
       'text-offset': ['interpolate', ['exponential', 1.5], ['zoom'],
         10, ['literal', [0, 0.9]], 13, ['literal', [0, 1.7]],
@@ -411,11 +413,22 @@ function pridejVrstvy() {
     var jm = document.createElement('strong');
     jm.textContent = v.n;
     obal.appendChild(jm);
-    obal.appendChild(document.createElement('br'));
-    obal.appendChild(document.createTextNode(
-        v.h + ' b. · ' + (drzitel === '0'
-            ? 'neutrální'
-            : 'drží ' + jmenoTymu(drzitel))));
+    function radekI(text) {
+      obal.appendChild(document.createElement('br'));
+      obal.appendChild(document.createTextNode(text));
+    }
+    // krátké info o místě (přání 28. 8.): druh, hodnota, okres
+    radekI((POPISKY_DRUHU[v.k] || 'Místo') + ' · ' + v.h + ' b.');
+    var ok = (v.o !== undefined) ? okresyLegenda[v.o] : null;
+    if (ok) {
+      var okNazev = ok[0] === 'praha'
+        ? 'Praha'
+        : 'okres ' + ok[0].charAt(0).toUpperCase() + ok[0].slice(1);
+      radekI(okNazev.replace(/-/g, ' '));
+    }
+    radekI(drzitel === '0'
+        ? 'Zatím neutrální — obsaď ji v aplikaci Okolník!'
+        : 'Drží ' + jmenoTymu(drzitel) + '.');
     ['zvyraz-vypln', 'zvyraz-cara'].forEach(function (id) {
       try { mapa.setFilter(id, ['==', ['id'], f.id]); } catch (er) { }
     });
@@ -491,6 +504,7 @@ try {
 
 /* ── VÝBĚR MÍST (maska soutěže) ── */
 var nStd = 0;              // počet standardních vlajek (bez vlastních)
+var okresyLegenda = [];    // [[okresKlic, krajKlic], …] dle indexu
 var vlastniFC = { type: 'FeatureCollection', features: [] };
 var maskaAktivni = null;   // pole bool dle indexu vlajky (null = vše)
 var rezimVyberu = false;   // správce právě kliká výběr na mapě
@@ -676,6 +690,18 @@ function zapniVyberMist(volby) {
     vyberDruhu[k] = true;
   });
   var obal = el('mapa');
+  // JASNÝ PRUH přes mapu — ať je poznat, že se právě UPRAVUJE
+  // (výtka 28. 8.: „tváří se to, že jsem šel na mapu")
+  var prouzek = document.createElement('div');
+  prouzek.id = 'editorProuzek';
+  prouzek.style.cssText = 'position:absolute;left:50%;top:10px;'
+    + 'transform:translateX(-50%);z-index:7;background:#C99B3F;'
+    + 'color:#2b2416;font:700 13.5px sans-serif;padding:8px 16px;'
+    + 'border-radius:10px;box-shadow:0 3px 10px rgba(0,0,0,.3);'
+    + 'max-width:82%;text-align:center;';
+  prouzek.textContent = '✏️ Upravuješ místa soutěže — klikej do '
+    + 'mapy; ulož nebo zruš v panelu vpravo.';
+  obal.appendChild(prouzek);
   panelVyberu = document.createElement('div');
   panelVyberu.style.cssText = 'position:absolute;right:10px;top:10px;'
     + 'z-index:6;background:rgba(255,253,246,.94);border:1px solid '
@@ -804,6 +830,8 @@ function vypniVyberMist(ulozeno) {
   rezimVyberu = false;
   rezimPridani = false;
   vyberVolby = null;
+  var prouzek = document.getElementById('editorProuzek');
+  if (prouzek) prouzek.remove();
   if (panelVyberu) { panelVyberu.remove(); panelVyberu = null; }
   maskaRozpracovana = null;
   try {
@@ -2170,6 +2198,7 @@ function start() {
     oblasti = vysledky[1];
     kraje = vysledky[2];
     vlajky = vysledky[3].vlajky;
+    okresyLegenda = vysledky[3].okresy || [];
     nStd = vlajky.length;
     body = {
       type: 'FeatureCollection',
@@ -2200,6 +2229,11 @@ function start() {
             maxzoom: 14,
             attribution: 'Terén: Mapzen / AWS Open Data',
           },
+          omt: {
+            type: 'vector',
+            url: 'https://tiles.openfreemap.org/planet',
+            attribution: '© OpenStreetMap, OpenFreeMap',
+          },
         },
         layers: [{
           id: 'pozadi', type: 'background',
@@ -2211,6 +2245,34 @@ function start() {
             'hillshade-shadow-color': '#7d705e',
             'hillshade-highlight-color': '#fffdf6',
           },
+        }, {
+          id: 'voda', type: 'fill', source: 'omt',
+          'source-layer': 'water',
+          paint: { 'fill-color': '#cbdde6', 'fill-opacity': 0.75 },
+        }, {
+          id: 'reky', type: 'line', source: 'omt',
+          'source-layer': 'waterway', minzoom: 9,
+          paint: { 'line-color': '#b3cdd9', 'line-opacity': 0.85,
+            'line-width': ['interpolate', ['exponential', 1.4],
+              ['zoom'], 9, 0.6, 16, 2.4] },
+        }, {
+          id: 'silnice', type: 'line', source: 'omt',
+          'source-layer': 'transportation', minzoom: 8,
+          filter: ['in', ['get', 'class'],
+            ['literal', ['motorway', 'trunk', 'primary',
+                         'secondary', 'tertiary']]],
+          paint: { 'line-color': '#cfc6b2', 'line-opacity': 0.9,
+            'line-width': ['interpolate', ['exponential', 1.4],
+              ['zoom'], 8, 0.5, 16, 3] },
+        }, {
+          id: 'cesty', type: 'line', source: 'omt',
+          'source-layer': 'transportation', minzoom: 12,
+          filter: ['in', ['get', 'class'],
+            ['literal', ['minor', 'service', 'path', 'track']]],
+          paint: { 'line-color': '#bdb29a', 'line-opacity': 0.8,
+            'line-width': ['interpolate', ['exponential', 1.4],
+              ['zoom'], 12, 0.4, 16, 1.6],
+            'line-dasharray': [2, 1.6] },
         }] },
       bounds: [[12.05, 48.5], [18.9, 51.1]],
       fitBoundsOptions: { padding: 12 },
