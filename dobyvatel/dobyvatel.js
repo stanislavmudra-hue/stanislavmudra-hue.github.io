@@ -410,6 +410,17 @@ function pridejVrstvy() {
       if (f.id < nStd) prepniMisto(f.id);
       return;
     }
+    // klik na OBRÁZEK má přednost před buňkou pod kurzorem (zdaleka
+    // bublina často stojí nad jinou buňkou — výtka 29. 8.)
+    try {
+      var pb = e.point;
+      var ik = mapa.queryRenderedFeatures(
+        [[pb.x - 16, pb.y - 16], [pb.x + 16, pb.y + 16]],
+        { layers: ['vlajky-ik4', 'vlajky-ik3', 'vlajky-ik2',
+                   'vlajky-ik1', 'vlajky-ik-vse', 'orientacni']
+            .filter(function (id) { return mapa.getLayer(id); }) });
+      if (ik.length && ik[0].id !== undefined) f = ik[0];
+    } catch (eq) { }
     var v = vlajky[f.id];
     if (!v) return;
     var drzitel = (f.properties && f.properties.t) || '0';
@@ -475,14 +486,15 @@ function pridejVrstvy() {
     radekI(drzitel === '0'
         ? 'Zatím neutrální — obsaď ji v aplikaci Okolník!'
         : 'Drží ' + jmenoTymu(drzitel) + '.');
+    pridejWiki(box, v);
     ['zvyraz-vypln', 'zvyraz-cara'].forEach(function (id) {
       try { mapa.setFilter(id, ['==', ['id'], f.id]); } catch (er) { }
     });
   }
-  aplikujFiltrDruhu();
+
   mapa.on('click', 'uzemi', naKlikOblasti);
   mapa.on('click', 'vlastni-uzemi', naKlikOblasti);
-
+  aplikujFiltrDruhu();
   // v editoru jmenovka i při najetí na BUŇKU (přání 28. 8.)
   mapa.on('mousemove', 'uzemi', function (e) {
     if (!rezimVyberu) return;
@@ -538,6 +550,58 @@ try {
   jmenovka = new maplibregl.Popup({ closeButton: false,
     closeOnClick: false, offset: 14 });
 } catch (e) { /* maplibre se teprve načítá */ }
+
+/* Ověřený úryvek z české Wikipedie: článek se přijme JEN když
+   jeho souřadnice leží do 2,5 km od vlajky — jinak se raději
+   neukáže nic (přání 29. 8.: „trocha historie? Ověřuj"). */
+var wikiKes = {};
+var wikiBeh = 0;
+
+function pridejWiki(box, v) {
+  var muj = ++wikiBeh;
+  var radek = document.createElement('div');
+  radek.style.cssText = 'margin-top:6px;padding-top:6px;'
+    + 'border-top:1px dashed #b9b2a0;';
+  box.appendChild(radek);
+  var klic = v.n + '|' + v.lat;
+  function vykresli(z) {
+    if (muj !== wikiBeh) return;
+    if (!z) { radek.remove(); return; }
+    radek.textContent = '';
+    var text = document.createElement('span');
+    text.textContent = z.uryvek + ' ';
+    radek.appendChild(text);
+    var a = document.createElement('a');
+    a.href = z.url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = 'Wikipedie →';
+    radek.appendChild(a);
+  }
+  if (klic in wikiKes) { vykresli(wikiKes[klic]); return; }
+  radek.textContent = 'Hledám popis…';
+  fetch('https://cs.wikipedia.org/api/rest_v1/page/summary/'
+      + encodeURIComponent(v.n.replace(/ /g, '_')))
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      var z = null;
+      // OVĚŘENÍ: článek musí být zeměpisně tam, kde vlajka
+      if (d && d.extract && d.coordinates
+          && Math.abs(d.coordinates.lat - v.lat) < 0.023
+          && Math.abs(d.coordinates.lon - v.lon) < 0.035) {
+        var u = d.extract;
+        if (u.length > 300) u = u.slice(0, 297) + '…';
+        z = { uryvek: u,
+              url: (d.content_urls && d.content_urls.desktop
+                    && d.content_urls.desktop.page)
+                || ('https://cs.wikipedia.org/wiki/'
+                    + encodeURIComponent(v.n)) };
+      }
+      wikiKes[klic] = z;
+      vykresli(z);
+    })
+    .catch(function () { wikiKes[klic] = null; vykresli(null); });
+}
 
 /* ── VÝBĚR MÍST (maska soutěže) ── */
 var nStd = 0;              // počet standardních vlajek (bez vlastních)
