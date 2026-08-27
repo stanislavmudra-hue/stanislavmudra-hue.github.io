@@ -2345,7 +2345,11 @@ function start() {
         }, {
           id: 'stinovani', type: 'hillshade', source: 'teren',
           paint: {
-            'hillshade-exaggeration': 0.62,
+            // s přiblížením slábne: hranaté vady DEM (zuby u dálnic
+            // a lomů) se zblízka kreslily jako „polygony" — kopce
+            // zdaleka zůstávají
+            'hillshade-exaggeration': ['interpolate', ['linear'],
+              ['zoom'], 10, 0.62, 12, 0.4, 14, 0.22],
             'hillshade-shadow-color': '#7d705e',
             // odlesk = barva papíru: vady v DEM (mosty, zářezy) se
             // s bílou vysvěcovaly jako „díry v mapě" (u Poříčan)
