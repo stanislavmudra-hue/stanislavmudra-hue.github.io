@@ -284,15 +284,31 @@ function pridejVrstvy() {
   // zhasíná zavření bubliny
   mapa.addLayer({ id: 'zvyraz-vypln', type: 'fill', source: 'oblasti',
     filter: ['==', ['id'], -1],
-    paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.2 } });
+    paint: { 'fill-color': '#C99B3F', 'fill-opacity': 0.28 } });
   mapa.addLayer({ id: 'zvyraz-cara', type: 'line', source: 'oblasti',
     filter: ['==', ['id'], -1],
-    paint: { 'line-color': '#2f2a20', 'line-width': 2.4,
-             'line-opacity': 0.9 } });
+    paint: { 'line-color': '#2f2a20',
+             'line-width': ['interpolate', ['linear'], ['zoom'],
+               6, 2.2, 12, 3, 15, 3.6],
+             'line-opacity': 0.95 } });
 
   // body vlajek: tečka v barvě držitele (neutrální hnědošedá) — a od
   // přiblížení jméno vlajky = jméno oblasti
   mapa.addSource('body', { type: 'geojson', data: body });
+  // prstenec kolem hlavního bodu vybraného místa (přání 30. 8.:
+  // „zvýrazňuj nakliknutou oblast i z dálky" — drobné a klínové
+  // buňky z dálky zaniknou, kroužek u vlajky ne)
+  mapa.addLayer({ id: 'zvyraz-bod', type: 'circle', source: 'body',
+    filter: ['==', ['id'], -1],
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'],
+        5, 11, 10, 16, 14, 24],
+      'circle-color': '#C99B3F',
+      'circle-opacity': 0.12,
+      'circle-stroke-color': '#C99B3F',
+      'circle-stroke-width': 3.5,
+      'circle-stroke-opacity': 0.95,
+    } });
 
   // ⚠️ JMÉNA MUSÍ BÝT POD IKONAMI: vrstva výš se rozmisťuje
   // DŘÍV — když byla jména nahoře (v34–v39), zabrala místo a ikony
@@ -447,7 +463,7 @@ function pridejVrstvy() {
       + 'bodu oblasti.';
     box.appendChild(pozn);
     pridejWiki(box, { n: p.n, lat: +p.lat, lon: +p.lon });
-    ['zvyraz-vypln', 'zvyraz-cara'].forEach(function (id) {
+    ['zvyraz-vypln', 'zvyraz-cara', 'zvyraz-bod'].forEach(function (id) {
       try { mapa.setFilter(id, ['==', ['id'], -1]); } catch (er) { }
     });
   }
@@ -523,7 +539,7 @@ function pridejVrstvy() {
     krizek.style.cssText = 'margin-left:auto;padding:0 8px;';
     krizek.onclick = function () {
       box.style.display = 'none';
-      ['zvyraz-vypln', 'zvyraz-cara'].forEach(function (id) {
+      ['zvyraz-vypln', 'zvyraz-cara', 'zvyraz-bod'].forEach(function (id) {
         try { mapa.setFilter(id, ['==', ['id'], -1]); } catch (er) { }
       });
     };
@@ -546,7 +562,7 @@ function pridejVrstvy() {
         ? 'Zatím neutrální — obsaď ji v aplikaci Okolník!'
         : 'Drží ' + jmenoTymu(drzitel) + '.');
     pridejWiki(box, v);
-    ['zvyraz-vypln', 'zvyraz-cara'].forEach(function (id) {
+    ['zvyraz-vypln', 'zvyraz-cara', 'zvyraz-bod'].forEach(function (id) {
       try { mapa.setFilter(id, ['==', ['id'], f.id]); } catch (er) { }
     });
   }
