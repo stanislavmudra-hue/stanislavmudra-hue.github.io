@@ -2288,8 +2288,8 @@ function start() {
   verejneSouteze();
   Promise.all([
     fetch('data/tymy.json?v=10').then(function (r) { return r.json(); }),
-    fetch('data/vlajky_oblasti.json?v=32').then(function (r) { return r.json(); }),
-    fetch('data/kraje.json?v=32').then(function (r) { return r.json(); }),
+    fetch('data/vlajky_oblasti.json?v=43').then(function (r) { return r.json(); }),
+    fetch('data/kraje.json?v=43').then(function (r) { return r.json(); }),
     fetch('data/vlajky.json?v=32').then(function (r) { return r.json(); }),
     fetch('data/obrys.json?v=14').then(function (r) { return r.json(); }),
   ]).then(function (vysledky) {
