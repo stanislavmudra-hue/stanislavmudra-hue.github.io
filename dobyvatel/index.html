@@ -72,13 +72,29 @@
     cursor: pointer; color: inherit; }
   .zalozky button.aktivni { background: #4e6e58; color: #fff;
     border-color: #4e6e58; }
-  .podzalozky { display: flex; gap: 6px; margin: 0 0 10px; }
-  .podzalozky button { padding: 5px 12px; border-radius: 8px;
+  .podzalozky { display: flex; gap: 8px; margin: 0 0 14px;
+    border-bottom: 2px solid var(--linka); padding-bottom: 10px; }
+  .podzalozky button { padding: 8px 18px; border-radius: 99px;
     border: 1px solid var(--linka); background: #fffdf6;
-    font-family: inherit; font-size: .88rem; font-weight: 600;
-    cursor: pointer; color: inherit; }
-  .podzalozky button.aktivni { background: #efe9da;
-    border-color: #4e6e58; }
+    font-family: inherit; font-size: .95rem; font-weight: 700;
+    cursor: pointer; color: inherit;
+    transition: background .15s, color .15s; }
+  .podzalozky button:hover { border-color: #4e6e58; }
+  .podzalozky button.aktivni { background: #4e6e58; color: #fff;
+    border-color: #4e6e58; box-shadow: 0 2px 6px rgba(46,74,56,.35); }
+  /* ŽIVĚJŠÍ, OKOLNÍKOVĚJŠÍ kabát (přání 28. 8.) */
+  main.plocha button { font-family: inherit; cursor: pointer;
+    border: 1px solid #b9b2a0; background: #fffdf6;
+    border-radius: 9px; padding: 6px 12px; font-weight: 600;
+    transition: background .15s, border-color .15s; }
+  main.plocha button:hover { border-color: #4e6e58;
+    background: #f4f0e4; }
+  main.plocha button:disabled { opacity: .55; cursor: default; }
+  .karta h2 { border-bottom: 3px solid #C99B3F; display: inline-block;
+    padding-bottom: 3px; margin-bottom: 10px; }
+  .stitek { background: #dcefdc; }
+  select { font-family: inherit; border: 1px solid #b9b2a0;
+    border-radius: 9px; background: #fffdf6; }
   .pod { display: none; }
   .pod.aktivni { display: block; }
   .zalozka { display: none; flex: 1; min-height: 0; overflow: auto; }
@@ -227,6 +243,6 @@
   </div>
 </footer>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="dobyvatel.js?v=33"></script>
+<script src="dobyvatel.js?v=34"></script>
 </body>
 </html>

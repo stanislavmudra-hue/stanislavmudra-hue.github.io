@@ -330,6 +330,43 @@ function pridejVrstvy() {
         ['==', ['coalesce', ['get', 'akt'], 1], 0], 0.35, 0],
     },
   });
+  // VLASTNÍ MÍSTA v odděleném zdroji (kruh v barvě držitele +
+  // čárkovaný lem) — malý kruh vmíchaný mezi 17 688 polygonů dělal
+  // artefakty a splýval s buňkou pod sebou („dvě místa najednou")
+  mapa.addSource('vlastni', { type: 'geojson', data: vlastniFC });
+  mapa.addLayer({
+    id: 'vlastni-uzemi', type: 'fill', source: 'vlastni',
+    paint: {
+      'fill-color': ['case', ['==', ['get', 't'], '0'],
+        '#C62828', barvaTymu()],
+      'fill-opacity': ['case', ['==', ['get', 't'], '0'], 0.14, 0.5],
+    },
+  });
+  mapa.addLayer({
+    id: 'vlastni-obrys', type: 'line', source: 'vlastni',
+    paint: {
+      'line-color': ['case', ['==', ['get', 't'], '0'],
+        '#C62828', barvaTymu()],
+      'line-width': 2.4,
+      'line-dasharray': [2, 1.3],
+    },
+  });
+  // ZÁCHYTNÉ BODY (přání 28. 8.): na ztlumené mapě zůstávají
+  // nejvýznamnější místa jako bledé bublinky — jen orientace
+  mapa.addLayer({
+    id: 'orientacni', type: 'symbol', source: 'body', minzoom: 7,
+    filter: ['all', ['==', ['get', 'p'], 4],
+      ['==', ['coalesce', ['get', 'akt'], 1], 0]],
+    layout: {
+      'icon-image': ['concat', 'ik-', ['get', 'k']],
+      'icon-size': ['interpolate', ['exponential', 1.5], ['zoom'],
+        6, 0.36, 10, 0.5, 13, 0.62, 17, 2.0],
+      'icon-padding': 22,
+    },
+    paint: { 'icon-opacity': 0.4 },
+  });
+  // jména míst: drží si místo mezi sebou (žádné překryvy), ale
+  // kreslí se POD ikonami — ikony mají při rozmisťování přednost
   mapa.addLayer({
     id: 'vlajky-jmena', type: 'symbol', source: 'body', minzoom: 10.2,
     layout: {
@@ -342,9 +379,6 @@ function pridejVrstvy() {
         17, ['literal', [0, 7.5]]],
       'text-anchor': 'top',
       'text-max-width': 9,
-      // jména se kreslí dřív než ikony (vyšší vrstva) a KRADLA jim
-      // místo — ikony pak „mizely"; jméno smí zmizet, ikona ne
-      'text-ignore-placement': true,
     },
     paint: {
       'text-color': '#4a443a',
@@ -352,9 +386,8 @@ function pridejVrstvy() {
       'text-halo-width': 1.3,
     },
   });
-
   // klik kamkoli do území → bublina se jménem, hodnotou a držitelem
-  mapa.on('click', 'uzemi', function (e) {
+  function naKlikOblasti(e) {
     var f = e.features && e.features[0];
     if (!f || f.id === undefined) return;
     if (rezimPridani) return;   // klik zpracuje obecný handler níž
@@ -387,6 +420,24 @@ function pridejVrstvy() {
         try { mapa.setFilter(id, ['==', ['id'], -1]); } catch (er) { }
       });
     });
+  }
+  mapa.on('click', 'uzemi', naKlikOblasti);
+  mapa.on('click', 'vlastni-uzemi', naKlikOblasti);
+
+  // v editoru jmenovka i při najetí na BUŇKU (přání 28. 8.)
+  mapa.on('mousemove', 'uzemi', function (e) {
+    if (!rezimVyberu) return;
+    var f = e.features && e.features[0];
+    if (!f || f.id === undefined || f.id >= nStd) return;
+    var v = vlajky[f.id];
+    if (!v) return;
+    mapa.getCanvas().style.cursor = 'pointer';
+    jmenovka.setLngLat(e.lngLat).setText(v.n).addTo(mapa);
+  });
+  mapa.on('mouseleave', 'uzemi', function () {
+    if (!rezimVyberu) return;
+    mapa.getCanvas().style.cursor = '';
+    jmenovka.remove();
   });
   // přidání vlastního místa: klik KAMKOLI (i doprostřed louky)
   mapa.on('click', function (e) {
@@ -404,10 +455,8 @@ function pridejVrstvy() {
     obnovSeznamVlastnich();
   });
 
-  var jmenovka = new maplibregl.Popup({ closeButton: false,
-    closeOnClick: false, offset: 14 });
   ['vlajky-ik4', 'vlajky-ik3', 'vlajky-ik2', 'vlajky-ik1',
-   'vlajky-ik-vse']
+   'vlajky-ik-vse', 'orientacni']
     .forEach(function (id) {
       mapa.on('mousemove', id, function (e) {
         mapa.getCanvas().style.cursor = 'pointer';
@@ -423,8 +472,17 @@ function pridejVrstvy() {
     });
 }
 
+// jmenovka místa po najetí (obrázky, orientační body, buňky
+// v editoru) — jediná instance pro celou mapu
+var jmenovka = null;
+try {
+  jmenovka = new maplibregl.Popup({ closeButton: false,
+    closeOnClick: false, offset: 14 });
+} catch (e) { /* maplibre se teprve načítá */ }
+
 /* ── VÝBĚR MÍST (maska soutěže) ── */
 var nStd = 0;              // počet standardních vlajek (bez vlastních)
+var vlastniFC = { type: 'FeatureCollection', features: [] };
 var maskaAktivni = null;   // pole bool dle indexu vlajky (null = vše)
 var rezimVyberu = false;   // správce právě kliká výběr na mapě
 var vyberDruhu = null;     // {druh: bool} — kterých druhů se klik týká
@@ -490,7 +548,8 @@ function zapracujVlastni(pole) {
   if (!body || !oblasti || !nStd) return;
   vlajky.length = nStd;
   body.features.length = nStd;
-  oblasti.features.length = nStd;
+  oblasti.features.length = nStd;   // kruhy už do oblastí NEpatří
+  vlastniFC.features.length = 0;
   var dosah = ((soutezDoc && soutezDoc.pravidla) || {}).dosahM || 150;
   (pole || []).forEach(function (v, j) {
     var idx = nStd + j;
@@ -500,10 +559,14 @@ function zapracujVlastni(pole) {
       properties: { n: v.n, h: v.h || 2, t: '0', k: 'vlastni',
                     p: 4, akt: 1 },
       geometry: { type: 'Point', coordinates: [v.lon, v.lat] } });
-    oblasti.features.push({ type: 'Feature', id: idx,
-      properties: { t: '0', akt: 1 },
+    vlastniFC.features.push({ type: 'Feature', id: idx,
+      properties: { t: '0' },
       geometry: kruhPolygon(v.lat, v.lon, dosah) });
   });
+  if (mapa) {
+    var zdrojV = mapa.getSource('vlastni');
+    if (zdrojV) zdrojV.setData(vlastniFC);
+  }
   // při editaci se promítá ROZPRACOVANÝ výběr (ostrá maska mazala
   // rozklikaná místa — výtka „naklikaná z mapy zmizela")
   aplikujMasku(rezimVyberu && maskaRozpracovana
@@ -750,10 +813,16 @@ function obarvi(drzitele) {
   for (var j = 0; j < body.features.length; j++) {
     body.features[j].properties.t = (drzitele && drzitele[j]) || '0';
   }
+  for (var k2 = 0; k2 < vlastniFC.features.length; k2++) {
+    var fv = vlastniFC.features[k2];
+    fv.properties.t = (drzitele && drzitele[fv.id]) || '0';
+  }
   var zdroj = mapa.getSource('oblasti');
   if (zdroj) zdroj.setData(oblasti);
   var zdrojB = mapa.getSource('body');
   if (zdrojB) zdrojB.setData(body);
+  var zdrojV = mapa.getSource('vlastni');
+  if (zdrojV) zdrojV.setData(vlastniFC);
 }
 
 function vypisSkore(skore) {
