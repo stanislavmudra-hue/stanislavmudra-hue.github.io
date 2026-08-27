@@ -34,9 +34,11 @@ function el(id) { return document.getElementById(id); }
 
 /* Záložky (jedna obrazovka bez rolování, přání 28. 8.). */
 function prepniZalozku(z) {
-  document.querySelectorAll('.zalozky button').forEach(function (b) {
+  document.querySelectorAll('#zalozky > button').forEach(function (b) {
     b.classList.toggle('aktivni', b.getAttribute('data-z') === z);
   });
+  var nav2 = document.getElementById('zalozky');
+  if (nav2) nav2.classList.toggle('moje-otevrene', z === 'moje');
   document.querySelectorAll('.zalozka').forEach(function (s) {
     s.classList.toggle('aktivni', s.id === 'z-' + z);
   });
@@ -46,21 +48,22 @@ function prepniZalozku(z) {
 }
 
 function pripravZalozky() {
-  document.querySelectorAll('.zalozky button').forEach(function (b) {
+  document.querySelectorAll('#zalozky > button').forEach(function (b) {
     b.onclick = function () {
       prepniZalozku(b.getAttribute('data-z'));
     };
   });
-  document.querySelectorAll('.podzalozky button')
+  document.querySelectorAll('.pod-menu button')
     .forEach(function (b) {
       b.onclick = function () {
+        prepniZalozku('moje');
         prepniPodzalozku(b.getAttribute('data-p'));
       };
     });
 }
 
 function prepniPodzalozku(p) {
-  document.querySelectorAll('.podzalozky button')
+  document.querySelectorAll('.pod-menu button')
     .forEach(function (b) {
       b.classList.toggle('aktivni', b.getAttribute('data-p') === p);
     });
@@ -817,6 +820,7 @@ function obarvi(drzitele) {
     var fv = vlastniFC.features[k2];
     fv.properties.t = (drzitele && drzitele[fv.id]) || '0';
   }
+  if (!mapa) return;   // bez WebGL jen data (skóre, žebříčky)
   var zdroj = mapa.getSource('oblasti');
   if (zdroj) zdroj.setData(oblasti);
   var zdrojB = mapa.getSource('body');
@@ -2124,7 +2128,8 @@ function start() {
     for (var i = 0; i < oblasti.features.length; i++) {
       oblasti.features[i].properties.t = '0';
     }
-    mapa = new maplibregl.Map({
+    try {
+      mapa = new maplibregl.Map({
       container: 'mapa',
       // vlastní čistý podklad — území jsou hlavní obsah (Liberty
       // podklad je přebíjel, výtka 26. 8. večer)
@@ -2173,31 +2178,60 @@ function start() {
     pridejLegendu();
     mapa.on('load', function () {
       nahrajIkony().then(function () { pridejVrstvy(); });
-      nactiSnimek().then(function (s) {
-        var poradi = s.tymyPoradi || [];
-        var drzitele = s.drzitele
-          ? rozbalDrzitele(s.drzitele, poradi) : null;
-        posledniDrziteleArr = drzitele;
-        posledniDobyto = s.dobyto || null;
-        posledniClenove = s.clenove || null;
-        obarvi(drzitele);
-        vypisSkore(s.skore || {});
-        vypisDobyto(s.dobyto || {});
-        var kdy = s.ts ? new Date(s.ts) : null;
-        el('stav').textContent = 'Stav území k '
-          + (kdy ? kdy.toLocaleString('cs-CZ') : 'poslednímu snímku')
-          + ' · obsazovat lze v aplikaci Okolník (režim Dobyvatel).';
-      }).catch(function () {
-        vypisSkore({});
-        el('stav').textContent = 'Soutěž se připravuje — mapa zatím '
-          + 'ukazuje neutrální území. Obsazovat půjde v aplikaci '
-          + 'Okolník (režim Dobyvatel).';
-      });
+    });
+    } catch (chybaMapy) {
+      mapa = null;
+      mapaSelhala(chybaMapy);
+    }
+    // snímek a skóre NEZÁVISLE na mapě — žebříčky, soutěže i správa
+    // musí fungovat, i když WebGL nejede (hlášeno 28. 8.)
+    nactiSnimek().then(function (s) {
+      var poradi = s.tymyPoradi || [];
+      var drzitele = s.drzitele
+        ? rozbalDrzitele(s.drzitele, poradi) : null;
+      posledniDrziteleArr = drzitele;
+      posledniDobyto = s.dobyto || null;
+      posledniClenove = s.clenove || null;
+      obarvi(drzitele);
+      vypisSkore(s.skore || {});
+      vypisDobyto(s.dobyto || {});
+      if (mapaMrtva) return;
+      var kdy = s.ts ? new Date(s.ts) : null;
+      el('stav').textContent = 'Stav území k '
+        + (kdy ? kdy.toLocaleString('cs-CZ') : 'poslednímu snímku')
+        + ' · obsazovat lze v aplikaci Okolník (režim Dobyvatel).';
+    }).catch(function () {
+      vypisSkore({});
+      if (mapaMrtva) return;
+      el('stav').textContent = 'Soutěž se připravuje — mapa zatím '
+        + 'ukazuje neutrální území. Obsazovat půjde v aplikaci '
+        + 'Okolník (režim Dobyvatel).';
     });
   }).catch(function (e) {
-    el('stav').textContent = 'Mapu se nepodařilo načíst ('
-      + e.message + ').';
+    mapaSelhala(e);
   });
+}
+
+var mapaMrtva = false;
+
+function mapaSelhala(e) {
+  mapaMrtva = true;
+  var box = el('stav');
+  box.textContent = '';
+  var webgl = /webgl/i.test((e && e.message) || '');
+  var text = document.createElement('span');
+  text.textContent = webgl
+    ? 'Prohlížeči se nepodařilo zapnout grafiku (WebGL), mapa se '
+      + 'proto nenačte. Obvykle pomůže zapnout hardwarovou '
+      + 'akceleraci v nastavení prohlížeče a restartovat ho, '
+      + 'případně zkusit Chrome/Edge. Žebříčky, soutěže i správa '
+      + 'fungují dál. '
+    : 'Mapu se nepodařilo načíst. ';
+  box.appendChild(text);
+  var znovu = document.createElement('button');
+  znovu.textContent = 'Zkusit znovu';
+  znovu.onclick = function () { location.reload(); };
+  box.appendChild(znovu);
 }
 
 start();

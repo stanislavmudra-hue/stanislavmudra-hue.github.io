@@ -64,24 +64,31 @@
                  flex-wrap: wrap; }
   .radek-hlava h1 { margin: 0; font-size: 1.45rem; }
   .radek-hlava .stitek { margin: 0; }
-  .zalozky { display: flex; gap: 6px; margin-left: auto;
-             flex-wrap: wrap; }
-  .zalozky button { padding: 7px 14px; border-radius: 99px;
-    border: 1px solid var(--linka); background: #fffdf6;
-    font-family: inherit; font-size: .92rem; font-weight: 600;
-    cursor: pointer; color: inherit; }
-  .zalozky button.aktivni { background: #4e6e58; color: #fff;
-    border-color: #4e6e58; }
-  .podzalozky { display: flex; gap: 8px; margin: 0 0 14px;
-    border-bottom: 2px solid var(--linka); padding-bottom: 10px; }
-  .podzalozky button { padding: 8px 18px; border-radius: 99px;
-    border: 1px solid var(--linka); background: #fffdf6;
-    font-family: inherit; font-size: .95rem; font-weight: 700;
-    cursor: pointer; color: inherit;
+  /* LEVÉ MENU (přání 28. 8.: „na levé straně pod sebou, po kliku
+     rozbalit detaily") */
+  .telo { display: flex; gap: 14px; flex: 1; min-height: 0; }
+  .obsah { flex: 1; min-width: 0; display: flex;
+           flex-direction: column; }
+  .bocni-menu { width: 190px; flex: none; display: flex;
+    flex-direction: column; gap: 6px; align-self: flex-start; }
+  .bocni-menu > button { text-align: left; padding: 10px 14px;
+    border-radius: 10px; border: 1px solid var(--linka);
+    background: #fffdf6; font-family: inherit; font-size: .97rem;
+    font-weight: 700; cursor: pointer; color: inherit;
     transition: background .15s, color .15s; }
-  .podzalozky button:hover { border-color: #4e6e58; }
-  .podzalozky button.aktivni { background: #4e6e58; color: #fff;
+  .bocni-menu > button:hover { border-color: #4e6e58; }
+  .bocni-menu > button.aktivni { background: #4e6e58; color: #fff;
     border-color: #4e6e58; box-shadow: 0 2px 6px rgba(46,74,56,.35); }
+  .pod-menu { display: none; flex-direction: column; gap: 4px;
+    margin: 0 0 4px 16px; }
+  .bocni-menu.moje-otevrene .pod-menu { display: flex; }
+  .pod-menu button { text-align: left; padding: 7px 12px;
+    border-radius: 8px; border: 1px solid var(--linka);
+    background: #fffdf6; font-family: inherit; font-size: .9rem;
+    font-weight: 600; cursor: pointer; color: inherit; }
+  .pod-menu button:hover { border-color: #4e6e58; }
+  .pod-menu button.aktivni { background: #efe9da;
+    border-color: #4e6e58; font-weight: 700; }
   /* ŽIVĚJŠÍ, OKOLNÍKOVĚJŠÍ kabát (přání 28. 8.) */
   main.plocha button { font-family: inherit; cursor: pointer;
     border: 1px solid #b9b2a0; background: #fffdf6;
@@ -111,6 +118,9 @@
   @media (max-width: 820px) {
     .plocha { height: auto !important; }
     .zalozka { overflow: visible; }
+    .telo { flex-direction: column; }
+    .bocni-menu { width: auto; flex-direction: row; flex-wrap: wrap; }
+    .pod-menu { flex-direction: row; flex-wrap: wrap; margin: 0; }
     .mapa-radek { flex-direction: column; }
     .bocni { width: auto; }
     #mapa { min-height: 58vh; flex: none; }
@@ -139,12 +149,20 @@
   <div class="radek-hlava">
     <h1 id="titulek">Dobyvatel</h1>
     <span class="stitek" id="stavSouteze">…</span>
-    <nav class="zalozky" id="zalozky" aria-label="Části Dobyvatele">
+  </div>
+
+  <div class="telo">
+    <nav class="bocni-menu" id="zalozky" aria-label="Části Dobyvatele">
       <button data-z="mapa" class="aktivni">Mapa</button>
       <button data-z="zebricky">Žebříčky</button>
       <button data-z="moje">Moje soutěže</button>
+      <div class="pod-menu" id="podzalozky">
+        <button data-p="prehled" class="aktivni">Přehled</button>
+        <button data-p="sprava" id="zalozkaSprava">Správa</button>
+        <button data-p="zalozit">Založení</button>
+      </div>
     </nav>
-  </div>
+    <div class="obsah">
 
   <section class="zalozka aktivni" id="z-mapa">
     <div class="drobne" id="soutezVolba"
@@ -184,11 +202,6 @@
   </section>
 
   <section class="zalozka" id="z-moje">
-    <nav class="podzalozky" id="podzalozky">
-      <button data-p="prehled" class="aktivni">Moje soutěže</button>
-      <button data-p="sprava" id="zalozkaSprava">Správa</button>
-      <button data-p="zalozit">Založení</button>
-    </nav>
     <div class="pod aktivni" id="p-prehled">
       <div class="karta">
         <h2 id="soutezNazev">Česko 2026 — republikové kolo</h2>
@@ -223,6 +236,8 @@
       </div>
     </div>
   </section>
+    </div>
+  </div>
 </main>
 
 <footer class="pata">
@@ -243,6 +258,6 @@
   </div>
 </footer>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="dobyvatel.js?v=34"></script>
+<script src="dobyvatel.js?v=35"></script>
 </body>
 </html>
