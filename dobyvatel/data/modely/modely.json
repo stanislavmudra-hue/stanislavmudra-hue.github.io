@@ -3,12 +3,12 @@
   "hrad": {
    "bin": "hrad.bin",
    "textura": "hrad.webp",
-   "vrcholu": 23168,
-   "trojuhelniku": 25000,
+   "vrcholu": 30589,
+   "trojuhelniku": 45000,
    "mez": [
-    1.501,
+    1.372,
     1.0,
-    1.471
+    1.344
    ]
   }
  },
