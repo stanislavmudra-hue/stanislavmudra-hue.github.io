@@ -3112,18 +3112,25 @@ function start() {
     mapa.addControl(new maplibregl.NavigationControl({
       showCompass: false }), 'top-right');
     mapa.addControl(new maplibregl.FullscreenControl(), 'top-right');
-    // na PC bez GPS je poloha z Wi-Fi/IP (km vedle) → tlačítko jen
-    // na dotykových zařízeních (přání 27. 8.)
+    // na PC bez GPS je poloha z Wi-Fi/IP (km vedle) → jen na
+    // dotykových zařízeních; na telefonu se poloha po načtení
+    // ZAPNE SAMA (přání 28. 8.: „kdyby někdo koukal přes telefon")
+    var polohaCtrl = null;
     if (window.matchMedia
         && window.matchMedia('(pointer: coarse)').matches) {
-      mapa.addControl(new maplibregl.GeolocateControl({
+      polohaCtrl = new maplibregl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
         showUserLocation: true,
-      }), 'top-right');
+      });
+      mapa.addControl(polohaCtrl, 'top-right');
     }
     pridejLegendu();
     mapa.on('load', function () {
       nahrajIkony().then(function () { pridejVrstvy(); });
+      if (polohaCtrl) {
+        try { polohaCtrl.trigger(); } catch (eG) { }
+      }
     });
     } catch (chybaMapy) {
       mapa = null;
