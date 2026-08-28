@@ -3019,6 +3019,19 @@ function start() {
     for (var i = 0; i < oblasti.features.length; i++) {
       oblasti.features[i].properties.t = '0';
     }
+    var demTeren = null;
+    try {
+      if (window.mlcontour) {
+        demTeren = new mlcontour.DemSource({
+          url: 'https://s3.amazonaws.com/elevation-tiles-prod/'
+            + 'terrarium/{z}/{x}/{y}.png',
+          encoding: 'terrarium',
+          maxzoom: 13,
+          worker: true,
+        });
+        demTeren.setupMaplibre(maplibregl);
+      }
+    } catch (eD) { demTeren = null; }
     try {
       mapa = new maplibregl.Map({
       container: 'mapa',
@@ -3029,13 +3042,28 @@ function start() {
         sources: {
           teren: {
             type: 'raster-dem',
-            tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/'
-              + 'terrarium/{z}/{x}/{y}.png'],
+            tiles: [demTeren ? demTeren.sharedDemProtocolUrl
+              : 'https://s3.amazonaws.com/elevation-tiles-prod/'
+                + 'terrarium/{z}/{x}/{y}.png'],
             encoding: 'terrarium',
             tileSize: 256,
-            maxzoom: 14,
+            maxzoom: 13,
             attribution: 'Terén: Mapzen / AWS Open Data',
           },
+          kontury: (demTeren ? {
+            type: 'vector',
+            tiles: [demTeren.contourProtocolUrl({
+              multiplier: 1,
+              // prahy jako v appce (zoom: [vedlejší, hlavní] v m)
+              thresholds: { 11: [200, 1000], 12: [100, 500],
+                13: [50, 250], 14: [50, 250], 15: [20, 100] },
+              elevationKey: 'ele',
+              levelKey: 'level',
+              contourLayer: 'contours',
+            })],
+            maxzoom: 15,
+          } : { type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] } }),
           omt: {
             type: 'vector',
             url: 'https://tiles.openfreemap.org/planet',
@@ -3051,9 +3079,10 @@ function start() {
             // s přiblížením slábne: hranaté vady DEM (zuby u dálnic
             // a lomů) se zblízka kreslily jako „polygony" — kopce
             // zdaleka zůstávají
+            // plastičtější (přání 28. 8.), zblízka dál slábne
             'hillshade-exaggeration': ['interpolate', ['linear'],
-              ['zoom'], 10, 0.62, 12, 0.4, 14, 0.22],
-            'hillshade-shadow-color': '#7d705e',
+              ['zoom'], 10, 0.74, 12, 0.52, 14, 0.32],
+            'hillshade-shadow-color': '#6e6150',
             // odlesk = barva papíru: vady v DEM (mosty, zářezy) se
             // s bílou vysvěcovaly jako „díry v mapě" (u Poříčan)
             'hillshade-highlight-color': '#f5f1e4',
@@ -3074,6 +3103,29 @@ function start() {
           paint: { 'line-color': '#8fb8cf', 'line-opacity': 0.9,
             'line-width': ['interpolate', ['exponential', 1.4],
               ['zoom'], 9, 0.8, 16, 3.0] },
+        }, {
+          id: 'vrstevnice', type: 'line', source: 'kontury',
+          'source-layer': 'contours', minzoom: 11.5,
+          filter: ['!=', ['get', 'level'], 1],
+          paint: { 'line-color': '#b3a27f', 'line-opacity': 0.35,
+            'line-width': 0.6 },
+        }, {
+          id: 'vrstevnice-hlavni', type: 'line', source: 'kontury',
+          'source-layer': 'contours', minzoom: 11.5,
+          filter: ['==', ['get', 'level'], 1],
+          paint: { 'line-color': '#b3a27f', 'line-opacity': 0.5,
+            'line-width': 1.0 },
+        }, {
+          id: 'vrstevnice-koty', type: 'symbol', source: 'kontury',
+          'source-layer': 'contours', minzoom: 13,
+          filter: ['==', ['get', 'level'], 1],
+          layout: { 'symbol-placement': 'line',
+            'text-field': ['concat', ['get', 'ele'], ' m'],
+            'text-font': ['Noto Sans Regular'],
+            'text-size': 10 },
+          paint: { 'text-color': '#94805b',
+            'text-halo-color': '#f2efe6',
+            'text-halo-width': 1.2 },
         }, {
           id: 'silnice', type: 'line', source: 'omt',
           'source-layer': 'transportation', minzoom: 8,
