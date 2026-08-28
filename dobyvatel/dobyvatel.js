@@ -3054,10 +3054,12 @@ function start() {
             type: 'vector',
             tiles: [demTeren.contourProtocolUrl({
               multiplier: 1,
-              // hustší než v appce (PC výkon snese; v ČR je
-              // převýšení malé a 50m krok byl řídký — přání 28. 8.)
-              thresholds: { 11: [100, 500], 12: [50, 250],
-                13: [25, 100], 14: [25, 100], 15: [10, 50] },
+              // hustší než v appce (PC výkon snese) — ⚠️ klíč
+              // = zoom DLAŽDICE, a vektorové dlaždice (512 px) se
+              // berou o ÚROVEŇ NÍŽ než zoom pohledu: pohled z13
+              // čte prahy z12 (proto posunuto o úroveň dřív)
+              thresholds: { 10: [100, 500], 11: [50, 250],
+                12: [25, 100], 13: [25, 100], 14: [10, 50] },
               elevationKey: 'ele',
               levelKey: 'level',
               contourLayer: 'contours',
