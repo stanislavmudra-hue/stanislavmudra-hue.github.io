@@ -1041,10 +1041,12 @@ function nactiMistaInfo() {
         source: 'mista-info', minzoom: 11.6,
         layout: {
           'icon-image': ['concat', 'ik-', ['get', 'k']],
-          'icon-size': ['*',
-            ['interpolate', ['linear'], ['zoom'],
-              11.6, 0.26, 14, 0.34, 17, 0.6],
-            ['case', ['==', ['get', 'm'], 1], 0.66, 1]],
+          // ⛔ zoom-interpolate musí být NA VRCHOLU výrazu —
+          // ['*', interpolate, case] vrstvu tiše zabil (v62)
+          'icon-size': ['interpolate', ['linear'], ['zoom'],
+            11.6, ['case', ['==', ['get', 'm'], 1], 0.17, 0.26],
+            14, ['case', ['==', ['get', 'm'], 1], 0.22, 0.34],
+            17, ['case', ['==', ['get', 'm'], 1], 0.4, 0.6]],
           'icon-padding': 2,
         },
         paint: { 'icon-opacity': 0.55 },
