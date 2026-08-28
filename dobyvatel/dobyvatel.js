@@ -184,14 +184,27 @@ function nakresliBublinu(emoji, barva) {
 }
 
 function nahrajIkony() {
-  Object.keys(BUBLINA_DRUHU).forEach(function (kat) {
-    if (!mapa.hasImage('ik-' + kat)) {
-      var b = BUBLINA_DRUHU[kat];
-      mapa.addImage('ik-' + kat, nakresliBublinu(b[0], b[1]),
-          { pixelRatio: 4 });
-    }
+  // kreslené odznaky (data/ikonky2, přání 29. 8.: „hezčí
+  // a popisnější obrázky") — emoji bublina jen jako záloha
+  var prace = Object.keys(BUBLINA_DRUHU).map(function (kat) {
+    if (mapa.hasImage('ik-' + kat)) return Promise.resolve();
+    return fetch('data/ikonky2/' + kat + '.webp?v=72')
+      .then(function (r) { if (!r.ok) throw 0; return r.blob(); })
+      .then(function (bl) { return createImageBitmap(bl); })
+      .then(function (im) {
+        if (!mapa.hasImage('ik-' + kat)) {
+          mapa.addImage('ik-' + kat, im, { pixelRatio: 8 });
+        }
+      })
+      .catch(function () {
+        if (!mapa.hasImage('ik-' + kat)) {
+          var b = BUBLINA_DRUHU[kat];
+          mapa.addImage('ik-' + kat, nakresliBublinu(b[0], b[1]),
+              { pixelRatio: 4 });
+        }
+      });
   });
-  return Promise.resolve();
+  return Promise.all(prace);
 }
 
 /* Pásma odkrývání PO DRUZÍCH: v každém druhu se vezme pár nejlepších
@@ -317,12 +330,12 @@ function pridejVrstvy() {
   // DŘÍV — když byla jména nahoře (v34–v39), zabrala místo a ikony
   // z mapy ZMIZELY (změřeno: z12,4 → 8 jmen, 0 ikon)
   mapa.addLayer({
-    id: 'vlajky-jmena', type: 'symbol', source: 'body', minzoom: 10.2,
+    id: 'vlajky-jmena', type: 'symbol', source: 'body', minzoom: 8.6,
     layout: {
       'text-field': ['get', 'n'],
       'text-font': ['Noto Sans Regular'],
       'text-size': ['interpolate', ['linear'], ['zoom'],
-        10, 12.5, 13, 14.5, 17, 24],
+        8.6, 10.5, 10, 12.5, 13, 14.5, 17, 24],
       'text-offset': ['interpolate', ['exponential', 1.5], ['zoom'],
         10, ['literal', [0, 0.9]], 13, ['literal', [0, 1.7]],
         17, ['literal', [0, 7.5]]],
