@@ -3058,8 +3058,10 @@ function start() {
               // = zoom DLAŽDICE, a vektorové dlaždice (512 px) se
               // berou o ÚROVEŇ NÍŽ než zoom pohledu: pohled z13
               // čte prahy z12 (proto posunuto o úroveň dřív)
-              thresholds: { 10: [100, 500], 11: [50, 250],
-                12: [25, 100], 13: [25, 100], 14: [10, 50] },
+              // hlavní (s kótou) po 50 m — na stovkách byla
+              // v českých kopcích 1–2 popsané čáry na obrazovku
+              thresholds: { 10: [100, 500], 11: [50, 100],
+                12: [25, 50], 13: [25, 50], 14: [10, 50] },
               elevationKey: 'ele',
               levelKey: 'level',
               contourLayer: 'contours',
