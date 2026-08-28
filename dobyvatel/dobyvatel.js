@@ -3053,13 +3053,19 @@ function start() {
         }, {
           id: 'voda', type: 'fill', source: 'omt',
           'source-layer': 'water',
-          paint: { 'fill-color': '#cbdde6', 'fill-opacity': 0.75 },
+          // jemné zvýraznění vodstva (přání 28. 8.)
+          paint: { 'fill-color': '#b9d4e3', 'fill-opacity': 0.85 },
+        }, {
+          id: 'voda-obrys', type: 'line', source: 'omt',
+          'source-layer': 'water', minzoom: 9,
+          paint: { 'line-color': '#8fb4c9', 'line-opacity': 0.5,
+            'line-width': 0.7 },
         }, {
           id: 'reky', type: 'line', source: 'omt',
           'source-layer': 'waterway', minzoom: 9,
-          paint: { 'line-color': '#b3cdd9', 'line-opacity': 0.85,
+          paint: { 'line-color': '#8fb8cf', 'line-opacity': 0.9,
             'line-width': ['interpolate', ['exponential', 1.4],
-              ['zoom'], 9, 0.6, 16, 2.4] },
+              ['zoom'], 9, 0.8, 16, 3.0] },
         }, {
           id: 'silnice', type: 'line', source: 'omt',
           'source-layer': 'transportation', minzoom: 8,
