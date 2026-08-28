@@ -3,18 +3,6 @@
   "hrad": {
    "bin": "hrad.bin",
    "textura": "hrad.webp",
-   "v": "dc0e84bc",
-   "vrcholu": 72671,
-   "trojuhelniku": 130558,
-   "mez": [
-    1.473,
-    1.0,
-    1.432
-   ]
-  },
-  "test": {
-   "bin": "test.bin",
-   "textura": "test.webp",
    "v": "869d2fd0",
    "vrcholu": 130829,
    "trojuhelniku": 128794,
@@ -32,13 +20,6 @@
    "lon": 14.1895,
    "vyskaM": 85,
    "otoceni": 30
-  },
-  {
-   "model": "test",
-   "lat": 49.93705,
-   "lon": 14.1953,
-   "vyskaM": 60,
-   "otoceni": 0
   }
  ]
 }
