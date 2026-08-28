@@ -3124,8 +3124,10 @@ function start() {
           id: 'vrstevnice-koty', type: 'symbol', source: 'kontury',
           'source-layer': 'contours', minzoom: 12.6,
           filter: ['==', ['get', 'level'], 1],
-          layout: { 'symbol-placement': 'line',
-            'symbol-spacing': 160,
+          // line-center: jedna kóta uprostřed čáry — 'line'
+          // na křivolakých vrstevnicích skoro nikdy nenašel místo
+          layout: { 'symbol-placement': 'line-center',
+            'text-max-angle': 80,
             'text-field': ['concat', ['get', 'ele'], ' m'],
             'text-font': ['Noto Sans Bold'],
             'text-size': 11.5 },
