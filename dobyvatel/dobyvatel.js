@@ -3006,7 +3006,7 @@ function start() {
     fetch('data/tymy.json?v=10').then(function (r) { return r.json(); }),
     fetch('data/vlajky_oblasti.json?v=44').then(function (r) { return r.json(); }),
     fetch('data/kraje.json?v=44').then(function (r) { return r.json(); }),
-    fetch('data/vlajky.json?v=60').then(function (r) { return r.json(); }),
+    fetch('data/vlajky.json?v=73').then(function (r) { return r.json(); }),
     fetch('data/obrys.json?v=14').then(function (r) { return r.json(); }),
   ]).then(function (vysledky) {
     obrys = vysledky[4];
