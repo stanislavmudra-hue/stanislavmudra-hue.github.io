@@ -3123,6 +3123,7 @@ function start() {
           'source-layer': 'contours', minzoom: 12.6,
           filter: ['==', ['get', 'level'], 1],
           layout: { 'symbol-placement': 'line',
+            'symbol-spacing': 160,
             'text-field': ['concat', ['get', 'ele'], ' m'],
             'text-font': ['Noto Sans Bold'],
             'text-size': 11.5 },
