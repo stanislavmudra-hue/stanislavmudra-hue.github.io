@@ -751,7 +751,7 @@ var modely3dBufery = {};
 var modely3dGL = null;
 
 function nactiModely3d() {
-  fetch('data/modely/modely.json?v=51')
+  fetch('data/modely/modely.json?v=53')
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (d) {
       if (!d || !d.umisteni || !d.umisteni.length || mapaMrtva) return;
@@ -761,14 +761,24 @@ function nactiModely3d() {
       Object.keys(jmena).forEach(function (jm) {
         var m = d.modely[jm];
         if (!m) return;
+        // otisk obsahu v URL — keš NEMŮŽE dát starý soubor
+        // k novému popisu (přesně to se stalo 28. 8.)
+        var otisk = '?v=' + (m.v || (m.vrcholu + 'x' + m.trojuhelniku));
         Promise.all([
-          fetch('data/modely/' + m.bin)
+          fetch('data/modely/' + m.bin + otisk)
             .then(function (r) { return r.arrayBuffer(); }),
-          fetch('data/modely/' + m.textura)
+          fetch('data/modely/' + m.textura + otisk)
             .then(function (r) { return r.blob(); })
             .then(function (b) { return createImageBitmap(b); }),
         ]).then(function (vys) {
           var nv = m.vrcholu;
+          // ⛔ POJISTKA: rozjetá geometrie se radši nekreslí vůbec
+          var cekano = nv * 20 + m.trojuhelniku * 12;
+          if (vys[0].byteLength !== cekano) {
+            console.warn('[modely3d]', jm, 'velikost nesedi',
+              vys[0].byteLength, 'cekano', cekano, '- vynechan');
+            return;
+          }
           modely3dBufery[jm] = {
             pozice: new Float32Array(vys[0], 0, nv * 3),
             uv: new Float32Array(vys[0], nv * 12, nv * 2),
