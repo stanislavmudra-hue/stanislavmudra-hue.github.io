@@ -1022,7 +1022,7 @@ function nactiTrasy() {
    nestali vlajkou (vyhlídky u silných míst, řopíky, hřebenové
    kóty…). Jen na koukání: přítomnost se počítá u hlavního bodu. ── */
 function nactiMistaInfo() {
-  fetch('data/mista_info.json?v=61')
+  fetch('data/mista_info.json?v=62')
     .then(function (r) { return r.json(); })
     .then(function (d) {
       mistaInfoSeznam = d;
