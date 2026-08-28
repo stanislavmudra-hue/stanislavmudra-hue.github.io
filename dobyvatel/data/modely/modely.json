@@ -1,0 +1,24 @@
+{
+ "modely": {
+  "hrad": {
+   "bin": "hrad.bin",
+   "textura": "hrad.webp",
+   "vrcholu": 23168,
+   "trojuhelniku": 25000,
+   "mez": [
+    1.501,
+    1.0,
+    1.471
+   ]
+  }
+ },
+ "umisteni": [
+  {
+   "model": "hrad",
+   "lat": 49.93912,
+   "lon": 14.18852,
+   "vyskaM": 60,
+   "otoceni": 30
+  }
+ ]
+}
