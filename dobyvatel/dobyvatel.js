@@ -3054,9 +3054,10 @@ function start() {
             type: 'vector',
             tiles: [demTeren.contourProtocolUrl({
               multiplier: 1,
-              // prahy jako v appce (zoom: [vedlejší, hlavní] v m)
-              thresholds: { 11: [200, 1000], 12: [100, 500],
-                13: [50, 250], 14: [50, 250], 15: [20, 100] },
+              // hustší než v appce (PC výkon snese; v ČR je
+              // převýšení malé a 50m krok byl řídký — přání 28. 8.)
+              thresholds: { 11: [100, 500], 12: [50, 250],
+                13: [25, 100], 14: [25, 100], 15: [10, 50] },
               elevationKey: 'ele',
               levelKey: 'level',
               contourLayer: 'contours',
@@ -3107,17 +3108,17 @@ function start() {
           id: 'vrstevnice', type: 'line', source: 'kontury',
           'source-layer': 'contours', minzoom: 11.5,
           filter: ['!=', ['get', 'level'], 1],
-          paint: { 'line-color': '#b3a27f', 'line-opacity': 0.35,
-            'line-width': 0.6 },
+          paint: { 'line-color': '#ab9770', 'line-opacity': 0.42,
+            'line-width': 0.7 },
         }, {
           id: 'vrstevnice-hlavni', type: 'line', source: 'kontury',
           'source-layer': 'contours', minzoom: 11.5,
           filter: ['==', ['get', 'level'], 1],
-          paint: { 'line-color': '#b3a27f', 'line-opacity': 0.5,
-            'line-width': 1.0 },
+          paint: { 'line-color': '#ab9770', 'line-opacity': 0.6,
+            'line-width': 1.1 },
         }, {
           id: 'vrstevnice-koty', type: 'symbol', source: 'kontury',
-          'source-layer': 'contours', minzoom: 13,
+          'source-layer': 'contours', minzoom: 12.6,
           filter: ['==', ['get', 'level'], 1],
           layout: { 'symbol-placement': 'line',
             'text-field': ['concat', ['get', 'ele'], ' m'],
