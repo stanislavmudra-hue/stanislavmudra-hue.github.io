@@ -1022,7 +1022,7 @@ function nactiTrasy() {
    nestali vlajkou (vyhlídky u silných míst, řopíky, hřebenové
    kóty…). Jen na koukání: přítomnost se počítá u hlavního bodu. ── */
 function nactiMistaInfo() {
-  fetch('data/mista_info.json?v=49')
+  fetch('data/mista_info.json?v=61')
     .then(function (r) { return r.json(); })
     .then(function (d) {
       mistaInfoSeznam = d;
@@ -1030,6 +1030,7 @@ function nactiMistaInfo() {
         features: d.map(function (m) {
           return { type: 'Feature',
             properties: { k: m[0], n: m[3],
+              m: m[4] ? 1 : 0,   // 1 = malá značka (vodní plochy)
               lat: m[1] / 1e5, lon: m[2] / 1e5 },
             geometry: { type: 'Point',
               coordinates: [m[2] / 1e5, m[1] / 1e5] } };
@@ -1040,8 +1041,10 @@ function nactiMistaInfo() {
         source: 'mista-info', minzoom: 11.6,
         layout: {
           'icon-image': ['concat', 'ik-', ['get', 'k']],
-          'icon-size': ['interpolate', ['linear'], ['zoom'],
-            11.6, 0.26, 14, 0.34, 17, 0.6],
+          'icon-size': ['*',
+            ['interpolate', ['linear'], ['zoom'],
+              11.6, 0.26, 14, 0.34, 17, 0.6],
+            ['case', ['==', ['get', 'm'], 1], 0.66, 1]],
           'icon-padding': 2,
         },
         paint: { 'icon-opacity': 0.55 },
