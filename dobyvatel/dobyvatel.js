@@ -3110,14 +3110,14 @@ function start() {
           id: 'vrstevnice', type: 'line', source: 'kontury',
           'source-layer': 'contours', minzoom: 11.5,
           filter: ['!=', ['get', 'level'], 1],
-          paint: { 'line-color': '#ab9770', 'line-opacity': 0.42,
-            'line-width': 0.7 },
+          paint: { 'line-color': '#9c8760', 'line-opacity': 0.55,
+            'line-width': 0.8 },
         }, {
           id: 'vrstevnice-hlavni', type: 'line', source: 'kontury',
           'source-layer': 'contours', minzoom: 11.5,
           filter: ['==', ['get', 'level'], 1],
-          paint: { 'line-color': '#ab9770', 'line-opacity': 0.6,
-            'line-width': 1.1 },
+          paint: { 'line-color': '#9c8760', 'line-opacity': 0.75,
+            'line-width': 1.4 },
         }, {
           id: 'vrstevnice-koty', type: 'symbol', source: 'kontury',
           'source-layer': 'contours', minzoom: 12.6,
