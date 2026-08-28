@@ -751,7 +751,7 @@ var modely3dBufery = {};
 var modely3dGL = null;
 
 function nactiModely3d() {
-  fetch('data/modely/modely.json?v=53')
+  fetch('data/modely/modely.json?v=54')
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (d) {
       if (!d || !d.umisteni || !d.umisteni.length || mapaMrtva) return;
