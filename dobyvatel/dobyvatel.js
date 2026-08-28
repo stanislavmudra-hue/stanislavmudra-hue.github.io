@@ -216,7 +216,10 @@ function spocitejPasma(pole) {
   Object.keys(dleDruhu).forEach(function (k) {
     var idx = dleDruhu[k];
     idx.sort(function (a, b) {
-      var r = (vlajky[b].h || 1) - (vlajky[a].h || 1);
+      // SLAVNÁ místa (s ilustrací) přednostně (přání 28. 8.)
+      var r = (vlajky[b].s || 0) - (vlajky[a].s || 0);
+      if (r) return r;
+      r = (vlajky[b].h || 1) - (vlajky[a].h || 1);
       if (r) return r;
       return (a * 2654435761 % 97) - (b * 2654435761 % 97) || a - b;
     });
@@ -2985,7 +2988,7 @@ function start() {
     fetch('data/tymy.json?v=10').then(function (r) { return r.json(); }),
     fetch('data/vlajky_oblasti.json?v=44').then(function (r) { return r.json(); }),
     fetch('data/kraje.json?v=44').then(function (r) { return r.json(); }),
-    fetch('data/vlajky.json?v=52').then(function (r) { return r.json(); }),
+    fetch('data/vlajky.json?v=60').then(function (r) { return r.json(); }),
     fetch('data/obrys.json?v=14').then(function (r) { return r.json(); }),
   ]).then(function (vysledky) {
     obrys = vysledky[4];
