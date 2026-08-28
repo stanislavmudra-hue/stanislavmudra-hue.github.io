@@ -467,6 +467,7 @@ function pridejVrstvy() {
       try { mapa.setFilter(id, ['==', ['id'], -1]); } catch (er) { }
     });
   }
+  ukazInfoMistoGl = ukazInfoMisto;
 
   // klik kamkoli do území → bublina se jménem, hodnotou a držitelem
   function naKlikOblasti(e) {
@@ -498,73 +499,7 @@ function pridejVrstvy() {
     } catch (eq) { }
     var v = vlajky[f.id];
     if (!v) return;
-    var drzitel = (f.properties && f.properties.t) || '0';
-    // INFO BOKEM (přání 29. 8.): karta nad Skóre — nic nepřekrývá
-    // mapu a mapa pod kurzorem dál žije
-    // plovoucí karta PŘÍMO V MAPĚ (vlevo dole) — vidět, nepřekáží
-    var box = el('mistoInfo');
-    if (!box) {
-      box = document.createElement('div');
-      box.id = 'mistoInfo';
-      box.className = 'legenda';
-      box.style.cssText = 'position:absolute;left:10px;bottom:36px;'
-        + 'z-index:6;max-width:250px;background:rgba(250,247,238,.96);'
-        + 'border:1px solid #b9b2a0;border-left:4px solid #C99B3F;'
-        + 'border-radius:10px;padding:8px 10px;'
-        + 'box-shadow:0 3px 10px rgba(0,0,0,.18);';
-      el('mapa').appendChild(box);
-    }
-    box.style.display = '';
-    box.textContent = '';
-    // bliknutí, ať si karty nejde nevšimnout (výtka 29. 8.)
-    box.classList.remove('blik');
-    void box.offsetWidth;
-    box.classList.add('blik');
-    var stitekV = document.createElement('div');
-    stitekV.style.cssText = 'font-size:.72rem;font-weight:800;'
-      + 'letter-spacing:.8px;color:#8a5a20;text-transform:uppercase;';
-    stitekV.textContent = 'Vybrané místo';
-    box.appendChild(stitekV);
-    if (window.matchMedia('(max-width: 820px)').matches) {
-      try { box.scrollIntoView({ block: 'nearest' }); } catch (eS) { }
-    }
-    var horni = document.createElement('div');
-    horni.style.cssText =
-      'display:flex;align-items:baseline;gap:8px;';
-    var jm = document.createElement('strong');
-    jm.textContent = v.n;
-    horni.appendChild(jm);
-    var krizek = document.createElement('button');
-    krizek.textContent = '×';
-    krizek.style.cssText = 'margin-left:auto;padding:0 8px;';
-    krizek.onclick = function () {
-      box.style.display = 'none';
-      ['zvyraz-vypln', 'zvyraz-cara', 'zvyraz-bod'].forEach(function (id) {
-        try { mapa.setFilter(id, ['==', ['id'], -1]); } catch (er) { }
-      });
-    };
-    horni.appendChild(krizek);
-    box.appendChild(horni);
-    function radekI(text) {
-      var p2 = document.createElement('div');
-      p2.textContent = text;
-      box.appendChild(p2);
-    }
-    radekI((POPISKY_DRUHU[v.k] || 'Místo') + ' · ' + v.h + ' b.');
-    var ok = (v.o !== undefined) ? okresyLegenda[v.o] : null;
-    if (ok) {
-      var okNazev = ok[0] === 'praha'
-        ? 'Praha'
-        : 'okres ' + ok[0].charAt(0).toUpperCase() + ok[0].slice(1);
-      radekI(okNazev.replace(/-/g, ' '));
-    }
-    radekI(drzitel === '0'
-        ? 'Zatím neutrální — obsaď ji v aplikaci Okolník!'
-        : 'Drží ' + jmenoTymu(drzitel) + '.');
-    pridejWiki(box, v);
-    ['zvyraz-vypln', 'zvyraz-cara', 'zvyraz-bod'].forEach(function (id) {
-      try { mapa.setFilter(id, ['==', ['id'], f.id]); } catch (er) { }
-    });
+    ukazKartuMista(f.id, (f.properties && f.properties.t) || '0');
   }
 
   mapa.on('click', 'uzemi', naKlikOblasti);
@@ -581,6 +516,7 @@ function pridejVrstvy() {
   } catch (e) { }
   nactiMistaInfo();
   nactiModely3d();
+  pripravHledani();
   // v editoru jmenovka i při najetí na BUŇKU (přání 28. 8.)
   mapa.on('mousemove', 'uzemi', function (e) {
     if (!rezimVyberu) return;
@@ -643,6 +579,169 @@ try {
 var wikiKes = {};
 var wikiBeh = 0;
 
+
+
+/* karta vlajky (v52 vytaženo z naKlikOblasti, ať ji otevře i hledání) */
+var ukazInfoMistoGl = null;
+var mistaInfoSeznam = null;
+
+function ukazKartuMista(id, drzitel) {
+  var v = vlajky[id];
+  if (!v) return;
+  var box = el('mistoInfo');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'mistoInfo';
+    box.className = 'legenda';
+    box.style.cssText = 'position:absolute;left:10px;bottom:36px;'
+      + 'z-index:6;max-width:250px;background:rgba(250,247,238,.96);'
+      + 'border:1px solid #b9b2a0;border-left:4px solid #C99B3F;'
+      + 'border-radius:10px;padding:8px 10px;'
+      + 'box-shadow:0 3px 10px rgba(0,0,0,.18);';
+    el('mapa').appendChild(box);
+  }
+  box.style.display = '';
+  box.textContent = '';
+  box.classList.remove('blik');
+  void box.offsetWidth;
+  box.classList.add('blik');
+  var stitekV = document.createElement('div');
+  stitekV.style.cssText = 'font-size:.72rem;font-weight:800;'
+    + 'letter-spacing:.8px;color:#8a5a20;text-transform:uppercase;';
+  stitekV.textContent = 'Vybrané místo';
+  box.appendChild(stitekV);
+  if (window.matchMedia('(max-width: 820px)').matches) {
+    try { box.scrollIntoView({ block: 'nearest' }); } catch (eS) { }
+  }
+  var horni = document.createElement('div');
+  horni.style.cssText = 'display:flex;align-items:baseline;gap:8px;';
+  var jm = document.createElement('strong');
+  jm.textContent = v.n;
+  horni.appendChild(jm);
+  var krizek = document.createElement('button');
+  krizek.textContent = '×';
+  krizek.style.cssText = 'margin-left:auto;padding:0 8px;';
+  krizek.onclick = function () {
+    box.style.display = 'none';
+    ['zvyraz-vypln', 'zvyraz-cara', 'zvyraz-bod'].forEach(function (idv) {
+      try { mapa.setFilter(idv, ['==', ['id'], -1]); } catch (er) { }
+    });
+  };
+  horni.appendChild(krizek);
+  box.appendChild(horni);
+  function radekI(text) {
+    var p2 = document.createElement('div');
+    p2.textContent = text;
+    box.appendChild(p2);
+  }
+  radekI((POPISKY_DRUHU[v.k] || 'Místo') + ' · ' + v.h + ' b.');
+  var ok = (v.o !== undefined) ? okresyLegenda[v.o] : null;
+  if (ok) {
+    var okNazev = ok[0] === 'praha'
+      ? 'Praha'
+      : 'okres ' + ok[0].charAt(0).toUpperCase() + ok[0].slice(1);
+    radekI(okNazev.replace(/-/g, ' '));
+  }
+  radekI(drzitel === '0'
+      ? 'Zatím neutrální — obsaď ji v aplikaci Okolník!'
+      : 'Drží ' + jmenoTymu(drzitel) + '.');
+  pridejWiki(box, v);
+  ['zvyraz-vypln', 'zvyraz-cara', 'zvyraz-bod'].forEach(function (idv) {
+    try { mapa.setFilter(idv, ['==', ['id'], id]); } catch (er) { }
+  });
+}
+
+/* ── HLEDÁNÍ NAD MAPOU (v52) ── */
+function bezHacku(t) {
+  return t.toLowerCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+var hledaniIndex = null;
+
+function pripravHledani() {
+  var vstup = el('hledani');
+  var vysledky = el('hledaniVysledky');
+  if (!vstup || !vysledky) return;
+  function schovej() { vysledky.style.display = 'none'; }
+  function postavIndex() {
+    if (hledaniIndex || !window.vlajky || !vlajky.length) return;
+    hledaniIndex = [];
+    vlajky.forEach(function (v, i) {
+      hledaniIndex.push({ t: bezHacku(v.n), i: i, m: null });
+    });
+    (mistaInfoSeznam || []).forEach(function (m) {
+      hledaniIndex.push({ t: bezHacku(m[3]), i: -1,
+        m: { k: m[0], lat: m[1] / 1e5, lon: m[2] / 1e5, n: m[3] } });
+    });
+  }
+  vstup.oninput = function () {
+    postavIndex();
+    var q = bezHacku(vstup.value.trim());
+    if (q.length < 2 || !hledaniIndex) { schovej(); return; }
+    var zacina = [];
+    var obsahuje = [];
+    for (var i = 0; i < hledaniIndex.length; i++) {
+      var z = hledaniIndex[i];
+      var kde = z.t.indexOf(q);
+      if (kde === 0) zacina.push(z);
+      else if (kde > 0) obsahuje.push(z);
+      if (zacina.length >= 8) break;
+    }
+    var vyber = zacina.concat(obsahuje).slice(0, 8);
+    vysledky.textContent = '';
+    if (!vyber.length) { schovej(); return; }
+    vyber.forEach(function (z) {
+      var v = z.m || vlajky[z.i];
+      var radek = document.createElement('div');
+      radek.style.cssText = 'padding:6px 10px;cursor:pointer;'
+        + 'display:flex;gap:8px;align-items:baseline;';
+      radek.onmouseenter = function () {
+        radek.style.background = '#efe9da';
+      };
+      radek.onmouseleave = function () { radek.style.background = ''; };
+      var b = BUBLINA_DRUHU[v.k] || ['❓', '#777'];
+      var em = document.createElement('span');
+      em.textContent = b[0];
+      radek.appendChild(em);
+      var jm = document.createElement('span');
+      jm.textContent = v.n;
+      radek.appendChild(jm);
+      if (z.i < 0) {
+        var pozn = document.createElement('span');
+        pozn.textContent = 'informativní';
+        pozn.style.cssText = 'margin-left:auto;font-size:.75rem;'
+          + 'color:#8a8264;';
+        radek.appendChild(pozn);
+      }
+      radek.onclick = function () {
+        vstup.value = '';
+        schovej();
+        if (mapaMrtva || !window.mapa) return;
+        mapa.flyTo({ center: [v.lon, v.lat],
+          zoom: Math.max(mapa.getZoom(), 13), speed: 1.7 });
+        if (z.i >= 0) {
+          ukazKartuMista(z.i,
+            (posledniDrziteleArr && posledniDrziteleArr[z.i]) || '0');
+        } else if (ukazInfoMistoGl) {
+          ukazInfoMistoGl({ properties: v });
+        }
+      };
+      vysledky.appendChild(radek);
+    });
+    vysledky.style.display = '';
+  };
+  vstup.onkeydown = function (e) {
+    if (e.key === 'Escape') { vstup.value = ''; schovej(); }
+    if (e.key === 'Enter') {
+      var prvni = vysledky.firstChild;
+      if (prvni && vysledky.style.display !== 'none') prvni.onclick();
+    }
+  };
+  document.addEventListener('click', function (e) {
+    if (!vysledky.contains(e.target) && e.target !== vstup) schovej();
+  });
+}
 
 /* ── 3D MODELY NA MAPĚ (28. 8.) — splaty z ComfyUI převedené na
    mesh+texturu (tools/spz_do_enginu.py v repu appky). Mapa webu
@@ -909,6 +1008,7 @@ function nactiMistaInfo() {
   fetch('data/mista_info.json?v=49')
     .then(function (r) { return r.json(); })
     .then(function (d) {
+      mistaInfoSeznam = d;
       var fc = { type: 'FeatureCollection',
         features: d.map(function (m) {
           return { type: 'Feature',
@@ -2871,7 +2971,7 @@ function start() {
     fetch('data/tymy.json?v=10').then(function (r) { return r.json(); }),
     fetch('data/vlajky_oblasti.json?v=44').then(function (r) { return r.json(); }),
     fetch('data/kraje.json?v=44').then(function (r) { return r.json(); }),
-    fetch('data/vlajky.json?v=32').then(function (r) { return r.json(); }),
+    fetch('data/vlajky.json?v=52').then(function (r) { return r.json(); }),
     fetch('data/obrys.json?v=14').then(function (r) { return r.json(); }),
   ]).then(function (vysledky) {
     obrys = vysledky[4];
