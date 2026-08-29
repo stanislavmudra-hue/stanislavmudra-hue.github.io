@@ -2954,7 +2954,7 @@ function pridejLegendu() {
   obal.appendChild(tlacitkoTras);
   var tl3d = document.createElement('button');
   tl3d.textContent = '3D';
-  tl3d.title = 'Naklonit mapu';
+  tl3d.title = 'Naklonit mapu a zapnout povrch';
   tl3d.style.cssText = 'position:absolute;left:150px;top:10px;'
     + 'z-index:5;padding:5px 10px;border-radius:8px;border:1px solid '
     + '#b9b2a0;background:#fffdf6;cursor:pointer;'
@@ -2963,6 +2963,14 @@ function pridejLegendu() {
   tl3d.onclick = function () {
     if (mapaMrtva) return;
     var zapnout = mapa.getPitch() < 5;
+    // POVRCH (přání 30. 8.): 3D nejen naklání, ale zapíná i terén
+    // ze zdroje `teren` (týž raster-dem jako stínování — kopce se
+    // zvednou, území se na ně natáhnou sama)
+    try {
+      mapa.setTerrain(zapnout
+        ? { source: 'teren', exaggeration: 1.35 }
+        : null);
+    } catch (eT) { /* bez terénu jen náklon */ }
     mapa.easeTo({ pitch: zapnout ? 57 : 0, duration: 700 });
     tl3d.style.background = zapnout ? '#efe9da' : '#fffdf6';
     tl3d.style.borderColor = zapnout ? '#4e6e58' : '#b9b2a0';
