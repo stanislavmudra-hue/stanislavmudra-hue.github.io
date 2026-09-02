@@ -9,7 +9,7 @@
 <meta name="color-scheme" content="light">
 <link rel="icon" href="/img/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/img/favicon.png">
-<link rel="stylesheet" href="/styl.css">
+<link rel="stylesheet" href="/styl.css?v=2">
 <link rel="stylesheet" href="/rezimy/rezim.css">
 </head>
 <body data-rezim="objevitel">
@@ -33,22 +33,32 @@
   </div>
 </header>
 
-<main class="uzky">
+<main>
+  <section class="pruh-rezimu obj">
+    <div class="obal">
+      <span class="velka-ikona" aria-hidden="true">🌫️</span>
+      <div>
+        <p class="nadtitul">Režim Objevitel</p>
+        <h1>Objevitel</h1>
+      </div>
+      <p class="lead">Odkrývejte mlhu, sbírejte místa a obce. Mapa se vybarvuje podle toho, kudy jste prošli – a je hned vidět, kde jste ještě nebyli.</p>
+      <ul class="stitky" aria-label="V kostce">
+      <li>455 malovaných míst</li>
+      <li>175 úspěchů</li>
+      <li>měsíční výzvy</li>
+      <li>6 258 erbů</li>
+      <li>fotovýpravy</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="uzky">
   <nav class="rezimy-prepinac" aria-label="Režimy aplikace">
     <a href="/cestovatel/">🧭 Cestovatel</a>
     <a href="/objevitel/" aria-current="page">🌫️ Objevitel</a>
     <a href="/dobyvatel/">🚩 Dobyvatel</a>
   </nav>
-
-  <div class="rezim-hlava">
-    <span class="ikona" aria-hidden="true">🌫️</span>
-    <h1>Objevitel</h1>
-  </div>
-  <p class="podtitul">Odkrývejte mlhu, sbírejte místa a&nbsp;obce. Mapa se
-  vybarvuje podle toho, kudy jste prošli – a&nbsp;je hned vidět, kde jste
-  ještě nebyli.</p>
-
-  <div id="ukazkaPruh" class="ukazka-pruh" hidden>
+<div id="ukazkaPruh" class="ukazka-pruh" hidden>
     UKÁZKA – zobrazená čísla jsou vymyšlená, nejde o&nbsp;skutečná data.
   </div>
 
@@ -116,6 +126,7 @@
     když si účast v&nbsp;aplikaci zapnete</strong> (Nastavení → Žebříček).
     Odkrytá mapa, deník ani fotky telefon neopouštějí.</p>
   </section>
+  </div>
 </main>
 
 <footer class="pata">
@@ -140,5 +151,6 @@
 </footer>
 
 <script src="/rezimy/rezim.js"></script>
+<script src="/web.js?v=2"></script>
 </body>
 </html>

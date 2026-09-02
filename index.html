@@ -9,7 +9,7 @@
 <meta name="color-scheme" content="light">
 <link rel="icon" href="/img/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/img/favicon.png">
-<link rel="stylesheet" href="/styl.css">
+<link rel="stylesheet" href="/styl.css?v=2">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Okolník – objevuj Česko kousek po kousku">
 <meta property="og:description" content="Turistický průvodce po Česku, který z výletu udělá objevování.">
@@ -26,7 +26,7 @@
       <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="120" height="30">
     </a>
     <nav class="menu" aria-label="Hlavní nabídka">
-      <a href="/">Domů</a>
+      <a href="/" aria-current="page">Domů</a>
       <a href="/cestovatel/">Cestovatel</a>
       <a href="/objevitel/">Objevitel</a>
       <a href="/dobyvatel/">Dobyvatel</a>
@@ -42,38 +42,51 @@
 <main>
 
   <section class="hero">
-    <img class="emblem" src="/img/emblem.webp" alt="" width="120" height="120">
-    <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="320" height="81">
-    <p class="tagline">Objev · Prožij · Sdílej</p>
-    <p class="lead">Turistický průvodce po Česku, který z obyčejného výletu udělá
-    objevování. Ukáže vám, co zajímavého je právě kolem vás – a čím víc toho
-    projdete, tím víc se vám odkrývá mapa republiky.</p>
-    <div class="akce">
-      <a class="tlacitko" href="/zebricek/">Žebříček hráčů</a>
-      <a class="tlacitko tise" href="#co-umi">Co Okolník umí</a>
+    <div class="obal">
+      <div class="hero-text">
+        <p class="nadtitul">Turistický průvodce po Česku</p>
+        <h1>Objevuj Česko <em>kousek po kousku</em></h1>
+        <p class="lead">Okolník ukáže, co zajímavého je právě kolem vás – a čím
+        víc toho projdete, tím víc se vám odkrývá mapa republiky. Obyčejná
+        mapa, objevování s mlhou, nebo týmová hra o vlajky. Jak chcete.</p>
+        <div class="akce">
+          <a class="tlacitko" href="#rezimy">Vybrat režim</a>
+          <a class="tlacitko tise" href="/zebricek/">Žebříček hráčů</a>
+        </div>
+        <ul class="cisla-pruh" aria-label="Okolník v číslech">
+          <li><strong>160&nbsp;000+</strong><span>míst v 55 kategoriích</span></li>
+          <li><strong>455</strong><span>malovaných míst</span></li>
+          <li><strong>6&nbsp;258</strong><span>erbů obcí</span></li>
+          <li><strong>17&nbsp;688</strong><span>vlajek Dobyvatele</span></li>
+        </ul>
+      </div>
+      <div class="hero-telefon">
+        <img src="/img/app-herni.webp" alt="Herní mapa Okolníku v noci: kreslená krajina, světla vesnic a postavička hráče" width="540" height="900">
+      </div>
     </div>
   </section>
 
   <section class="sekce" id="rezimy">
+    <p class="nadtitul">Režimy</p>
     <h2>Tři režimy, jedna mapa</h2>
-    <p class="podtitul" style="text-align:center">Vyberte si, jak chcete Česko
-    procházet. Přepnout jde v&nbsp;aplikaci kdykoli, postup se neztrácí.</p>
+    <p class="podtitul">Vyberte si, jak chcete Česko procházet. Přepnout jde
+    v&nbsp;aplikaci kdykoli, postup se neztrácí.</p>
     <div class="karty">
-      <a class="karta rezim" href="/cestovatel/">
+      <a class="karta rezim cest" href="/cestovatel/">
         <span class="ikona" aria-hidden="true">🧭</span>
         <h3>Cestovatel</h3>
         <p>Obyčejná mapa bez hry: značky KČT, vrstevnice, přes 160&nbsp;000
         míst, plány výletů a&nbsp;offline okresy.</p>
         <span class="dal">Popis režimu, žebříček a&nbsp;vaše čísla →</span>
       </a>
-      <a class="karta rezim" href="/objevitel/">
+      <a class="karta rezim obj" href="/objevitel/">
         <span class="ikona" aria-hidden="true">🌫️</span>
         <h3>Objevitel</h3>
         <p>Odkrývejte mlhu, sbírejte místa a&nbsp;obce. Malovaná místa,
         úspěchy, měsíční výzvy a&nbsp;erby obcí.</p>
         <span class="dal">Popis režimu, žebříček a&nbsp;vaše čísla →</span>
       </a>
-      <a class="karta rezim" href="/dobyvatel/">
+      <a class="karta rezim dob" href="/dobyvatel/">
         <span class="ikona" aria-hidden="true">🚩</span>
         <h3>Dobyvatel</h3>
         <p>Týmy krajů dobývají 17&nbsp;688 vlajek po&nbsp;celém Česku. Mapa
@@ -84,9 +97,10 @@
   </section>
 
   <section class="sekce" id="co-umi">
-    <h2>Co Okolník umí</h2>
-    <p class="podtitul" style="text-align:center">Co všechno v&nbsp;aplikaci
-    najdete – ať už hrajete, nebo jen chcete dobrou mapu.</p>
+    <p class="nadtitul">Co Okolník umí</p>
+    <h2>Průvodce, který má po ruce všechno</h2>
+    <p class="podtitul">Co všechno v&nbsp;aplikaci najdete – ať už hrajete,
+    nebo jen chcete dobrou mapu.</p>
     <div class="karty">
       <div class="karta">
         <span class="ikona" aria-hidden="true">🗺️</span>
@@ -98,7 +112,8 @@
         <span class="ikona" aria-hidden="true">📍</span>
         <h3>Přes 160 000 míst</h3>
         <p>Hrady, rozhledny, studánky, nádraží i obchody – v 55 kategoriích,
-        které si zapínáte podle nálady.</p>
+        které si zapínáte podle nálady. Databáze se obnovuje sama, bez
+        nové verze.</p>
       </div>
       <div class="karta">
         <span class="ikona" aria-hidden="true">🏆</span>
@@ -111,13 +126,6 @@
         <h3>Erby 6 258 obcí</h3>
         <p>Za každou pořádně prochozenou obec získáte její znak. Kraje
         a okresy ukazují, kolik jich máte hotových.</p>
-      </div>
-      <div class="karta">
-        <span class="ikona" aria-hidden="true">🚩</span>
-        <h3>Dobyvatel – týmová hra</h3>
-        <p>Kraje soutěží o 17 688 vlajek po celém Česku. Obsazuj místa
-        v terénu, drž území se svým týmem a sleduj pořadí
-        na <a href="/dobyvatel/">mapě Dobyvatele</a>.</p>
       </div>
       <div class="karta">
         <span class="ikona" aria-hidden="true">📔</span>
@@ -135,6 +143,7 @@
   </section>
 
   <section class="sekce">
+    <p class="nadtitul">Aplikace</p>
     <h2>Jak to vypadá</h2>
     <div class="snimky">
       <figure class="snimek">
@@ -153,13 +162,14 @@
   </section>
 
   <section class="sekce" id="premium">
-    <h2>Okolník Premium</h2>
-    <p class="podtitul" style="text-align:center">Základ je zdarma. Premium
-    přidá to, co se hodí na cesty bez signálu – a firmám viditelnost.</p>
+    <p class="nadtitul">Premium</p>
+    <h2>Základ je zdarma. Premium přidá to, co se hodí na cesty</h2>
+    <p class="podtitul">Bez reklam, bez signálu – a firmám viditelnost.</p>
     <div class="karty">
       <div class="karta">
         <span class="ikona" aria-hidden="true">💛</span>
-        <h3>Pro uživatele · 49 Kč měsíčně / 399 Kč ročně</h3>
+        <span class="cena">49 Kč měsíčně · 399 Kč ročně</span>
+        <h3>Pro uživatele</h3>
         <p>Žádné reklamy, offline mapy okresů, offline navigace (trasa
         výletu po cestách připravená doma předem) a zakládání vlastních
         soutěží v Dobyvateli (až 5 běžících). Aktivujete v aplikaci:
@@ -167,14 +177,16 @@
       </div>
       <div class="karta">
         <span class="ikona" aria-hidden="true">🏪</span>
-        <h3>Pro firmy · 199 Kč měsíčně / 899 Kč ročně</h3>
+        <span class="cena">199 Kč měsíčně · 899 Kč ročně</span>
+        <h3>Pro firmy</h3>
         <p>Štítek Ověřeno, zvýraznění na mapě, přednost v seznamu i ve
         vyhledávání a vlastní text v detailu podniku. Objednává se v aplikaci
         přes Google Play – podrobnosti na stránce <a href="/firmy/">Pro firmy</a>.</p>
       </div>
       <div class="karta">
         <span class="ikona" aria-hidden="true">📍</span>
-        <h3>Vlastní místo na mapě · 499 Kč</h3>
+        <span class="cena">499 Kč jednorázově</span>
+        <h3>Vlastní místo na mapě</h3>
         <p>Váš kopeček, studánka, dílna nebo klubovna, kterou uvidí všichni.
         Podržte prst na mapě v aplikaci, zaplaťte jednorázově a správce
         místo přednostně schválí.</p>
@@ -194,24 +206,6 @@
   </section>
 
 </main>
-
-<script>
-  // Adresa se hlavně UKAZUJE (na počítači málokdo používá poštovního
-  // klienta, takže `mailto:` často jen otevře nastavení Outlooku).
-  // Tlačítko ji jen zkopíruje do schránky; když to prohlížeč nedovolí,
-  // adresa je i tak čitelná a dá se označit myší.
-  (function () {
-    var t = document.getElementById('kopirovat');
-    var m = document.getElementById('mail');
-    if (!t || !m || !navigator.clipboard) { if (t) t.hidden = true; return; }
-    t.addEventListener('click', function () {
-      navigator.clipboard.writeText(m.textContent.trim()).then(function () {
-        t.textContent = 'Zkopírováno ✓';
-        setTimeout(function () { t.textContent = 'Zkopírovat adresu'; }, 2500);
-      }, function () { t.hidden = true; });
-    });
-  })();
-</script>
 
 <footer class="pata">
   <div class="obal">
@@ -238,5 +232,6 @@
   </div>
 </footer>
 
+<script src="/web.js?v=2"></script>
 </body>
 </html>

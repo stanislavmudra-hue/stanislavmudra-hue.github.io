@@ -63,3 +63,22 @@ při dalším generování ztratila.
 * Python heredoc přes shell rozbíjí zpětná lomítka (`\x00` → NUL
   bajt): regulární výraz v `rezim.js` se stavěl z kódů znaků
   (`chr(92)`), ne z literálů.
+
+## Osvěžení vzhledu (v2, 3. 9. 2026)
+
+Přání „zpřehlednit a osvěžit, dnešní webovky jsou jiná liga". Zůstalo
+pravidlo bez externích písem a bez knihoven.
+
+* `styl.css` v2: plynulá typografie (`clamp`), lehce průsvitná lepivá
+  lišta, hero se snímkem telefonu vpravo a „skleněnými" čísly, nadtituly
+  sekcí (`.nadtitul`), karty s ikonou v dlaždici, karty režimů s barevným
+  akcentem nahoře (`.karta.rezim.cest|obj|dob`), cenovky (`.cena`),
+  tmavý pruh s přechodem, patička s oranžovou linkou. Názvy tříd zůstaly,
+  ostatní stránky (účet, žebříček, firmy, kontakt, soukromí) se
+  osvěžily samy.
+* Stránky režimů mají nahoře `.pruh-rezimu` (velká ikona, nadtitul, lead,
+  štítky) a bílá karta obsahu se přes něj překrývá.
+* `web.js`: jemné odhalení karet a nadpisů při rolování
+  (IntersectionObserver; prvky ve výřezu při načtení se neschovávají;
+  ctí „omezit pohyb"), kopírování e-mailu. Bez JS je vše vidět.
+* CSS má v odkazech `?v=2` – prohlížeče držely starou kopii.

@@ -9,7 +9,7 @@
 <meta name="color-scheme" content="light">
 <link rel="icon" href="/img/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/img/favicon.png">
-<link rel="stylesheet" href="/styl.css">
+<link rel="stylesheet" href="/styl.css?v=2">
 <link rel="stylesheet" href="/rezimy/rezim.css">
 </head>
 <body data-rezim="cestovatel">
@@ -33,21 +33,32 @@
   </div>
 </header>
 
-<main class="uzky">
+<main>
+  <section class="pruh-rezimu cest">
+    <div class="obal">
+      <span class="velka-ikona" aria-hidden="true">🧭</span>
+      <div>
+        <p class="nadtitul">Režim Cestovatel</p>
+        <h1>Cestovatel</h1>
+      </div>
+      <p class="lead">Obyčejná mapa bez hry. Turistický průvodce, který má po ruce všechno, co na výletě potřebujete – a nic vám do toho nemluví.</p>
+      <ul class="stitky" aria-label="V kostce">
+      <li>160 000+ míst</li>
+      <li>55 kategorií</li>
+      <li>značky KČT</li>
+      <li>plán výletu</li>
+      <li>offline okresy</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="uzky">
   <nav class="rezimy-prepinac" aria-label="Režimy aplikace">
     <a href="/cestovatel/" aria-current="page">🧭 Cestovatel</a>
     <a href="/objevitel/">🌫️ Objevitel</a>
     <a href="/dobyvatel/">🚩 Dobyvatel</a>
   </nav>
-
-  <div class="rezim-hlava">
-    <span class="ikona" aria-hidden="true">🧭</span>
-    <h1>Cestovatel</h1>
-  </div>
-  <p class="podtitul">Obyčejná mapa bez hry. Turistický průvodce, který má
-  po ruce všechno, co na výletě potřebujete – a nic vám do toho nemluví.</p>
-
-  <div id="ukazkaPruh" class="ukazka-pruh" hidden>
+<div id="ukazkaPruh" class="ukazka-pruh" hidden>
     UKÁZKA – zobrazená čísla jsou vymyšlená, nejde o&nbsp;skutečná data.
   </div>
 
@@ -106,6 +117,7 @@
     účast v&nbsp;aplikaci zapnete</strong> (Nastavení → Žebříček).
     Poloha, trasa, deník ani fotky telefon neopouštějí.</p>
   </section>
+  </div>
 </main>
 
 <footer class="pata">
@@ -130,5 +142,6 @@
 </footer>
 
 <script src="/rezimy/rezim.js"></script>
+<script src="/web.js?v=2"></script>
 </body>
 </html>
