@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Objevitel – Okolník</title>
+<meta name="description" content="Režim Objevitel: mapa se vybarvuje podle toho, kudy jste prošli. Malovaná místa, úspěchy, měsíční výzvy a erby obcí. Žebříček nových obcí a fotovýprav, vaše čísla po přihlášení.">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="/img/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/img/favicon.png">
+<link rel="stylesheet" href="/styl.css">
+<link rel="stylesheet" href="/rezimy/rezim.css">
+</head>
+<body data-rezim="objevitel">
+<header class="hlava">
+  <div class="obal">
+    <a class="znacka" href="/">
+      <img class="emblem" src="/img/emblem-96.webp" alt="" width="38" height="38">
+      <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="120" height="30">
+    </a>
+    <nav class="menu" aria-label="Hlavní nabídka">
+      <a href="/">Domů</a>
+      <a href="/cestovatel/">Cestovatel</a>
+      <a href="/objevitel/" aria-current="page">Objevitel</a>
+      <a href="/dobyvatel/">Dobyvatel</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/firmy/" class="mimo-mobil">Pro firmy</a>
+      <a href="/kontakt/">Kontakt</a>
+      <a href="/soukromi/" class="mimo-mobil">Soukromí</a>
+    </nav>
+  </div>
+</header>
+
+<main class="uzky">
+  <nav class="rezimy-prepinac" aria-label="Režimy aplikace">
+    <a href="/cestovatel/">🧭 Cestovatel</a>
+    <a href="/objevitel/" aria-current="page">🌫️ Objevitel</a>
+    <a href="/dobyvatel/">🚩 Dobyvatel</a>
+  </nav>
+
+  <div class="rezim-hlava">
+    <span class="ikona" aria-hidden="true">🌫️</span>
+    <h1>Objevitel</h1>
+  </div>
+  <p class="podtitul">Odkrývejte mlhu, sbírejte místa a&nbsp;obce. Mapa se
+  vybarvuje podle toho, kudy jste prošli – a&nbsp;je hned vidět, kde jste
+  ještě nebyli.</p>
+
+  <div id="ukazkaPruh" class="ukazka-pruh" hidden>
+    UKÁZKA – zobrazená čísla jsou vymyšlená, nejde o&nbsp;skutečná data.
+  </div>
+
+  <div class="karty">
+    <div class="karta">
+      <span class="ikona" aria-hidden="true">🌫️</span>
+      <h3>Mlha, která ustupuje</h3>
+      <p>Kudy projdete, tam se rozestoupí. Okresy a&nbsp;kraje ukazují,
+      kolik procent už máte odkryto.</p>
+    </div>
+    <div class="karta">
+      <span class="ikona" aria-hidden="true">🎨</span>
+      <h3>455 malovaných míst</h3>
+      <p>Hrady, rozhledny a&nbsp;další místa jako ručně kreslené obrázky
+      na&nbsp;herní mapě. Návštěva se doloží, když u&nbsp;místa chvíli
+      pobudete.</p>
+    </div>
+    <div class="karta">
+      <span class="ikona" aria-hidden="true">🏆</span>
+      <h3>175 úspěchů a&nbsp;výzvy</h3>
+      <p>Úrovně, osobní rekordy, měsíční mise ve&nbsp;třech obtížnostech
+      a&nbsp;roční ohlédnutí za&nbsp;tím, co jste prošli.</p>
+    </div>
+    <div class="karta">
+      <span class="ikona" aria-hidden="true">🛡️</span>
+      <h3>Erby 6&nbsp;258 obcí</h3>
+      <p>Za&nbsp;každou pořádně prochozenou obec získáte její znak. Kraje
+      a&nbsp;okresy ukazují, kolik jich máte hotových.</p>
+    </div>
+    <div class="karta">
+      <span class="ikona" aria-hidden="true">📸</span>
+      <h3>Fotovýpravy a&nbsp;deník</h3>
+      <p>Kam jste došli, co jste viděli a&nbsp;jaké bylo počasí. Fotky
+      z&nbsp;výprav zůstávají u&nbsp;vás v&nbsp;telefonu.</p>
+    </div>
+  </div>
+
+  <div class="snimky">
+    <figure class="snimek">
+      <img src="/img/app-herni.webp" alt="Herní mapa v noci: kreslená krajina, světla vesnic a postavička hráče" width="540" height="900" loading="lazy">
+      <figcaption>Herní mapa – tady v noci</figcaption>
+    </figure>
+    <figure class="snimek">
+      <img src="/img/app-uspechy.webp" alt="Obrazovka Úspěchy a výzvy s úrovní, rekordy a postupem" width="540" height="900" loading="lazy">
+      <figcaption>Úspěchy, výzvy a rekordy</figcaption>
+    </figure>
+  </div>
+
+  <section class="blok" id="blokMoje" aria-live="polite">
+    <h2>Moje čísla</h2>
+    <div id="moje"></div>
+  </section>
+
+  <section class="blok" id="blokZebricek" aria-live="polite">
+    <h2>Kdo tento měsíc nejvíc objevil</h2>
+    <div id="zebricek"></div>
+  </section>
+
+  <section class="vysvetlivka">
+    <h2>Co se počítá</h2>
+    <p>Nová obec je ta, do&nbsp;které jste vstoupili poprvé, fotovýprava je
+    dokončená výprava s&nbsp;fotkami z&nbsp;terénu a&nbsp;doložená návštěva
+    znamená pobyt u&nbsp;místa aspoň pět minut do&nbsp;sta metrů. Do&nbsp;žebříčku
+    se posílají jen tři čísla za&nbsp;měsíc a&nbsp;přezdívka – <strong>a&nbsp;jen
+    když si účast v&nbsp;aplikaci zapnete</strong> (Nastavení → Žebříček).
+    Odkrytá mapa, deník ani fotky telefon neopouštějí.</p>
+  </section>
+</main>
+
+<footer class="pata">
+  <div class="obal">
+    <div>
+      <strong style="color:#f2ede0">Okolník</strong>
+      <p class="drobne">© 2026 Stanislav Mudra</p>
+    </div>
+    <nav class="odkazy" aria-label="Odkazy v patičce">
+      <a href="/">Domů</a>
+      <a href="/cestovatel/">Cestovatel</a>
+      <a href="/objevitel/">Objevitel</a>
+      <a href="/dobyvatel/">Dobyvatel</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/firmy/">Pro firmy</a>
+      <a href="/smazani-uctu/">Smazání účtu</a>
+      <a href="/soukromi/">Zásady soukromí</a>
+      <a href="/kontakt/">Kontakt</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="/rezimy/rezim.js"></script>
+</body>
+</html>

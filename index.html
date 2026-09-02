@@ -27,12 +27,14 @@
     </a>
     <nav class="menu" aria-label="Hlavní nabídka">
       <a href="/">Domů</a>
+      <a href="/cestovatel/">Cestovatel</a>
+      <a href="/objevitel/">Objevitel</a>
       <a href="/dobyvatel/">Dobyvatel</a>
       <a href="/zebricek/">Žebříček</a>
       <a href="/ucet/">Můj Okolník</a>
-      <a href="/firmy/">Pro firmy</a>
+      <a href="/firmy/" class="mimo-mobil">Pro firmy</a>
       <a href="/kontakt/">Kontakt</a>
-      <a href="/soukromi/">Soukromí</a>
+      <a href="/soukromi/" class="mimo-mobil">Soukromí</a>
     </nav>
   </div>
 </header>
@@ -52,10 +54,39 @@
     </div>
   </section>
 
+  <section class="sekce" id="rezimy">
+    <h2>Tři režimy, jedna mapa</h2>
+    <p class="podtitul" style="text-align:center">Vyberte si, jak chcete Česko
+    procházet. Přepnout jde v&nbsp;aplikaci kdykoli, postup se neztrácí.</p>
+    <div class="karty">
+      <a class="karta rezim" href="/cestovatel/">
+        <span class="ikona" aria-hidden="true">🧭</span>
+        <h3>Cestovatel</h3>
+        <p>Obyčejná mapa bez hry: značky KČT, vrstevnice, přes 160&nbsp;000
+        míst, plány výletů a&nbsp;offline okresy.</p>
+        <span class="dal">Popis režimu, žebříček a&nbsp;vaše čísla →</span>
+      </a>
+      <a class="karta rezim" href="/objevitel/">
+        <span class="ikona" aria-hidden="true">🌫️</span>
+        <h3>Objevitel</h3>
+        <p>Odkrývejte mlhu, sbírejte místa a&nbsp;obce. Malovaná místa,
+        úspěchy, měsíční výzvy a&nbsp;erby obcí.</p>
+        <span class="dal">Popis režimu, žebříček a&nbsp;vaše čísla →</span>
+      </a>
+      <a class="karta rezim" href="/dobyvatel/">
+        <span class="ikona" aria-hidden="true">🚩</span>
+        <h3>Dobyvatel</h3>
+        <p>Týmy krajů dobývají 17&nbsp;688 vlajek po&nbsp;celém Česku. Mapa
+        soutěže, skóre týmů a&nbsp;nejlepší dobyvatelé.</p>
+        <span class="dal">Mapa soutěže a&nbsp;moje soutěže →</span>
+      </a>
+    </div>
+  </section>
+
   <section class="sekce" id="co-umi">
     <h2>Co Okolník umí</h2>
-    <p class="podtitul" style="text-align:center">Tři režimy v jedné mapě:
-    obyčejný průvodce, objevování s odkrýváním mlhy a týmová hra Dobyvatel.</p>
+    <p class="podtitul" style="text-align:center">Co všechno v&nbsp;aplikaci
+    najdete – ať už hrajete, nebo jen chcete dobrou mapu.</p>
     <div class="karty">
       <div class="karta">
         <span class="ikona" aria-hidden="true">🗺️</span>
@@ -190,9 +221,12 @@
     </div>
     <nav class="odkazy" aria-label="Odkazy v patičce">
       <a href="/">Domů</a>
+      <a href="/cestovatel/">Cestovatel</a>
+      <a href="/objevitel/">Objevitel</a>
       <a href="/dobyvatel/">Dobyvatel</a>
       <a href="/zebricek/">Žebříček</a>
       <a href="/ucet/">Můj Okolník</a>
+      <a href="/firmy/">Pro firmy</a>
       <a href="/smazani-uctu/">Smazání účtu</a>
       <a href="/soukromi/">Zásady soukromí</a>
       <a href="/kontakt/">Kontakt</a>

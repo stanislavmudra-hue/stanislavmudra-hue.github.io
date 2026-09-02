@@ -2120,6 +2120,7 @@ function mojeSouteze() {
       return;
     }
     sekce('Hraju', hraju, false);
+    mojeZasluhy(box, relace.uid);
     if (spravuju.length) {
       var hS = document.createElement('p');
       hS.style.cssText = 'margin:8px 0 2px;font-weight:700;';
@@ -2936,6 +2937,36 @@ function zebricekHracu() {
       tab.appendChild(r);
     });
   });
+}
+
+/* v78: vlastní zásluhy v republikovém kole (dobytí, obrany, body)
+   ze stav/hraci — přání „přihlášený vidí své statistiky" (web ve
+   třech režimech, 2. 9. 2026). Jen čtení a DOM; když cokoli selže,
+   přehled soutěží zůstane, jak je. */
+function mojeZasluhy(box, uid) {
+  if (!box || !uid) return;
+  ctiDoc(ZAKLAD_DOK + 'souteze/cesko-2026/stav/hraci?key=' + KLIC)
+    .then(function (d) {
+      var hraci = d && d.json ? JSON.parse(d.json) : {};
+      var ja = hraci[uid];
+      if (!ja) return;
+      var vsichni = Object.keys(hraci).map(function (k) {
+        return hraci[k].xp || 0;
+      }).sort(function (a, b) { return b - a; });
+      var poradi = vsichni.indexOf(ja.xp || 0) + 1;
+      var p = document.createElement('p');
+      p.style.cssText = 'margin:8px 0 2px;font-weight:700;';
+      p.textContent = 'Moje zásluhy – Česko 2026';
+      var q = document.createElement('p');
+      q.style.margin = '3px 0 3px 12px';
+      q.textContent = 'Dobytí ' + (ja.z || 0) + ' · obrany ' + (ja.o || 0)
+        + ' · body ' + (ja.xp || 0)
+        + (poradi > 0 ? ' · ' + poradi + '. místo z ' + vsichni.length
+                        + ' hráčů' : '');
+      var kam = box.firstChild;
+      box.insertBefore(q, kam);
+      box.insertBefore(p, q);
+    }).catch(function () { });
 }
 
 /* Reklamy: bez AdSense id nebo s Premium se plochy schovají. */

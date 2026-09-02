@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cestovatel – Okolník</title>
+<meta name="description" content="Režim Cestovatel: obyčejná turistická mapa bez hry. Značky KČT, vrstevnice, přes 160 000 míst, plány výletů a offline okresy. Žebříček ušlých kilometrů a vaše čísla po přihlášení.">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="/img/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/img/favicon.png">
+<link rel="stylesheet" href="/styl.css">
+<link rel="stylesheet" href="/rezimy/rezim.css">
+</head>
+<body data-rezim="cestovatel">
+<header class="hlava">
+  <div class="obal">
+    <a class="znacka" href="/">
+      <img class="emblem" src="/img/emblem-96.webp" alt="" width="38" height="38">
+      <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="120" height="30">
+    </a>
+    <nav class="menu" aria-label="Hlavní nabídka">
+      <a href="/">Domů</a>
+      <a href="/cestovatel/" aria-current="page">Cestovatel</a>
+      <a href="/objevitel/">Objevitel</a>
+      <a href="/dobyvatel/">Dobyvatel</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/firmy/" class="mimo-mobil">Pro firmy</a>
+      <a href="/kontakt/">Kontakt</a>
+      <a href="/soukromi/" class="mimo-mobil">Soukromí</a>
+    </nav>
+  </div>
+</header>
+
+<main class="uzky">
+  <nav class="rezimy-prepinac" aria-label="Režimy aplikace">
+    <a href="/cestovatel/" aria-current="page">🧭 Cestovatel</a>
+    <a href="/objevitel/">🌫️ Objevitel</a>
+    <a href="/dobyvatel/">🚩 Dobyvatel</a>
+  </nav>
+
+  <div class="rezim-hlava">
+    <span class="ikona" aria-hidden="true">🧭</span>
+    <h1>Cestovatel</h1>
+  </div>
+  <p class="podtitul">Obyčejná mapa bez hry. Turistický průvodce, který má
+  po ruce všechno, co na výletě potřebujete – a nic vám do toho nemluví.</p>
+
+  <div id="ukazkaPruh" class="ukazka-pruh" hidden>
+    UKÁZKA – zobrazená čísla jsou vymyšlená, nejde o&nbsp;skutečná data.
+  </div>
+
+  <div class="karty">
+    <div class="karta">
+      <span class="ikona" aria-hidden="true">🥾</span>
+      <h3>Turistická mapa</h3>
+      <p>Značené trasy KČT, cyklotrasy, vrstevnice a&nbsp;stínovaný
+      terén. Na&nbsp;jedno klepnutí i&nbsp;3D pohled na&nbsp;kopce.</p>
+    </div>
+    <div class="karta">
+      <span class="ikona" aria-hidden="true">📍</span>
+      <h3>Přes 160&nbsp;000 míst</h3>
+      <p>Hrady, rozhledny, studánky, nádraží, obchody i&nbsp;čerpací
+      stanice v&nbsp;55 kategoriích. U&nbsp;místa foto, popis, odjezdy
+      a&nbsp;počasí.</p>
+    </div>
+    <div class="karta">
+      <span class="ikona" aria-hidden="true">🗓️</span>
+      <h3>Plán výletu</h3>
+      <p>Naklikáte místa, aplikace spočítá trasu po&nbsp;cestách a&nbsp;v&nbsp;terénu
+      ukazuje, kolik zbývá k&nbsp;dalšímu bodu. S&nbsp;Premiem funguje i&nbsp;bez
+      signálu.</p>
+    </div>
+    <div class="karta">
+      <span class="ikona" aria-hidden="true">📶</span>
+      <h3>Offline okresy</h3>
+      <p>Stáhněte si okres, kam jedete – kolem 1&nbsp;MB. V&nbsp;lese pak mapa
+      funguje dál a&nbsp;nestojí to data.</p>
+    </div>
+  </div>
+
+  <div class="snimky">
+    <figure class="snimek">
+      <img src="/img/app-turisticka.webp" alt="Turistická mapa s vrstevnicemi a značenými trasami" width="540" height="900" loading="lazy">
+      <figcaption>Turistická mapa se značkami KČT</figcaption>
+    </figure>
+  </div>
+
+  <section class="blok" id="blokMoje" aria-live="polite">
+    <h2>Moje čísla</h2>
+    <div id="moje"></div>
+  </section>
+
+  <section class="blok" id="blokZebricek" aria-live="polite">
+    <h2>Kdo toho tento měsíc nejvíc nachodil</h2>
+    <div id="zebricek"></div>
+  </section>
+
+  <section class="vysvetlivka">
+    <h2>Co se počítá</h2>
+    <p>Kilometry se sčítají z&nbsp;ušlé stopy (jízda autem či vlakem se
+    podle rychlosti vyhazuje), obce jsou ty, kterými jste prošli, a&nbsp;aktivní
+    den je každý den s&nbsp;nějakou stopou. Do&nbsp;žebříčku se posílají jen
+    tři čísla za&nbsp;měsíc a&nbsp;přezdívka – <strong>a&nbsp;jen když si
+    účast v&nbsp;aplikaci zapnete</strong> (Nastavení → Žebříček).
+    Poloha, trasa, deník ani fotky telefon neopouštějí.</p>
+  </section>
+</main>
+
+<footer class="pata">
+  <div class="obal">
+    <div>
+      <strong style="color:#f2ede0">Okolník</strong>
+      <p class="drobne">© 2026 Stanislav Mudra</p>
+    </div>
+    <nav class="odkazy" aria-label="Odkazy v patičce">
+      <a href="/">Domů</a>
+      <a href="/cestovatel/">Cestovatel</a>
+      <a href="/objevitel/">Objevitel</a>
+      <a href="/dobyvatel/">Dobyvatel</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/firmy/">Pro firmy</a>
+      <a href="/smazani-uctu/">Smazání účtu</a>
+      <a href="/soukromi/">Zásady soukromí</a>
+      <a href="/kontakt/">Kontakt</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="/rezimy/rezim.js"></script>
+</body>
+</html>

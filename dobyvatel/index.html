@@ -139,6 +139,10 @@
     .bocni { width: auto; }
     #mapa { min-height: 58vh; flex: none; }
   }
+  .uvod { margin: 0 0 8px; font-size: .93rem; width: 100%;
+          align-self: stretch; flex: none; }
+  .uvod summary { cursor: pointer; color: var(--zelena); font-weight: 600; }
+  .uvod p { margin: 6px 0 0; color: var(--slabsi); max-width: 900px; }
 </style>
 </head>
 <body>
@@ -150,11 +154,13 @@
     </a>
     <nav class="menu" aria-label="Hlavní nabídka">
       <a href="/">Domů</a>
+      <a href="/cestovatel/">Cestovatel</a>
+      <a href="/objevitel/">Objevitel</a>
       <a href="/dobyvatel/">Dobyvatel</a>
       <a href="/zebricek/">Žebříček</a>
       <a href="/ucet/">Můj Okolník</a>
       <a href="/kontakt/">Kontakt</a>
-      <a href="/soukromi/">Soukromí</a>
+      <a href="/soukromi/" class="mimo-mobil">Soukromí</a>
     </nav>
   </div>
 </header>
@@ -164,6 +170,22 @@
     <h1 id="titulek">Dobyvatel</h1>
     <span class="stitek" id="stavSouteze">…</span>
   </div>
+  <!-- v78: popis režimu pro nově příchozí (web ve třech režimech,
+       2. 9. 2026). Sbalený, aby jednoobrazovkové rozvržení mapy
+       neubralo místo; po rozbalení se stránka prostě odroluje. -->
+  <details class="uvod" id="uvodDobyvatele">
+    <summary>Co je Dobyvatel a jak se hraje</summary>
+    <p>Týmová hra krajů: čtrnáct týmů soutěží o&nbsp;17&nbsp;688 vlajek
+    na&nbsp;hradech, vrcholech, rozhlednách a&nbsp;dalších místech
+    po&nbsp;celém Česku. Vlajku obsadíte v&nbsp;terénu v&nbsp;aplikaci
+    Okolník (režim Dobyvatel), když u&nbsp;ní chvíli postojíte; kraj je
+    dobytý, když jeden tým drží nadpoloviční hodnotu jeho vlajek.
+    Skóre týmů je vedle mapy, nejlepší hráči v&nbsp;záložce Žebříčky
+    a&nbsp;po&nbsp;přihlášení najdete v&nbsp;Moje soutěže svůj tým, své
+    zásluhy a&nbsp;soutěže. S&nbsp;Premiem si založíte vlastní soutěž
+    pro partu, firmu nebo obec. Ostatní režimy:
+    <a href="/cestovatel/">Cestovatel</a> · <a href="/objevitel/">Objevitel</a>.</p>
+  </details>
 
   <div class="telo">
     <nav class="bocni-menu" id="zalozky" aria-label="Části Dobyvatele">
@@ -261,9 +283,12 @@
     </div>
     <nav class="odkazy" aria-label="Odkazy v patičce">
       <a href="/">Domů</a>
+      <a href="/cestovatel/">Cestovatel</a>
+      <a href="/objevitel/">Objevitel</a>
       <a href="/dobyvatel/">Dobyvatel</a>
       <a href="/zebricek/">Žebříček</a>
       <a href="/ucet/">Můj Okolník</a>
+      <a href="/firmy/">Pro firmy</a>
       <a href="/smazani-uctu/">Smazání účtu</a>
       <a href="/soukromi/">Zásady soukromí</a>
       <a href="/kontakt/">Kontakt</a>
@@ -272,6 +297,6 @@
 </footer>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="maplibre-contour.min.js?v=64"></script>
-<script src="dobyvatel.js?v=77"></script>
+<script src="dobyvatel.js?v=78"></script>
 </body>
 </html>

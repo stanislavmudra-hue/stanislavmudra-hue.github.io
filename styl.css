@@ -339,6 +339,10 @@ p, li { margin: 0 0 12px; }
     justify-content: center;
   }
   .menu a { padding: 6px 9px; font-size: .82rem; }
+  /* ⭐ 2. 9. 2026: s Cestovatelem a Objevitelem má lišta 9 položek a na
+     mobilu se lámala do TŘÍ řádků (159 px). Pro firmy a Soukromí jsou
+     na telefonu jen v patičce; položky režimů zůstávají. */
+  .menu a.mimo-mobil { display: none; }
   .menu { gap: 4px; row-gap: 4px; }
   .pata .obal { padding: 24px 16px 30px; }
 }
@@ -375,4 +379,21 @@ p, li { margin: 0 0 12px; }
   color: var(--slabsi);
   font-size: .92rem;
   line-height: 1.5;
+}
+
+/* ── KARTY REŽIMŮ NA ÚVODU (odkazy, ne jen text) ────────────────── */
+a.karta.rezim {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  transition: transform .12s, box-shadow .12s;
+}
+a.karta.rezim:hover { transform: translateY(-2px); box-shadow: var(--stin-vyssi); }
+a.karta.rezim:focus-visible { outline: 3px solid var(--oranzova); outline-offset: 3px; }
+a.karta.rezim .dal {
+  display: block;
+  margin-top: 12px;
+  color: var(--zelena);
+  font-weight: 700;
+  font-size: .93rem;
 }

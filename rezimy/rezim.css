@@ -1,0 +1,96 @@
+/* =====================================================================
+   Stránky režimů (Cestovatel, Objevitel) – doplněk ke společnému
+   /styl.css. Dlaždice čísel a tabulka jsou stejné jako na Můj Okolník
+   a Žebříčku, ať web působí jako jeden celek.
+   ===================================================================== */
+
+/* ── přepínač režimů nahoře ─────────────────────────────────────── */
+.rezimy-prepinac {
+  display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 22px;
+}
+.rezimy-prepinac a {
+  font-size: .92rem; font-weight: 600; text-decoration: none;
+  padding: 7px 14px; border-radius: 999px;
+  background: var(--jemna); color: var(--tmava);
+  border: 1px solid var(--linka);
+  transition: border-color .12s, background .12s;
+}
+.rezimy-prepinac a:hover { border-color: var(--zelena); }
+.rezimy-prepinac a[aria-current="page"] {
+  background: var(--oranzova); border-color: var(--oranzova); color: #3a2405;
+}
+
+/* ── hlavička režimu ────────────────────────────────────────────── */
+.rezim-hlava { display: flex; align-items: center; gap: 14px; margin: 0 0 6px; }
+.rezim-hlava .ikona { font-size: 2.2rem; line-height: 1; }
+.rezim-hlava h1 { margin: 0; }
+
+/* ── karty vlastností uvnitř užšího sloupce ─────────────────────── */
+.uzky .karty { margin: 18px 0 26px; }
+.uzky .karta { padding: 18px 16px; box-shadow: none; }
+.uzky .karta .ikona { font-size: 1.5rem; }
+.uzky .snimky { margin: 6px 0 30px; }
+.uzky .snimek { width: 220px; }
+
+/* ── bloky stránky ──────────────────────────────────────────────── */
+.blok { margin: 30px 0 0; padding: 24px 0 0; border-top: 1px solid var(--linka); }
+.blok > h2 { margin-top: 0 !important; }
+.blok-zebricku + .blok-zebricku { margin-top: 26px; }
+.blok-zebricku h3 { margin: 0 0 10px; font-size: 1rem; }
+h4 { font-size: .82rem; text-transform: uppercase; letter-spacing: .06em;
+     color: var(--slabsi); margin: 18px 0 8px; }
+.moje-hlava { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.moje-hlava h3 { margin: 0; font-size: 1.15rem; }
+.drobny-odkaz { font-size: .9rem; margin-left: auto; }
+.odkaz-dal { margin: 10px 0 0; font-size: .95rem; }
+
+/* ── dlaždice čísel (jako Můj Okolník) ──────────────────────────── */
+.cisla { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin: 0 0 6px; }
+.cislo {
+  background: var(--jemna); border: 1px solid var(--linka);
+  border-radius: 12px; padding: 14px 12px; text-align: center;
+}
+.cislo .h { font-size: 1.5rem; font-weight: 700; color: var(--tmava); font-variant-numeric: tabular-nums; }
+.cislo .p { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--slabsi); }
+
+/* ── stavy ──────────────────────────────────────────────────────── */
+.stav h3 { color: var(--tmava); margin-bottom: 6px; }
+.stav .tlacitko { margin-top: 6px; }
+.stav.chyba { border-color: #e0b7a2; background: #fdf4ee; }
+
+/* ── tabulka (jako Žebříček) ────────────────────────────────────── */
+.obal-tabulky { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 8px 10px; border-bottom: 1px solid var(--linka); }
+th {
+  text-align: left; font-size: .78rem; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--slabsi); font-weight: 600;
+  border-bottom: 2px solid var(--linka);
+}
+td.poradi, th.poradi { width: 3.2rem; text-align: right; color: var(--slabsi); font-variant-numeric: tabular-nums; }
+td.hodnota, th.hodnota { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.hodnota { font-weight: 600; color: var(--tmava); }
+td.jmeno { font-weight: 600; color: var(--tmava); word-break: break-word; }
+td.kraj, th.kraj { color: var(--slabsi); font-size: .92rem; }
+tbody tr:nth-child(odd) { background: #fbfcfb; }
+tr.stupne td.poradi { color: var(--tmava); font-weight: 700; }
+tr.m1 { background: #fff8ec !important; }
+tr.m1 td.poradi::before { content: "🥇 "; }
+tr.m2 td.poradi::before { content: "🥈 "; }
+tr.m3 td.poradi::before { content: "🥉 "; }
+/* vlastní řádek přihlášeného hráče */
+tr.ja { background: #eaf6ee !important; outline: 2px solid var(--zelena); outline-offset: -2px; }
+tr.ja td.jmeno::after { content: " (vy)"; color: var(--zelena); font-weight: 500; }
+.kraj-mob { display: none; font-weight: 400; font-size: .85rem; color: var(--slabsi); }
+
+.ukazka-pruh {
+  background: var(--oranzova); color: #3a2405; font-weight: 600;
+  border-radius: 10px; padding: 10px 14px; margin: 0 0 16px; text-align: center;
+}
+
+@media (max-width: 620px) {
+  th, td { padding: 8px 6px; }
+  th.kraj, td.kraj { display: none; }
+  .kraj-mob { display: block; }
+  .uzky .snimek { width: 46%; }
+}
