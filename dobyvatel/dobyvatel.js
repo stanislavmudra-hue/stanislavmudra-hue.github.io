@@ -943,6 +943,10 @@ function vrstvaModelu3d() {
 /* ── TURISTICKÉ TRASY KČT (30. 8.) — líně načítaná vrstva ── */
 var trasyStav = { nacteno: false, zapnuto: false, nacita: false };
 var trasyVrstvy = [];
+var cykloStav = { nacteno: false, zapnuto: false, nacita: false };
+var cykloVrstvy = [];
+var tlacitkoCyklo = null;
+var CYKLO_BARVA = '#8E44AD';   // fialová, ať se liší od pěších tras
 var tlacitkoTras = null;
 
 function obnovTlacitkoTras() {
@@ -1028,6 +1032,83 @@ function nactiTrasy() {
       trasyStav.zapnuto = false;
       obnovTlacitkoTras();
       if (tlacitkoTras) tlacitkoTras.textContent = 'Trasy';
+    });
+}
+
+// ── CYKLOTRASY (1. 9.) — jedna fialová barva, přerušovaně ──
+function obnovTlacitkoCyklo() {
+  if (!tlacitkoCyklo) return;
+  tlacitkoCyklo.style.background = cykloStav.zapnuto
+    ? '#efe9da' : '#fffdf6';
+  tlacitkoCyklo.style.borderColor = cykloStav.zapnuto
+    ? '#4e6e58' : '#b9b2a0';
+}
+
+function prepniCyklo() {
+  if (mapaMrtva) return;
+  cykloStav.zapnuto = !cykloStav.zapnuto;
+  obnovTlacitkoCyklo();
+  try {
+    localStorage.setItem('dobyvatelCyklo',
+        cykloStav.zapnuto ? 'ano' : 'ne');
+  } catch (e) { }
+  if (!cykloStav.nacteno) { nactiCyklo(); return; }
+  cykloVrstvy.forEach(function (id) {
+    try {
+      mapa.setLayoutProperty(id, 'visibility',
+          cykloStav.zapnuto ? 'visible' : 'none');
+    } catch (e) { }
+  });
+}
+
+function nactiCyklo() {
+  if (cykloStav.nacita) return;
+  cykloStav.nacita = true;
+  if (tlacitkoCyklo) tlacitkoCyklo.textContent = 'Cyklo…';
+  fetch('data/cyklo.json?v=1')
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      cykloStav.nacteno = true;
+      cykloStav.nacita = false;
+      if (tlacitkoCyklo) tlacitkoCyklo.textContent = 'Cyklo';
+      var vlastnosti = d.cp || [];
+      var vid = cykloStav.zapnuto ? 'visible' : 'none';
+      var fc = { type: 'FeatureCollection',
+        features: (d.c || []).map(function (u, idx) {
+          var body2 = [];
+          for (var i = 0; i < u.length - 1; i += 2) {
+            body2.push([u[i + 1] / 1e5, u[i] / 1e5]);
+          }
+          var p = vlastnosti[idx] || 0;
+          return { type: 'Feature',
+            properties: { z: p & 3, v: (p & 4) ? 1 : 0 },
+            geometry: { type: 'LineString', coordinates: body2 } };
+        }) };
+      mapa.addSource('cyklo', { type: 'geojson', data: fc });
+      cykloVrstvy = [];
+      mapa.addLayer({ id: 'cyklo-hl', type: 'line', source: 'cyklo',
+        minzoom: 6.5, filter: ['>=', ['get', 'z'], 2],
+        layout: { visibility: vid, 'line-cap': 'round' },
+        paint: { 'line-color': CYKLO_BARVA, 'line-dasharray': [2, 1.4],
+          'line-width': ['interpolate', ['linear'], ['zoom'],
+            6.5, 1.4, 10, 2.3, 13, 3, 16, 4],
+          'line-opacity': ['case', ['==', ['get', 'v'], 1],
+            0.25, 0.9] } }, 'vlajky-jmena');
+      mapa.addLayer({ id: 'cyklo', type: 'line', source: 'cyklo',
+        minzoom: 9.6, filter: ['<', ['get', 'z'], 2],
+        layout: { visibility: vid, 'line-cap': 'round' },
+        paint: { 'line-color': CYKLO_BARVA, 'line-dasharray': [2, 1.4],
+          'line-width': ['interpolate', ['linear'], ['zoom'],
+            9.6, 1, 13, 2.2, 16, 3.4],
+          'line-opacity': ['case', ['==', ['get', 'v'], 1],
+            0.22, 0.8] } }, 'vlajky-jmena');
+      cykloVrstvy.push('cyklo-hl', 'cyklo');
+    })
+    .catch(function () {
+      cykloStav.nacita = false;
+      cykloStav.zapnuto = false;
+      obnovTlacitkoCyklo();
+      if (tlacitkoCyklo) tlacitkoCyklo.textContent = 'Cyklo';
     });
 }
 
@@ -2952,10 +3033,21 @@ function pridejLegendu() {
     + 'font:600 12.5px sans-serif;';
   tlacitkoTras.onclick = prepniTrasy;
   obal.appendChild(tlacitkoTras);
+  // cyklotrasy (1. 9.) — vedle turistických
+  tlacitkoCyklo = document.createElement('button');
+  tlacitkoCyklo.textContent = 'Cyklo';
+  tlacitkoCyklo.title = 'Cyklotrasy';
+  tlacitkoCyklo.style.cssText = 'position:absolute;left:146px;top:10px;'
+    + 'z-index:5;padding:5px 10px;border-radius:8px;border:1px solid '
+    + '#b9b2a0;background:#fffdf6;cursor:pointer;'
+    + '-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);'
+    + 'font:600 12.5px sans-serif;';
+  tlacitkoCyklo.onclick = prepniCyklo;
+  obal.appendChild(tlacitkoCyklo);
   var tl3d = document.createElement('button');
   tl3d.textContent = '3D';
   tl3d.title = 'Naklonit mapu a zapnout povrch';
-  tl3d.style.cssText = 'position:absolute;left:150px;top:10px;'
+  tl3d.style.cssText = 'position:absolute;left:210px;top:10px;'
     + 'z-index:5;padding:5px 10px;border-radius:8px;border:1px solid '
     + '#b9b2a0;background:#fffdf6;cursor:pointer;'
     + '-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);'
