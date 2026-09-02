@@ -5,7 +5,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pro firmy – Okolník</title>
-<meta name="description" content="Zvýraznění podniku v aplikaci Okolník: štítek Ověřeno, záře na mapě, přednost ve vyhledávání a vlastní text. 199 Kč měsíčně nebo 899 Kč ročně, objednávka na fakturu.">
+<meta name="description" content="Zvýraznění podniku v aplikaci Okolník: štítek Ověřeno, záře na mapě, přednost ve vyhledávání a vlastní text. 199 Kč měsíčně nebo 899 Kč ročně, platí se v aplikaci přes Google Play.">
 <meta name="color-scheme" content="light">
 <link rel="icon" href="/img/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/img/favicon.png">
@@ -14,15 +14,6 @@
   .cenik { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin:14px 0 6px; }
   .cenik .karta h3 { margin:0 0 4px; }
   .cenik .cena { font-size:1.6rem; font-weight:800; margin:2px 0 6px; }
-  form.objednavka label { display:block; margin:10px 0 4px; font-weight:700; }
-  form.objednavka input, form.objednavka select, form.objednavka textarea {
-    width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #b9b2a0;
-    border-radius:8px; background:#fffdf6; font:inherit; }
-  form.objednavka textarea { min-height:70px; }
-  form.objednavka .radek { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  form.objednavka .volby label { display:inline-flex; align-items:center; gap:6px;
-    font-weight:600; margin:4px 16px 4px 0; }
-  form.objednavka .volby input { width:auto; }
   .drobne { color:#6b6455; font-size:.92rem; }
   #vysledek { margin-top:12px; font-weight:700; }
   @media (max-width: 600px) { form.objednavka .radek { grid-template-columns:1fr; } }
@@ -78,107 +69,31 @@
       <p class="drobne">Celý rok za cenu čtyř a půl měsíce.</p>
     </div>
   </div>
-  <p class="drobne">Ceny jsou konečné (nejsme plátci DPH). Platit lze také
-  přímo v aplikaci přes Google Play: Více → Okolník Premium → Zvýraznit
-  podnik.</p>
+  <p class="drobne">Ceny jsou konečné (nejsme plátci DPH). Platí se v aplikaci
+  přes Google Play, doklad pošle Google.</p>
 
-  <h2>Objednávka na fakturu</h2>
-  <p>Vyplňte údaje o podniku. Ozveme se e‑mailem s fakturou; po zaplacení
-  zvýraznění zapneme, obvykle do 1 pracovního dne.</p>
-
-  <form class="objednavka" id="formular" novalidate>
-    <label for="nazev">Název podniku *</label>
-    <input id="nazev" maxlength="120" required autocomplete="organization">
-
-    <label for="kategorie">Kategorie *</label>
-    <select id="kategorie" required>
-      <option value="">– vyberte –</option>
-      <option value="restaurants">Restaurace</option>
-      <option value="pubs">Hospoda</option>
-      <option value="cafes">Kavárna / cukrárna</option>
-      <option value="fastfood">Fastfood / bistro</option>
-      <option value="bars">Bar / vinárna</option>
-      <option value="supermarkets">Potraviny / večerka</option>
-      <option value="bakeries">Pekárna</option>
-      <option value="butchers">Řeznictví</option>
-      <option value="farmshops">Farmářský obchod</option>
-      <option value="drinkshops">Nápoje / vinotéka</option>
-      <option value="accommodation">Ubytování</option>
-      <option value="camps">Kemp</option>
-      <option value="wellness">Wellness / koupele</option>
-      <option value="sports">Sport</option>
-      <option value="hairdressers">Kadeřnictví / kosmetika</option>
-      <option value="carrepair">Autoservis</option>
-      <option value="fuel">Čerpací stanice</option>
-      <option value="electronics">Elektro</option>
-      <option value="clothes">Oblečení</option>
-      <option value="furniture">Nábytek</option>
-      <option value="gifts">Dárky / suvenýry</option>
-      <option value="hobby">Hobby / zahrada</option>
-      <option value="books">Knihy / papírnictví</option>
-      <option value="pharmacy">Lékárna</option>
-      <option value="doctors">Lékař / ordinace</option>
-      <option value="vets">Veterina</option>
-      <option value="drugstore">Drogerie</option>
-      <option value="tourist_info">Turistické info / půjčovna</option>
-      <option value="other">Jiné</option>
-    </select>
-
-    <div class="radek">
-      <div>
-        <label for="ulice">Ulice a č. p.</label>
-        <input id="ulice" maxlength="120" autocomplete="street-address">
-      </div>
-      <div>
-        <label for="obec">Obec *</label>
-        <input id="obec" maxlength="80" required autocomplete="address-level2">
-      </div>
-    </div>
-
-    <div class="radek">
-      <div>
-        <label for="email">Kontaktní e‑mail *</label>
-        <input id="email" type="email" maxlength="120" required autocomplete="email">
-      </div>
-      <div>
-        <label for="telefon">Telefon</label>
-        <input id="telefon" type="tel" maxlength="30" autocomplete="tel">
-      </div>
-    </div>
-
-    <div class="radek">
-      <div>
-        <label for="ico">IČO (na fakturu)</label>
-        <input id="ico" maxlength="12" inputmode="numeric">
-      </div>
-      <div>
-        <label for="web">Web</label>
-        <input id="web" type="url" maxlength="160" placeholder="https://">
-      </div>
-    </div>
-
-    <label for="doba">Otevírací doba</label>
-    <input id="doba" maxlength="120" placeholder="např. Po–Pá 8–17, So 8–11">
-
-    <label for="text">Vlastní text do detailu (max 200 znaků)</label>
-    <textarea id="text" maxlength="200" placeholder="např. Domácí koláče každé ráno, terasa s výhledem, psi vítáni."></textarea>
-
-    <div class="volby">
-      <label><input type="radio" name="obdobi" value="month"> Měsíc · 199 Kč</label>
-      <label><input type="radio" name="obdobi" value="year" checked> Rok · 899 Kč</label>
-    </div>
-
-    <p class="drobne">Odesláním souhlasíte se zpracováním údajů k vyřízení
-    objednávky (viz <a href="/soukromi/">zásady soukromí</a>). Text musí
-    být slušný a pravdivý; správce ho může upravit nebo odmítnout.</p>
-
-    <button class="tlacitko" type="submit" id="odeslat">Odeslat objednávku</button>
-    <p id="vysledek" aria-live="polite"></p>
-  </form>
+  <h2>Jak objednat</h2>
+  <p>Zvýraznění se objednává a platí <strong>přímo v aplikaci Okolník přes
+  Google Play</strong> – doklad o platbě vám pošle Google, nic se
+  nefakturuje. Postup:</p>
+  <ol>
+    <li>Nainstalujte si <a href="https://play.google.com/store/apps/details?id=cz.okolnik.app">Okolník z Google Play</a>
+    a přihlaste se účtem Google.</li>
+    <li>V aplikaci otevřete <strong>Více → Okolník Premium → Zvýraznit svůj
+    podnik</strong>.</li>
+    <li>Vyberte svůj podnik v okolí (nebo ho založte na místě), doplňte
+    otevírací dobu, telefon, web a vlastní text a zaplaťte měsíc nebo rok.</li>
+    <li>Správce žádost obvykle do 1 dne schválí – podnik dostane štítek
+    Ověřeno, záři na mapě a přednost ve vyhledávání.</li>
+  </ol>
+  <p class="drobne">Nevíte si rady? Napište na <a href="/kontakt/">kontakt</a>,
+  rádi pomůžeme.</p>
 
   <h2>Otázky</h2>
-  <p><strong>Musím být v aplikaci?</strong> Ne. Objednávka z webu stačí,
-  podnik založíme nebo doplníme my. V aplikaci ho pak uvidíte i vy.</p>
+  <p><strong>Musím být v aplikaci?</strong> Ano – objednávka i platba jdou
+  přes Google Play v aplikaci, díky tomu nemusíte řešit fakturu a doklad
+  dostanete od Googlu. Nový podnik se zakládá na místě, existující vyberete
+  v okolí.</p>
   <p><strong>Co se stane po skončení?</strong> Zmizí jen štítek, záře
   a vlastní text. Údaje o podniku zůstanou.</p>
   <p><strong>Kde je vidět?</strong> V okolí podniku – u lidí, kteří tam
@@ -200,83 +115,6 @@
   </div>
 </footer>
 
-<script>
-(function () {
-  var PROJEKT = 'sarcher-b32a1';
-  var KLIC = 'AIzaSyB3sj8qS-Lh4lHow6AUrWH-JayEtJ70igQ';
-  var f = document.getElementById('formular');
-  var vysl = document.getElementById('vysledek');
-  var tl = document.getElementById('odeslat');
-  function h(id) { return document.getElementById(id).value.trim(); }
-
-  // Adresa → souřadnice (Nominatim, OSM); bez výsledku pošleme 0/0
-  // a správce bod usadí ručně podle adresy.
-  function souradnice(dotaz) {
-    return fetch('https://nominatim.openstreetmap.org/search?format=json'
-        + '&limit=1&countrycodes=cz&q=' + encodeURIComponent(dotaz),
-        { headers: { 'Accept': 'application/json' } })
-      .then(function (r) { return r.ok ? r.json() : []; })
-      .then(function (a) {
-        if (a && a.length) {
-          return { lat: parseFloat(a[0].lat), lon: parseFloat(a[0].lon) };
-        }
-        return { lat: 0, lon: 0 };
-      }).catch(function () { return { lat: 0, lon: 0 }; });
-  }
-
-  f.addEventListener('submit', function (ev) {
-    ev.preventDefault();
-    var nazev = h('nazev'), kat = h('kategorie'), obec = h('obec'),
-        email = h('email');
-    if (!nazev || !kat || !obec || !email) {
-      vysl.textContent = 'Vyplňte prosím název, kategorii, obec a e‑mail.';
-      return;
-    }
-    tl.disabled = true;
-    vysl.textContent = 'Odesílám…';
-    var obdobi = f.querySelector('input[name=obdobi]:checked').value;
-    var kontakt = email + (h('telefon') ? ' · ' + h('telefon') : '');
-    souradnice([h('ulice'), obec].filter(Boolean).join(', ')).then(function (g) {
-      var fields = {
-        mode: { stringValue: 'web' },
-        name: { stringValue: nazev },
-        category: { stringValue: kat },
-        lat: { doubleValue: g.lat },
-        lon: { doubleValue: g.lon },
-        period: { stringValue: obdobi },
-        purchaseToken: { stringValue: '' },
-        version: { stringValue: 'web' },
-        created: { stringValue: new Date().toISOString() },
-        device: { stringValue: 'web' },
-        zdroj: { stringValue: 'web' },
-        kontakt: { stringValue: kontakt.slice(0, 120) },
-      };
-      if (h('ulice')) fields.street = { stringValue: h('ulice') };
-      fields.city = { stringValue: obec };
-      if (h('doba')) fields.opening_hours = { stringValue: h('doba') };
-      if (h('telefon')) fields.phone = { stringValue: h('telefon') };
-      if (h('web')) fields.website = { stringValue: h('web') };
-      if (h('text')) fields.text = { stringValue: h('text').slice(0, 200) };
-      if (h('ico')) fields.ico = { stringValue: h('ico').slice(0, 12) };
-      return fetch('https://firestore.googleapis.com/v1/projects/' + PROJEKT
-          + '/databases/(default)/documents/promoRequests?key=' + KLIC, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: fields }),
-      });
-    }).then(function (r) {
-      if (!r || !r.ok) { throw new Error('HTTP ' + (r ? r.status : '?')); }
-      vysl.textContent = 'Děkujeme! Objednávku jsme přijali – fakturu '
-        + 'pošleme na ' + email + ', zvýraznění zapneme po zaplacení.';
-      f.reset();
-    }).catch(function () {
-      tl.disabled = false;
-      vysl.textContent = 'Odeslání se nepovedlo. Napište nám prosím na '
-        + 'stamu.apps@gmail.com – zařídíme to ručně.';
-    });
-  });
-})();
-</script>
 
 </body>
 </html>
