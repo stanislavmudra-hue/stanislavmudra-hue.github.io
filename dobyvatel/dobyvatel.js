@@ -2556,6 +2556,18 @@ function vykresliZalozeni() {
           .catch(function () { return { sids: [] }; });
       }).then(function (reg) {
         var sids = reg.sids || [];
+        // ⭐ 2. 9. 2026: kvóta je 5 BĚŽÍCÍCH soutěží — skončené
+        // (stav 'konec') nebo smazané se z registru uvolní
+        return Promise.all(sids.map(function (s) {
+          return ctiDoc(ZAKLAD_DOK + 'souteze/' + s + '?key=' + KLIC)
+            .then(function (d) {
+              return (d && d.stav === 'konec') ? null : s;
+            })
+            .catch(function () { return null; });
+        })).then(function (ziva) {
+          return ziva.filter(function (x) { return !!x; });
+        });
+      }).then(function (sids) {
         if (sids.length >= 5) {
           throw new Error('kvota');
         }
@@ -2606,8 +2618,8 @@ function vykresliZalozeni() {
           return zapisDoc('zalozene/' + relace.uid, { sids: sids });
         }).catch(function () { });
         if (e && e.message === 'kvota') {
-          zprava.textContent = 'Vedeš už 5 soutěží — nejdřív '
-            + 'některou smaž (v její Správě).';
+          zprava.textContent = 'Vedeš už 5 běžících soutěží — nejdřív '
+            + 'některou ukonči nebo smaž (v její Správě).';
         } else if (e && /HTTP 40[13]/.test(e.message || '')) {
           zprava.textContent = 'Server založení zamítl — buď je '
             + 'potřeba se znovu přihlásit, nebo v databázi ještě '
@@ -2620,7 +2632,33 @@ function vykresliZalozeni() {
     };
     box.appendChild(f);
   };
-  box.appendChild(tl);
+  // ⭐ 2. 9. 2026: ZAKLÁDÁNÍ SOUTĚŽÍ JE SOUČÁST OKOLNÍK PREMIUM —
+  // příznak `premium` u hraci/{uid} zapisuje aplikace podle
+  // předplatného; totéž hlídají serverová pravidla (v7).
+  var zamek = document.createElement('p');
+  zamek.className = 'drobne';
+  zamek.textContent = 'Ověřuji předplatné…';
+  box.appendChild(zamek);
+  platnyToken().then(function (token) {
+    return ctiDoc(ZAKLAD_DOK + 'hraci/' + relace.uid + '?key=' + KLIC,
+        token);
+  }).catch(function () { return {}; }).then(function (h) {
+    if (h && h.premium === true) {
+      zamek.remove();
+      box.appendChild(tl);
+      return;
+    }
+    zamek.textContent = '';
+    var b = document.createElement('strong');
+    b.textContent = 'Zakládání vlastních soutěží je součástí Okolník '
+      + 'Premium';
+    zamek.appendChild(b);
+    zamek.appendChild(document.createTextNode(
+        ' (49 Kč měsíčně / 399 Kč ročně; k tomu bez reklam, offline '
+        + 'mapy a offline navigace). Aktivujete ho v aplikaci: Více → '
+        + 'Okolník Premium. Web si toho všimne po dalším spuštění '
+        + 'aplikace. Až 5 soutěží může běžet najednou.'));
+  });
 }
 
 /* Po prokliku „Vybrat místa" ze správy (?editor=1) se editor na
