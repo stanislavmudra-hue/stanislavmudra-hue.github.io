@@ -105,6 +105,12 @@
   main.plocha button:hover { border-color: #4e6e58;
     background: #f4f0e4; }
   main.plocha button:disabled { opacity: .55; cursor: default; }
+  /* ⛔ oprava 1. 9.: obecný kabát tlačítek deformoval ovládání
+     MapLibre (+/−, celá obrazovka) na úzké proužky — vrátit výchozí */
+  main.plocha .maplibregl-ctrl button { padding: 0; border: none;
+    border-radius: 4px; background: transparent; }
+  main.plocha .maplibregl-ctrl button:hover {
+    background: rgba(0,0,0,0.06); border-color: transparent; }
   .karta h2 { border-bottom: 3px solid #C99B3F; display: inline-block;
     padding-bottom: 3px; margin-bottom: 10px; }
   .stitek { background: #dcefdc; }
@@ -266,6 +272,6 @@
 </footer>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="maplibre-contour.min.js?v=64"></script>
-<script src="dobyvatel.js?v=74"></script>
+<script src="dobyvatel.js?v=75"></script>
 </body>
 </html>

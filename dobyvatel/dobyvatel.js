@@ -188,7 +188,7 @@ function nahrajIkony() {
   // a popisnější obrázky") — emoji bublina jen jako záloha
   var prace = Object.keys(BUBLINA_DRUHU).map(function (kat) {
     if (mapa.hasImage('ik-' + kat)) return Promise.resolve();
-    return fetch('data/ikonky2/' + kat + '.webp?v=72')
+    return fetch('data/ikonky2/' + kat + '.webp?v=75')
       .then(function (r) { if (!r.ok) throw 0; return r.blob(); })
       .then(function (bl) { return createImageBitmap(bl); })
       .then(function (im) {
