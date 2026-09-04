@@ -138,6 +138,7 @@ function zFirestore(v) {
   if ('integerValue' in v) return Number(v.integerValue);
   if ('doubleValue' in v) return Number(v.doubleValue);
   if ('booleanValue' in v) return !!v.booleanValue;
+  if ('bytesValue' in v) return v.bytesValue;   // base64 (sync)
   if ('timestampValue' in v) return v.timestampValue;
   if ('nullValue' in v) return null;
   if ('mapValue' in v) {
@@ -553,29 +554,293 @@ function ukazkovyHrac(obdobi) {
 /* ---------------------------------------------------------------------
    Start
 --------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+   ⭐ Moje mapa (5. 9. 2026) – stav hry, který aplikace od v1.608 ukládá
+   pod účet: hraci/{uid}/sync/stav (hlavička) + cast0…N (gzip JSON po
+   částech). Kreslí odkryté buňky mlhy (kotouče ~230 m jako v aplikaci),
+   trasy fotovýprav a zápisy deníku. MapLibre se načte až tady, ať
+   stránky bez přihlášení zůstanou lehké. Buňky jsou v mřížce
+   0,0018° (~200 × 130 m); polygony dokončených obcí web nemá, takže
+   se kreslí jen projitá stopa.
+--------------------------------------------------------------------- */
+var BUNKA = 0.0018;                 // TrailStore.cell (stupně)
+var KOTOUC_M = 160 * 1.45;          // uncoverMeters × haloFactor
+var PLOCHA_BUNKY_KM2 = 0.026;       // ~200 × 130 m
+var MAPLIBRE = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl';
+var mapaMoje = null;
+
+function nactiSkript(url) {
+  return new Promise(function (ok, chyba) {
+    var sc = document.createElement('script');
+    sc.src = url;
+    sc.onload = ok;
+    sc.onerror = function () { chyba(new Error('Nepodařilo se načíst mapovou knihovnu.')); };
+    document.head.appendChild(sc);
+  });
+}
+
+function zajistiMaplibre() {
+  if (window.maplibregl) return Promise.resolve();
+  var l = document.createElement('link');
+  l.rel = 'stylesheet';
+  l.href = MAPLIBRE + '.css';
+  document.head.appendChild(l);
+  return nactiSkript(MAPLIBRE + '.js');
+}
+
+function zBase64(s) {
+  var b = atob(s || ''), u = new Uint8Array(b.length);
+  for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+  return u;
+}
+
+/* gzip → text (DecompressionStream: Chrome 80+, Safari 16.4+, Firefox 113+) */
+function rozbal(bajty) {
+  if (!('DecompressionStream' in window)) {
+    return Promise.reject(new Error('Tenhle prohlížeč neumí rozbalit data, zkuste novější.'));
+  }
+  var ds = new DecompressionStream('gzip');
+  var w = ds.writable.getWriter();
+  w.write(bajty);
+  w.close();
+  return new Response(ds.readable).text();
+}
+
+function datumCz(iso) {
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.getDate() + '. ' + (d.getMonth() + 1) + '. ' + d.getFullYear();
+}
+
+/** Stáhne a rozbalí stav hry; `null` = aplikace zatím nic neposlala. */
+function stahniStav() {
+  return ctiSoukrome('hraci/' + relace.uid + '/sync/stav').then(function (hl) {
+    if (!hl) return null;
+    var n = Number(hl.casti || 0), prace = [];
+    for (var i = 0; i < n; i++) {
+      prace.push(ctiSoukrome('hraci/' + relace.uid + '/sync/cast' + i));
+    }
+    return Promise.all(prace).then(function (casti) {
+      var delka = 0;
+      var kusy = casti.map(function (c) {
+        var u = zBase64(c && c.data);
+        delka += u.length;
+        return u;
+      });
+      var vse = new Uint8Array(delka), p = 0;
+      kusy.forEach(function (u) { vse.set(u, p); p += u.length; });
+      return rozbal(vse).then(function (t) {
+        var d = JSON.parse(t);
+        d._hlavicka = hl;
+        return d;
+      });
+    });
+  });
+}
+
+function bunkyNaBody(cells) {
+  var fc = { type: 'FeatureCollection', features: [] };
+  (cells || []).forEach(function (k) {
+    var p = String(k).split(':');
+    var a = parseInt(p[0], 10), b = parseInt(p[1], 10);
+    if (isNaN(a) || isNaN(b)) return;
+    fc.features.push({ type: 'Feature', properties: {},
+      geometry: { type: 'Point',
+        coordinates: [(b + 0.5) * BUNKA, (a + 0.5) * BUNKA] } });
+  });
+  return fc;
+}
+
+function vypravyNaCary(trips) {
+  var fc = { type: 'FeatureCollection', features: [] };
+  (trips || []).forEach(function (t) {
+    var body = (t.track || []).map(function (b) { return [b.lo, b.la]; })
+      .filter(function (b) { return isFinite(b[0]) && isFinite(b[1]); });
+    if (body.length < 2) return;
+    fc.features.push({ type: 'Feature',
+      properties: { n: t.name || 'Fotovýprava', d: datumCz(t.createdAt) },
+      geometry: { type: 'LineString', coordinates: body } });
+  });
+  return fc;
+}
+
+function zapisyNaBody(diary) {
+  var fc = { type: 'FeatureCollection', features: [] };
+  (diary || []).forEach(function (v) {
+    if (!isFinite(v.lat) || !isFinite(v.lon)) return;
+    fc.features.push({ type: 'Feature',
+      properties: { n: v.name || 'Zápis', d: datumCz(v.createdAt) },
+      geometry: { type: 'Point', coordinates: [v.lon, v.lat] } });
+  });
+  return fc;
+}
+
+function rozsah(fcs) {
+  var minX = 180, minY = 90, maxX = -180, maxY = -90, n = 0;
+  function bod(c) {
+    if (c[0] < minX) minX = c[0];
+    if (c[0] > maxX) maxX = c[0];
+    if (c[1] < minY) minY = c[1];
+    if (c[1] > maxY) maxY = c[1];
+    n++;
+  }
+  fcs.forEach(function (fc) {
+    fc.features.forEach(function (f) {
+      var g = f.geometry;
+      if (g.type === 'Point') bod(g.coordinates);
+      else g.coordinates.forEach(bod);
+    });
+  });
+  return n ? [[minX, minY], [maxX, maxY]] : null;
+}
+
+function nakresliMapu(plátno, cells, trips, diary) {
+  var kotouce = bunkyNaBody(cells);
+  var cary = vypravyNaCary(trips);
+  var zapisy = zapisyNaBody(diary);
+  var hranice = rozsah([kotouce, cary, zapisy]);
+  var lat0 = hranice ? (hranice[0][1] + hranice[1][1]) / 2 : 49.8;
+  // poloměr kotouče v pixelech: metry / (m na px při daném zoomu)
+  var mpp0 = 156543.03392 * Math.cos(lat0 * Math.PI / 180);
+  function rPx(z) { return KOTOUC_M / (mpp0 / Math.pow(2, z)); }
+
+  mapaMoje = new maplibregl.Map({
+    container: plátno,
+    style: 'https://tiles.openfreemap.org/styles/positron',
+    center: [15.5, 49.8],
+    zoom: 6.3,
+    attributionControl: { compact: true },
+  });
+  mapaMoje.addControl(new maplibregl.NavigationControl({ showCompass: false }));
+  mapaMoje.on('error', function (e) {
+    console.warn('[mapa]', e && e.error ? e.error.message : e);
+  });
+  // ⚠️ 'style.load', ne 'load': 'load' čeká i na první dlaždice podkladu
+  // a při pomalé síti by vrstvy hráče nepřišly dlouho (nebo vůbec)
+  mapaMoje.on('style.load', function () {
+    mapaMoje.addSource('kotouce', { type: 'geojson', data: kotouce });
+    mapaMoje.addLayer({ id: 'kotouce', type: 'circle', source: 'kotouce',
+      paint: {
+        'circle-color': '#f29d38',
+        'circle-opacity': 0.34,
+        'circle-blur': 0.45,
+        // ⚠️ ['zoom'] smí být jen v interpolate NA VRCHU výrazu (ne
+        // uvnitř max) – zdaleka aspoň 1,4 px, od z10 skutečný poloměr
+        'circle-radius': ['interpolate', ['exponential', 2], ['zoom'],
+          5, 1.4, 9, 1.4, 10, Math.max(1.4, rPx(10)), 16, rPx(16)],
+      } });
+    mapaMoje.addSource('vypravy', { type: 'geojson', data: cary });
+    mapaMoje.addLayer({ id: 'vypravy-hl', type: 'line', source: 'vypravy',
+      paint: { 'line-color': '#ffffff', 'line-width': 4, 'line-opacity': 0.7 } });
+    mapaMoje.addLayer({ id: 'vypravy', type: 'line', source: 'vypravy',
+      paint: { 'line-color': '#2e7d5b', 'line-width': 2,
+        'line-dasharray': [2, 1.6] } });
+    mapaMoje.addSource('zapisy', { type: 'geojson', data: zapisy });
+    mapaMoje.addLayer({ id: 'zapisy', type: 'circle', source: 'zapisy',
+      paint: { 'circle-color': '#0d2b2e', 'circle-radius': 5,
+        'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } });
+    ['zapisy', 'vypravy'].forEach(function (vrstva) {
+      mapaMoje.on('click', vrstva, function (e) {
+        var f = e.features && e.features[0];
+        if (!f) return;
+        var kde = f.geometry.type === 'Point'
+          ? f.geometry.coordinates.slice() : e.lngLat;
+        new maplibregl.Popup({ closeButton: false })
+          .setLngLat(kde)
+          .setText((f.properties.n || '') +
+            (f.properties.d ? ' · ' + f.properties.d : ''))
+          .addTo(mapaMoje);
+      });
+      mapaMoje.on('mouseenter', vrstva, function () {
+        mapaMoje.getCanvas().style.cursor = 'pointer';
+      });
+      mapaMoje.on('mouseleave', vrstva, function () {
+        mapaMoje.getCanvas().style.cursor = '';
+      });
+    });
+    if (hranice) {
+      mapaMoje.fitBounds(hranice, { padding: 36, maxZoom: 12, duration: 0 });
+    }
+  });
+}
+
+function vykresliMapu() {
+  var box = el('mapaMoje');
+  if (!box) return;
+  prazdny(box);
+  if (!relace || UKAZKA) {
+    box.appendChild(stavovaKarta('Vaše mapa po přihlášení',
+      'Přihlaste se stejným účtem jako v aplikaci a uvidíte tu svou ' +
+      'odkrytou mapu, fotovýpravy a zápisy. Aplikace je pod váš účet ' +
+      'ukládá od verze 1.608 – jen pro vás, nikdy veřejně.', ''));
+    return;
+  }
+  box.appendChild(nacitani('Načítám vaši mapu…'));
+  box.setAttribute('aria-busy', 'true');
+  stahniStav().then(function (d) {
+    prazdny(box);
+    box.setAttribute('aria-busy', 'false');
+    if (!d) {
+      box.appendChild(stavovaKarta('Zatím žádná mapa',
+        'Aplikace pošle stav hry po přihlášení a po každé procházce ' +
+        '(od verze 1.608). Ručně: Více → Můj Okolník → Synchronizovat ' +
+        'teď.', ''));
+      return;
+    }
+    var cells = d.trailCells || [], trips = d.trips || [],
+      diary = d.diary || [];
+    if (!cells.length && !trips.length && !diary.length) {
+      box.appendChild(stavovaKarta('Mapa je zatím prázdná',
+        'Vyrazte ven – odkrytá místa se tu objeví po další ' +
+        'synchronizaci.', ''));
+      return;
+    }
+    var kdy = d._hlavicka && d._hlavicka.aktualizovano
+      ? ' · stav z ' + datumCz(d._hlavicka.aktualizovano) : '';
+    box.appendChild(prvek('p', 'mapa-info',
+      'Odkryto přibližně ' + cislo(cells.length * PLOCHA_BUNKY_KM2, 0) +
+      ' km² · ' + trips.length + ' fotovýprav · ' + diary.length +
+      ' zápisů' + kdy + '. Vidíte to jen vy.'));
+    var platno = prvek('div', 'mapa-moje');
+    box.appendChild(platno);
+    return zajistiMaplibre().then(function () {
+      nakresliMapu(platno, cells, trips, diary);
+    });
+  }).catch(function (e) {
+    prazdny(box);
+    box.setAttribute('aria-busy', 'false');
+    box.appendChild(stavovaKarta('Mapu se nepovedlo načíst',
+      String((e && e.message) || e), 'chyba'));
+  });
+}
+
 function start() {
   var pruh = el('ukazkaPruh');
   if (UKAZKA) {
     if (pruh) pruh.hidden = false;
     relace = { uid: 'ukazka2', jmeno: 'Ukázkový hráč' };
     vykresliMoje();
+    vykresliMapu();
     vykresliZebricek();
     return;
   }
   relace = nactiRelaci();
   if (!relace) {
     vykresliMoje();
+    vykresliMapu();
     vykresliZebricek();
     return;
   }
   // ověřit, že uložená relace ještě žije (odvolaný účet, změna hesla…)
   token().then(function () {
     vykresliMoje();
+    vykresliMapu();
     vykresliZebricek();
   }).catch(function () {
     relace = null;
     ulozRelaci();
     vykresliMoje();
+    vykresliMapu();
     vykresliZebricek();
   });
 }
