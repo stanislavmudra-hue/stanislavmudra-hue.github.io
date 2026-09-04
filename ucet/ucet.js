@@ -407,15 +407,10 @@ function popisChybyPrihlaseni(e) {
    řádek žebříčku se pod novým uid pošle z aplikace celý znovu. */
 
 function vykresliParovani() {
+  // 5. 9. 2026: box „Propojení s aplikací" zrušen (výtka: tentýž účet
+  // je samozřejmost, text byl zbytečný) – stránka už ho nemá
   var karta = el('kartaParovani');
-  var obsah = el('parovaniObsah');
-  obsah.textContent = '';
-  karta.hidden = !relace;
-  if (!relace) return;
-  obsah.appendChild(prvek('p', null,
-    'Aplikace a web používají jeden účet. Stačí se v aplikaci ' +
-    '(Více → Můj Okolník) přihlásit stejným účtem jako tady — ' +
-    'výsledky se pak objeví níž samy, žádný kód není potřeba.'));
+  if (karta) karta.hidden = true;
 }
 
 /* ---------------------------------------------------------------------

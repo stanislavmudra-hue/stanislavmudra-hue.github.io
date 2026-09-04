@@ -458,8 +458,7 @@ function vykresliMoje() {
     k.appendChild(prvek('h3', null, 'Vaše čísla po přihlášení'));
     k.appendChild(prvek('p', null,
       'Přihlaste se stejným účtem jako v aplikaci a uvidíte tu své ' +
-      'výsledky v režimu ' + NASTAVENI.nazev + '. Zobrazují se jen hodnoty, ' +
-      'které aplikace posílá do profilu – ne poloha, trasa ani fotky.'));
+      'výsledky v režimu ' + NASTAVENI.nazev + '.'));
     k.appendChild(odkazNaUcet('Přihlásit se na Můj Okolník'));
     box.appendChild(k);
     return;
