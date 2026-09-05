@@ -276,8 +276,12 @@
     (function tik() {
       var hotovo = false;
       try {
-        hotovo = typeof mapa !== 'undefined' && mapa && mapa.isStyleLoaded &&
-          mapa.isStyleLoaded() && typeof OkolnikMost !== 'undefined';
+        // ⚠️ `isStyleLoaded()` je skoro nikdy true (čeká i na obrázky
+        // vzorů a dlaždice) – stačí načtený styl (interní `_loaded`)
+        hotovo = typeof mapa !== 'undefined' && mapa &&
+          typeof OkolnikMost !== 'undefined' &&
+          ((mapa.style && mapa.style._loaded) ||
+            (mapa.isStyleLoaded && mapa.isStyleLoaded()));
       } catch (e) { hotovo = false; }
       if (hotovo) { cb(); return; }
       if (++pokusy > 600) { console.warn('[web] mapa se nenačetla'); return; }
