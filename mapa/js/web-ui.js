@@ -486,7 +486,10 @@
           var lat = pole[i][0] / 1e5, lng = pole[i][1] / 1e5;
           if (lng < w || lng > e || lat < s || lat > n) continue;
           out.push({ id: 'poi:' + c2 + ':' + pole[i][0] + ':' + pole[i][1], d: c2, chip: chip,
-            lat: lat, lng: lng, n: pole[i][2] || (kat.chipy[chip] || {}).l || '',
+            // 5. 9. noc: místo bez jména nese ČESKÝ popis druhu v jednotném čísle
+            // (kat.popisy podle kategorie, pak chip.p), ne skupinový/anglický klíč
+            lat: lat, lng: lng, n: pole[i][2] || (kat.popisy || {})[c2] || (kat.chipy[chip] || {}).p
+              || (kat.chipy[chip] || {}).l || '',
             vzd: vzdalenostM(c.lat, c.lng, lat, lng) });
         }
       }

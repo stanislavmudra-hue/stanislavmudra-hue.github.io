@@ -472,6 +472,16 @@ async function start() {
   mapa.once('render', () => {
     window.__casy.prvniSnimek = Math.round(performance.now());
   });
+  // ⭐ engine 206 („proč se nejdřív načítá denní mapa a až pak ztmavne"):
+  // doplňky prvního stylu se nasazují až po `load` (první úplné vykreslení,
+  // ~4,6 s) a noční překryv dokonce až s prvním počasím (~9,6 s; změřeno
+  // __casy.nocVolano). Krok noci je ale ČISTĚ místní výpočet (výška slunce
+  // ze středu mapy a času), takže překryv jde nanést hned ve `style.load`
+  // prvního stylu – před prvním snímkem. Další styly to dělají v obsluze
+  // style.load níž.
+  mapa.once('style.load', () => {
+    try { aplikujNoc(); } catch (e) { /* dožene to obsluha níž */ }
+  });
   mapa.on('load', () => {
     if (!window.__casy.load) window.__casy.load = Math.round(performance.now());
   });
@@ -2865,12 +2875,15 @@ let krokNoci = -1;
 
 function aplikujNoc() {
   try {
+    window.__casy = window.__casy || {};
+    (window.__casy.nocVolano = window.__casy.nocVolano || []).push(Math.round(performance.now()));
     // v1.592: noc běží i v Dobyvateli (styl s příznakem `noc`) —
     // „přidej to i do Dobyvatele a uvidíme, kdyžtak dáme pryč"
     if (!mapa || !STYLY[aktualniKod]
         || !(STYLY[aktualniKod].mlha || STYLY[aktualniKod].noc)) return;
     if (typeof Pocasi === 'undefined' || !Pocasi.stavNoci) return;
     const krok = Pocasi.stavNoci();
+    window.__casy.nocKrok = krok;
     const svetla = mapa.getLayer('dekorace-svetla');
     const svChce = krok >= 2 ? 'visible' : 'none';
     const svMa = svetla
@@ -3036,10 +3049,14 @@ function aplikujNoc() {
     // ⚠️ opacity světel NEsahat setPaintProperty — nese výraz
     // s feature-state pro mihotání
     krokNoci = krok;
+    window.__casy.nocNaneseno = Math.round(performance.now());
     // v1.599: v Dobyvateli v noci září vlajky (místo světel a hmyzu)
     if (typeof Dobyvatel !== 'undefined' && Dobyvatel.noc) Dobyvatel.noc(krok);
     console.log('[noc] krok ' + krok);
-  } catch (e) { console.warn('[noc]', e); }
+  } catch (e) {
+    console.warn('[noc]', e);
+    try { window.__casy.nocChyba = String(e && e.stack || e).slice(0, 400); } catch (e2) { /* nic */ }
+  }
 }
 setInterval(aplikujNoc, 60000);
 
@@ -5879,9 +5896,13 @@ function velikostMist(sBublinou, klic) {
   const vt = ['coalesce', ['get', shluk ? 'vtH' : 'vt'], 'B'];
   const nominal = ['match', vt, 'A', 56, 'C', 96, 'D', 128, 72];
   const zaklad = ['max', nominal, ['*', sm, 2.63]];      // CSS px při z17
+  const strop = ['match', vt, 'A', 0.536, 'B', 0.804, 'C', 1.071, 1.339];   // 120/180/240/300 px
   const stop = (z) => {
     const f = Math.pow(2, z - 17) / 224;                 // px@z17 → icon-size@z
-    const o = ['*', kb, ['min', 1.2, ['max', 0.214, ['*', zaklad, +f.toFixed(7)]]]];
+    // engine 205: STROP PODLE TŘÍDY („boží muka jsou větší než celý kostel"):
+    // A 120 px, B 180, C 240, D 300 – drobnost přestane růst dřív než dominanta,
+    // poměr velikostí zůstane i při plném přiblížení
+    const o = ['*', kb, ['min', strop, ['max', 0.214, ['*', zaklad, +f.toFixed(7)]]]];
     return sBublinou
       ? ['case', ['has', 'fv'], 0.30, ['has', 'b2d'], 0.24, o]
       : ['case', ['has', 'fv'], 0.30, o];
