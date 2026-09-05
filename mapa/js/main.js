@@ -5749,18 +5749,27 @@ function nastavStinyMist(sv, st) {
     stinMistSila = +sila.toFixed(3);
     if (mapa.getLayer('okolnik-mista-pata')) {
       mapa.setPaintProperty('okolnik-mista-pata', 'icon-opacity',
-                            ['*', ['case', ['has', 'tl'], 0.38, 1],
-                             +(0.30 + 0.5 * stinMistSila).toFixed(3)]);
+                            sZanikemMist(['*', ['case', ['has', 'tl'], 0.38, 1],
+                             +(0.30 + 0.5 * stinMistSila).toFixed(3)], 0));
     }
     if (mapa.getLayer('okolnik-mista-stin')) {
       mapa.setLayoutProperty('okolnik-mista-stin', 'icon-offset', stinMistOffset);
       // 0.38 = TLUM (lokální konstanta vrstvy ikon, sem nedosáhne)
       mapa.setPaintProperty('okolnik-mista-stin', 'icon-opacity',
-                            ['*', ['case', ['has', 'tl'], 0.38, 1], stinMistSila]);
+                            sZanikemMist(['*', ['case', ['has', 'tl'], 0.38, 1], stinMistSila], 0));
     }
   } catch (e) { console.warn('[stiny mist]', e); }
 }
 window.nastavStinyMist = nastavStinyMist;
+
+/// ⭐ 5. 9. 2026 večer: obrázky míst rostou s mapou (icon-size základ 2 od
+/// z16). Aby při velkém přiblížení nepřekryly celou obrazovku („velké
+/// obrázky se mohou rozplynout, překrývaly by vše"), od z17,6 do z18,4 se
+/// rozplynou – i se stínem a patou. Bubliny 2D značek a hvězda oblíbených
+/// nerostou, a proto zůstávají (`poZaniku` je pro ně původní výraz).
+function sZanikemMist(vyraz, poZaniku) {
+  return ['interpolate', ['linear'], ['zoom'], 17.6, vyraz, 18.4, poZaniku];
+}
 
 function zajistiIkonu(id) {
   if (typeof id !== 'string') return Promise.resolve(false);
@@ -6548,7 +6557,7 @@ function vykresliMista() {
                     16, ['case', ['has', 'fv'], 0.30, 0.38],
                     22, ['case', ['has', 'fv'], 0.30, 24.3]],
     },
-    paint: { 'icon-opacity': ['*', ['case', ['has', 'tl'], TLUM, 1], 0.32] },
+    paint: { 'icon-opacity': sZanikemMist(['*', ['case', ['has', 'tl'], TLUM, 1], 0.32], 0) },
   });
   mapa.addLayer({
     id: 'okolnik-mista-stin',
@@ -6570,8 +6579,8 @@ function vykresliMista() {
                     16, ['case', ['has', 'fv'], 0.30, 0.38],
                     22, ['case', ['has', 'fv'], 0.30, 24.3]],
     },
-    paint: { 'icon-opacity': ['*', ['case', ['has', 'tl'], TLUM, 1],
-                               stinMistSila] },
+    paint: { 'icon-opacity': sZanikemMist(['*', ['case', ['has', 'tl'], TLUM, 1],
+                               stinMistSila], 0) },
   });
   mapa.addLayer({
     id: 'okolnik-mista-ikona',
@@ -6606,7 +6615,9 @@ function vykresliMista() {
                     22, ['case', ['has', 'fv'], 0.30,
                          ['has', 'b2d'], 0.24, 24.3]],
     },
-    paint: { 'icon-opacity': ['case', ['has', 'tl'], TLUM, 1] },
+    paint: { 'icon-opacity': sZanikemMist(['case', ['has', 'tl'], TLUM, 1],
+               ['case', ['any', ['has', 'b2d'], ['has', 'fv']],
+                ['case', ['has', 'tl'], TLUM, 1], 0]) },
   });
   // ⭐ STUHA SE JMÉNEM POD KRESBOU (9. 8. 2026, přání uživatele „u obrázků
   // v herním režimu přidej stužku s názvem místa").

@@ -379,7 +379,14 @@ const Ilustrace = (() => {
     if (p.imp < prahImp(z)) return null;
     if (z <= p.zInEff) return null;
     const start = fadeStart(p, sw);
-    const op = z <= start ? 1.0 : 1.0 - (z - start) / FADE_SPAN;
+    let op = z <= start ? 1.0 : 1.0 - (z - start) / FADE_SPAN;
+    // 5. 9. večer: kresba širší než obrazovka by překryla vše → rozplyne se
+    // (mezi 1,0 a 1,6 šířky obrazovky); týká se listů, které jinak rostou
+    // s mapou bez stropu
+    if (op > 0.02) {
+      const w = sirkaPx(p, z, sw);
+      if (w > sw) op = Math.min(op, 1 - (w - sw) / (0.6 * sw));
+    }
     return op <= 0.02 ? null : op;
   }
 
