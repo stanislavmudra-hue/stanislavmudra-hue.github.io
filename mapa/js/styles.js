@@ -449,6 +449,16 @@ const SOUSEDI = {
 // s plochou verzí přes ?akvarel=0.
 const AKVAREL = new URLSearchParams(location.search).get('akvarel') !== '0';
 
+// ⭐ 5. 9. 2026: ŠÍŘKA SILNIC PODLE TŘÍDY (herní styl) – jeden výraz
+// pro asfalt, lem i značení, ať všechna patra sedí na sebe.
+const SILNICE_TRIDY = ['minor', 'tertiary', 'secondary', 'primary',
+                       'trunk', 'motorway'];
+const SILNICE_SIRKA = ['interpolate', ['exponential', 1.6], ['zoom'],
+  8, ['match', ['get', 'class'], 'motorway', 2.0, 'trunk', 1.8,
+      'primary', 1.5, 'secondary', 1.1, 0.8],
+  16, ['match', ['get', 'class'], 'motorway', 12, 'trunk', 11,
+      'primary', 8.5, 'secondary', 6.5, 5.0]];
+
 function stylHerni(ctx) {
   return {
     version: 8,
@@ -594,20 +604,54 @@ function stylHerni(ctx) {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#A98F63',
                  'line-width': sirka(14.5, 0.9, 17, 2.8) } },
-      { id: 'silnice-mistni', type: 'line', source: 'omt',
+      // ⭐ 5. 9. 2026: SILNICE JAKO SILNICE (přání: „šedá cesta s čárami
+      // dle reality – plná, dva pruhy, přerušovaná"). Tři patra: tmavý
+      // lem, šedý asfalt (odstín podle třídy), bílé značení: přerušovaná
+      // střední čára na místních a vedlejších, plná na I. třídě, dvě
+      // čáry (dva pruhy) na dálnicích a rychlostních + krajnice.
+      { id: 'silnice-lem', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 11,
+        filter: ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#5E5850', 'line-opacity': 0.85,
+                 'line-width': ['+', SILNICE_SIRKA, 1.6] } },
+      { id: 'silnice-asfalt', type: 'line', source: 'omt',
+        'source-layer': 'transportation', minzoom: 8,
+        filter: ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': ['match', ['get', 'class'],
+                   'motorway', '#87827C', 'trunk', '#87827C',
+                   'primary', '#928C84', 'secondary', '#9B958C', '#A39D94'],
+                 'line-width': SILNICE_SIRKA } },
+      { id: 'silnice-stred-carkovana', type: 'line', source: 'omt',
+        'source-layer': 'transportation', minzoom: 13,
         filter: ['in', ['get', 'class'],
                  ['literal', ['minor', 'tertiary', 'secondary']]],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#8C6C39',
-                 'line-width': sirka(11, 1.3, 16, 5.4) } },
-      { id: 'silnice-hlavni', type: 'line', source: 'omt',
-        'source-layer': 'transportation', minzoom: 8,
+        layout: { 'line-cap': 'butt', 'line-join': 'round' },
+        paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.9,
+                 'line-width': sirka(13, 0.5, 17, 1.4),
+                 'line-dasharray': [4, 3] } },
+      { id: 'silnice-stred-plna', type: 'line', source: 'omt',
+        'source-layer': 'transportation', minzoom: 12,
+        filter: ['==', ['get', 'class'], 'primary'],
+        layout: { 'line-cap': 'butt', 'line-join': 'round' },
+        paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.9,
+                 'line-width': sirka(12, 0.5, 17, 1.5) } },
+      { id: 'silnice-dva-pruhy', type: 'line', source: 'omt',
+        'source-layer': 'transportation', minzoom: 11,
+        filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk']]],
+        layout: { 'line-cap': 'butt', 'line-join': 'round' },
+        paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.9,
+                 'line-width': sirka(11, 0.5, 17, 1.4),
+                 'line-gap-width': ['*', SILNICE_SIRKA, 0.34] } },
+      { id: 'silnice-krajnice', type: 'line', source: 'omt',
+        'source-layer': 'transportation', minzoom: 13.5,
         filter: ['in', ['get', 'class'],
-                 ['literal', ['primary', 'trunk', 'motorway']]],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#B0670F', 'line-width': sirka(8, 1.6, 16, 6.4),
-                 'line-opacity': 1 } },
+                 ['literal', ['motorway', 'trunk', 'primary']]],
+        layout: { 'line-cap': 'butt', 'line-join': 'round' },
+        paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.7,
+                 'line-width': sirka(13.5, 0.4, 17, 1.0),
+                 'line-gap-width': ['-', SILNICE_SIRKA, sirka(13.5, 1.4, 17, 3.2)] } },
       { id: 'budovy-vypln', type: 'fill', source: 'omt',
         'source-layer': 'building', minzoom: 14,
         paint: { 'fill-color': '#DCC9A5', 'fill-opacity': 0.8 } },

@@ -956,7 +956,7 @@ const Ilustrace = (() => {
         'icon-ignore-placement': true,
         'symbol-sort-key': ['get', 'srt'],
       },
-      paint: { 'icon-opacity': ['*', opacita, 0.26] },
+      paint: { 'icon-opacity': ['*', opacita, 0.34] },
     });
     mapa.addLayer({
       id: 'ink-ilustrace-stin', type: 'symbol', source: 'ilus-obrazky',
@@ -1853,9 +1853,9 @@ const Ilustrace = (() => {
       if (!sv) return;
       let sila = 0;
       if (sv.zdroj === 'slunce') {
-        sila = 0.32 * Math.max(0.45, Math.min(1, (sv.el || 0) / 25));
+        sila = 0.42 * Math.max(0.45, Math.min(1, (sv.el || 0) / 25));
       } else if (sv.zdroj === 'mesic') {
-        sila = 0.16 * Math.max(0.3, Math.min(1, (st && st.mesicOsvit) || 0.5));
+        sila = 0.20 * Math.max(0.3, Math.min(1, (st && st.mesicOsvit) || 0.5));
       }
       if (st && typeof st.oblacnost === 'number') sila *= (1 - 0.6 * st.oblacnost);
       const elRad = Math.max(8, Math.min(80, sv.el || 45)) * Math.PI / 180;

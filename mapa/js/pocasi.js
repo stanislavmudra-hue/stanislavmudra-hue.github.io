@@ -25,7 +25,43 @@ const Pocasi = (() => {
     [17.67, 49.22], [18.29, 49.82],
   ];
   const OBNOVA_MS = 30 * 60 * 1000;   // počasí stačí po půlhodinách
-  const TIK_MS = 100;                 // ~10 Hz pohupování (jako 2D)
+  // ⭐ 5. 9. 2026: 25 Hz – při 10 Hz mraky viditelně poskakovaly
+  const TIK_MS = 40;
+  // ⭐ 5. 9. 2026: MRAKY NA SKUTEČNÝCH MÍSTECH – jemnější pevná mřížka
+  // bodů po ČR (0,45° × 0,3°, ~120 bodů) jen pro oblačnost; bez polohy
+  // uživatele (stejně jako KRAJE). Krajská data z aplikace zůstávají
+  // zdrojem pro světlo, sníh a déšť.
+  const MRAKY_MRIZKA = (() => {
+    const out = [];
+    for (let lat = 48.6; lat <= 51.05; lat += 0.3) {
+      for (let lng = 12.15; lng <= 18.85; lng += 0.45) {
+        out.push([+lng.toFixed(2), +lat.toFixed(2)]);
+      }
+    }
+    return out;
+  })();
+  let dataMraky = [];                 // [{lng, lat, druh, oblacnost}]
+  let dataMrakyCas = 0;
+  function stahniMraky() {
+    if (Date.now() - dataMrakyCas < 15 * 60 * 1000) return;
+    dataMrakyCas = Date.now();
+    const lat = MRAKY_MRIZKA.map((k) => k[1]).join(',');
+    const lng = MRAKY_MRIZKA.map((k) => k[0]).join(',');
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat
+          + '&longitude=' + lng + '&current=weather_code,cloud_cover')
+      .then((r) => r.json())
+      .then((d) => {
+        const pole = Array.isArray(d) ? d : [d];
+        dataMraky = pole.map((m, i) => ({
+          lng: MRAKY_MRIZKA[i][0],
+          lat: MRAKY_MRIZKA[i][1],
+          druh: druhZKodu((m.current && m.current.weather_code) || 0),
+          oblacnost: ((m.current && m.current.cloud_cover) || 0) / 100,
+        }));
+        console.log('[Pocasi] mřížka mraků:', dataMraky.length);
+      })
+      .catch((e) => console.warn('[Pocasi] mřížka mraků', e));
+  }
   const VELIKOST_KM = 28.0;           // v1.248: 45 → 28 km
   const SILA = 0.80;                  // v1.248: 0,55 → 0,80
 
@@ -885,8 +921,28 @@ const Pocasi = (() => {
     const sinP = Math.sin(pitch * Math.PI / 180);
     // px na km ve STŘEDU pohledu (záloha, když lokální měřítko selže)
     const stred = mapa.getCenter();
-    const a = mapa.project([stred.lng, stred.lat]);
-    const b = mapa.project([stred.lng, stred.lat + 0.1]);
+    // ⭐ 5. 9. 2026: PROJEKCE S PEVNOU VÝŠKOU (terén pod středem) –
+    // `mapa.project` bere výšku terénu pod bodem a při donačítání DEM
+    // dlaždic mraky poskakovaly; pevná výška je stabilní.
+    let elevStred = 0;
+    try {
+      const v = mapa.queryTerrainElevation
+          && mapa.queryTerrainElevation([stred.lng, stred.lat]);
+      if (typeof v === 'number') elevStred = v;
+    } catch (e) { /* bez terénu */ }
+    const proj = (lng, lat) => {
+      try {
+        if (mapa.terrain && mapa._camera && mapa._camera.transform) {
+          return mapa._camera.transform.locationToScreenPoint(
+              new maplibregl.LngLat(lng, lat),
+              { getElevationForLngLat: () => elevStred });
+        }
+      } catch (e) { /* níž obyčejná projekce */ }
+      return mapa.project([lng, lat]);
+    };
+    const sv = (typeof stavSvetla === 'function') ? stavSvetla() : null;
+    const a = proj(stred.lng, stred.lat);
+    const b = proj(stred.lng, stred.lat + 0.1);
     const pxNaKmStred = Math.abs(a.y - b.y) / 11.12;
     // strop velikosti: shora jako dřív (0,85 kratší strany), při plném
     // náklonu polovina — jinak jediný mrak přerazí celý výhled
@@ -903,7 +959,9 @@ const Pocasi = (() => {
     }
     const nakreslene = [];
     let idx = 0;
-    for (const bod of data) {
+    stahniMraky();
+    const zdrojMraku = dataMraky.length ? dataMraky : data;
+    for (const bod of zdrojMraku) {
       idx++;
       if (bod.druh === 'jasno') continue;
       let alfa = SILA;
@@ -918,7 +976,7 @@ const Pocasi = (() => {
       const wLng = Math.cos(faze * 0.13 + idx * 0.9) * 0.105;
       const lng = bod.lng + wLng;
       const lat = bod.lat + wLat;
-      const p = mapa.project([lng, lat]);
+      const p = proj(lng, lat);
       if (!isFinite(p.x) || !isFinite(p.y)) continue;
       // LOKÁLNÍ měřítko v místě mraku — teprve tím vznikne perspektiva
       // (měřítko ze středu dělalo vzdálené mraky stejně velké jako
@@ -926,7 +984,7 @@ const Pocasi = (() => {
       let pxNaKm = pxNaKmStred;
       if (naklon > 0.01) {
         const kmNaStupen = 111.32 * Math.cos(lat * Math.PI / 180);
-        const q = mapa.project([lng + 0.02, lat]);
+        const q = proj(lng + 0.02, lat);
         const d = Math.hypot(q.x - p.x, q.y - p.y) / (0.02 * kmNaStupen);
         if (isFinite(d) && d > 0.0001) pxNaKm = d;
       }
@@ -948,11 +1006,42 @@ const Pocasi = (() => {
       }
       if (preskoc) continue;
       nakreslene.push({ x: p.x, y, druh: bod.druh });
+      // ⭐ 5. 9. 2026: STÍN MRAKU na zemi – od slunce, délka podle výšky
+      // mraku a výšky slunce (nejvýš 6 km), slabší při nízkém slunci
+      if (sv && typeof sv.slunceEl === 'number' && sv.slunceEl > 2
+          && bod.druh !== 'mlha') {
+        const elR = Math.max(6, sv.slunceEl) * Math.PI / 180;
+        const delkaKm = Math.min(6, (VYSKA_KM[bod.druh] || 1.7) / Math.tan(elR));
+        const smer = ((sv.slunceAz || 0) + 180) * Math.PI / 180;
+        const sx = p.x + Math.sin(smer) * delkaKm * pxNaKm;
+        const sy = p.y - Math.cos(smer) * delkaKm * pxNaKm;
+        const silaStinu = alfa * 0.22 * Math.min(1, sv.slunceEl / 30);
+        kresliStinMraku(sx, sy, g, silaStinu, naklon);
+      }
       // ať jsou při náklonu ZŘETELNĚJŠÍ (přání 10. 8.) — obloha má
       // být čitelná i proti pestré krajině
       kresliMrak(bod.druh, p.x, y, g,
                  Math.min(1, alfa * (1 + 0.20 * naklon)), den, naklon);
     }
+  }
+
+  /// Stín mraku: měkká tmavá elipsa na zemi (zploštělá podle náklonu).
+  function kresliStinMraku(x, y, g, alfa, naklon) {
+    if (alfa <= 0.01) return;
+    const rx = g * 0.9;
+    const ry = rx * (1 - 0.55 * naklon);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, ry / rx);
+    const gr = ctx.createRadialGradient(0, 0, rx * 0.1, 0, 0, rx);
+    gr.addColorStop(0, 'rgba(30,26,20,' + alfa.toFixed(3) + ')');
+    gr.addColorStop(0.6, 'rgba(30,26,20,' + (alfa * 0.5).toFixed(3) + ')');
+    gr.addColorStop(1, 'rgba(30,26,20,0)');
+    ctx.fillStyle = gr;
+    ctx.beginPath();
+    ctx.arc(0, 0, rx, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   function kresliMrak(druh, x, y, g, alfa, den, naklon) {
@@ -1069,7 +1158,7 @@ const Pocasi = (() => {
       map.on('move', () => {
         posledniPohybMs = Date.now();   // zrychlí tikot, viz rozjedTikac
         const ted = performance.now();
-        if (ted - posledniKresba < 50) return;
+        if (ted - posledniKresba < 16) return;
         posledniKresba = ted;
         kresli();
       });
@@ -1101,7 +1190,7 @@ const Pocasi = (() => {
   //  2. NEVIDITELNÁ MAPA NEKRESLÍ. `document.hidden` nestačí: když appka
   //     překryje WebView vlastní obrazovkou (seznam, detail…), stránka je
   //     pořád „viditelná". Proto to appka říká mostem (`OkolnikMost.vidno`).
-  const TIK_KLID_MS = 400;
+  const TIK_KLID_MS = 40;   // 5. 9. 2026: i v klidu plynule (25 Hz)
   const KLID_PO_MS = 3000;
   let posledniPohybMs = 0;
   let posledniTikMs = 0;
