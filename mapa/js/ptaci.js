@@ -153,12 +153,14 @@ const Ptaci = (() => {
   /// Měřítko jako stromy (dekorace.js): exponential 1,8 mezi stopy.
   function meritko() {
     const z = mapa.getZoom();
-    const stopy = [[13.25, 0.30], [15.4, 0.70], [17.6, 2.55]];
+    // 5. 9. večer: stejná křivka jako stromy včetně růstu do z22
+    const stopy = [[13.25, 0.30], [15.4, 0.70], [17.6, 2.55], [22, 53.8]];
     let v;
     if (z <= stopy[0][0]) v = stopy[0][1];
-    else if (z >= stopy[2][0]) v = stopy[2][1];
+    else if (z >= stopy[stopy.length - 1][0]) v = stopy[stopy.length - 1][1];
     else {
-      const i = z < stopy[1][0] ? 0 : 1;
+      let i = 0;
+      while (i < stopy.length - 2 && z >= stopy[i + 1][0]) i++;
       const [z0, v0] = stopy[i]; const [z1, v1] = stopy[i + 1];
       const t = (Math.pow(1.8, z - z0) - 1) / (Math.pow(1.8, z1 - z0) - 1);
       v = v0 + t * (v1 - v0);

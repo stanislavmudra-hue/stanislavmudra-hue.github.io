@@ -42,13 +42,17 @@ const Svetlo = (() => {
     if (!mapa.getLayer('stin-domu-nizke-1')) return;
     const elR = Math.max(8, el) * Math.PI / 180;
     const smer = (az + 180) * Math.PI / 180;
-    let sila = zdroj === 'slunce' ? 0.13 * Math.min(1, Math.max(0, el) / 25)
-      : (zdroj === 'mesic' ? 0.06 * (st.mesicOsvit || 0.5) : 0);
-    sila *= 1 - 0.6 * Math.min(1, st.oblacnost || 0);
+    // celková tma u zdi (~0,30 za plného slunce); každá z N kopií dostane
+    // takovou průhlednost, aby se u zdi složily právě na ni
+    let celk = zdroj === 'slunce' ? 0.30 * Math.min(1, Math.max(0, el) / 25)
+      : (zdroj === 'mesic' ? 0.14 * (st.mesicOsvit || 0.5) : 0);
+    celk *= 1 - 0.6 * Math.min(1, st.oblacnost || 0);
+    const T = (typeof STINY_DOMU_T !== 'undefined') ? STINY_DOMU_T : [1 / 3, 2 / 3, 1];
+    const sila = celk > 0 ? 1 - Math.pow(1 - celk, 1 / T.length) : 0;
     for (const [trida, vyska] of [['nizke', 6], ['vysoke', 14]]) {
       const delka18 = vyska / Math.tan(elR) / 0.19;
-      for (let i = 1; i <= 3; i++) {
-        const k = i / 3;
+      for (let i = 1; i <= T.length; i++) {
+        const k = T[i - 1];
         const dx = Math.sin(smer) * delka18 * k;
         const dy = -Math.cos(smer) * delka18 * k;
         const id = 'stin-domu-' + trida + '-' + i;

@@ -479,7 +479,12 @@ function sirkaSilnic(f) {
   for (const k of Object.keys(SILNICE_M)) {
     z18[k] = SILNICE_M[k] * SILNICE_MERITKO / M_NA_PX_Z18;
   }
-  const stopy = [[12, SILNICE_Z12], [18, z18]];
+  // ⛔ interpolace se za posledním stopem zastaví (výtka 5. 9. večer:
+  // „silnice se přestane přibližovat a je pak nepoměrně úzká, řeky jako
+  // plochy rostou dál") → stop až na z22 = maxZoom, ×16 proti z18
+  const z22 = {};
+  for (const k of Object.keys(z18)) z22[k] = z18[k] * 16;
+  const stopy = [[12, SILNICE_Z12], [18, z18], [22, z22]];
   const v = ['interpolate', ['exponential', 2], ['zoom']];
   for (const [z, w] of stopy) {
     v.push(z, ['match', ['get', 'class'],
@@ -493,9 +498,11 @@ function sirkaSilnic(f) {
 /// Šířka podle skutečných metrů pro jednu třídu (cesty, servisní, čáry):
 /// podlaha čitelnosti na `zPodlaha` (výchozí 12), přesné měřítko na z18.
 function sirkaMetry(podlaha, metry, zPodlaha) {
+  const px18 = metry * SILNICE_MERITKO / M_NA_PX_Z18;
   return ['interpolate', ['exponential', 2], ['zoom'],
           zPodlaha == null ? 12 : zPodlaha, podlaha,
-          18, +(metry * SILNICE_MERITKO / M_NA_PX_Z18).toFixed(1)];
+          18, +px18.toFixed(1),
+          22, +(px18 * 16).toFixed(1)];
 }
 const SILNICE_SIRKA = sirkaSilnic((w) => +w.toFixed(2));
 
@@ -513,16 +520,19 @@ const STINY_DOMU_TRIDY = [
   ['nizke', 6, ['<=', ['coalesce', ['get', 'render_height'], 6], 7]],
   ['vysoke', 14, ['>', ['coalesce', ['get', 'render_height'], 6], 7]],
 ];
-const STINY_DOMU_KROKY = 3;
+// 5. 9. večer („kostičky"): tři kroky byly vidět jako schody → šest kroků
+// zhuštěných u paty, každý slabý; svetlo.js jim dá sílu tak, aby součet
+// u zdi vyšel ~0,30 za plného slunce.
+const STINY_DOMU_T = [0.14, 0.28, 0.42, 0.58, 0.76, 1.0];
 function stinyDomu() {
   const v = [];
   for (const [trida, , filtr] of STINY_DOMU_TRIDY) {
-    for (let i = 1; i <= STINY_DOMU_KROKY; i++) {
+    for (let i = 1; i <= STINY_DOMU_T.length; i++) {
       v.push({ id: 'stin-domu-' + trida + '-' + i, type: 'fill', source: 'omt',
         'source-layer': 'building', minzoom: 14.5, filter: filtr,
         paint: { 'fill-color': '#3B2A18', 'fill-antialias': false,
                  'fill-opacity': ['interpolate', ['linear'], ['zoom'],
-                   14.5, 0, 15.2, 0.12],
+                   14.5, 0, 15.2, 0.05],
                  'fill-translate': [0, 0], 'fill-translate-anchor': 'map' } });
     }
   }
@@ -678,7 +688,8 @@ function stylHerni(ctx) {
                  // interpolace musí být vnější výraz (limit MapLibre)
                  'line-width': ['interpolate', ['exponential', 2], ['zoom'],
                    10, ['match', ['get', 'class'], 'river', 1.4, 0.6],
-                   18, ['match', ['get', 'class'], 'river', 26, 10]] } },
+                   18, ['match', ['get', 'class'], 'river', 26, 10],
+                   22, ['match', ['get', 'class'], 'river', 416, 160]] } },
       // ⭐ v1.538: CESTY MUSÍ BÝT VIDĚT (výtka „v herním módu nejsou
       // moc vidět silnice a cesty“). Měly **pevnou šířku 1,1 px** —
       // při přiblížení tedy nerostly vůbec a tmavě zelená čárkovaná
@@ -711,7 +722,7 @@ function stylHerni(ctx) {
         filter: ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#5E5850', 'line-opacity': 0.85,
-                 'line-width': sirkaSilnic((w, z) => +(w + (z >= 18 ? 2.4 : 1.4)).toFixed(2)) } },
+                 'line-width': sirkaSilnic((w, z) => +(w + (z >= 18 ? w * 0.12 + 0.8 : 1.4)).toFixed(2)) } },
       { id: 'silnice-asfalt', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 8,
         filter: ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]],
@@ -748,7 +759,7 @@ function stylHerni(ctx) {
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.7,
                  'line-width': sirkaMetry(0.4, 0.35, 13.5),
-                 'line-gap-width': sirkaSilnic((w, z) => +Math.max(0.2, w - (z >= 18 ? 3.0 : 1.2)).toFixed(2)) } },
+                 'line-gap-width': sirkaSilnic((w, z) => +Math.max(0.2, w - (z >= 18 ? w * 0.18 : 1.2)).toFixed(2)) } },
       { id: 'budovy-vypln', type: 'fill', source: 'omt',
         'source-layer': 'building', minzoom: 14,
         paint: { 'fill-color': '#DCC9A5', 'fill-opacity': 0.8 } },

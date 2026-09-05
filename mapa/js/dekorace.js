@@ -458,10 +458,10 @@ const Dekorace = (() => {
         //   15,40 → 0,70 × k   (~55 px)
         //   16,40 → 1,26 × k   (~100 px)
         //   17,60 → 2,55 × k   (~202 px, tj. 56 % šířky obrazovky)
-        // ⚠️ NAD 17,6 SE DRŽÍ. Bez stropu by na z20 kresba přerostla
-        // obrazovku; strop na tomhle konci je bezpečnější než „gigantické"
-        // (výtka z 8. 8. ráno). 17,6 je extrémní detail (obraz ~100 m),
-        // tam už uživatel prakticky nechodí.
+        // ⭐ 5. 9. 2026 večer: NAD 17,6 ROSTE DÁL S MAPOU (×2 na zoom, stop
+        // na z22 = 2,55 × 2^4,4 = 53,8 × k). Výtka: „rostliny se nesmyslně
+        // přestanou přibližovat" – strom stál, zatímco řeka (plocha) rostla.
+        // Strom je pak na z20 stejných ~20 m jako na z17,6, jen blíž.
         // ⛔ v1.397: PLOŠINA 15,1–16,3 VRÁCENA (zkoušena ve v1.396 proti
         // „poskočení velikosti u 73–74 %“) — uživatel: „nyní jsou ještě
         // horší než předtím, skáče jim stále velikost“. Teorie „posun
@@ -472,7 +472,8 @@ const Dekorace = (() => {
         'icon-size': ['interpolate', ['exponential', 1.8], ['zoom'],
           13.25, ['*', ['get', 'k'], 0.30],
           15.4, ['*', ['get', 'k'], 0.70],
-          17.6, ['*', ['get', 'k'], 2.55]],
+          17.6, ['*', ['get', 'k'], 2.55],
+          22, ['*', ['get', 'k'], 53.8]],
       },
       paint: {
         // rychlý a pro všechny druhy stejně dlouhý nástup — hodnoty
