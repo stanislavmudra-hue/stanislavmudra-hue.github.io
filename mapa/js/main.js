@@ -5572,6 +5572,69 @@ function nakresliZnacku(id) {
 /// volání (druhé vykresliMista, styleimagemissing) dostalo false;
 /// nactiIkonyZdroje pak nepřeparsoval zdroj a symboly zůstaly bez
 /// obrázků navždy (výtka „ve 3D se nezobrazují obrázky").
+// ⭐ 5. 9. 2026: STÍNY OBRÁZKŮ MÍST podle světla (viz vrstva
+// okolnik-mista-stin). Offset v pixelech obrázku (škáluje se s icon-size);
+// typický obrázek místa má ~220 px na výšku, délka stínu 0,3 výšky ×
+// cot(výšky světla), směr OD světla. Síla: slunce 0,32·f(el), měsíc
+// 0,16·osvit, tma 0, pod mraky slabší.
+let stinMistOffset = [0, 0];
+let stinMistSila = 0;
+
+/// Měkká elipsa „u paty" (kontaktní stín) – jeden obrázek pro všechny
+/// kresby i obrázky míst, 240×80 px při pixelRatio 2. Vržený stín padá
+/// v poledne ZA obrázek (schová se pod něj), tohle drží 3D dojem vždy.
+function zajistiStinPatu() {
+  try {
+    if (!mapa || mapa.hasImage('stin-pata')) return;
+    const c = document.createElement('canvas');
+    c.width = 240; c.height = 80;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(120, 40, 4, 120, 40, 120);
+    g.addColorStop(0, 'rgba(26,18,8,0.85)');
+    g.addColorStop(0.55, 'rgba(26,18,8,0.35)');
+    g.addColorStop(1, 'rgba(26,18,8,0)');
+    ctx.save();
+    ctx.scale(1, 80 / 240);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 240, 240);
+    ctx.restore();
+    mapa.addImage('stin-pata', ctx.getImageData(0, 0, 240, 80), { pixelRatio: 2 });
+  } catch (e) { console.warn('[stin-pata]', e); }
+}
+window.zajistiStinPatu = zajistiStinPatu;
+
+function nastavStinyMist(sv, st) {
+  try {
+    if (!sv || !mapa) return;
+    zajistiStinPatu();
+    let sila = 0;
+    if (sv.zdroj === 'slunce') {
+      sila = 0.32 * Math.max(0.45, Math.min(1, (sv.el || 0) / 25));
+    } else if (sv.zdroj === 'mesic') {
+      sila = 0.16 * Math.max(0.3, Math.min(1, (st && st.mesicOsvit) || 0.5));
+    }
+    if (st && typeof st.oblacnost === 'number') sila *= (1 - 0.6 * st.oblacnost);
+    const elRad = Math.max(8, Math.min(80, sv.el || 45)) * Math.PI / 180;
+    const delka = 66 * Math.max(0.25, Math.min(2.2, 1 / Math.tan(elRad)));
+    const smer = ((sv.az || 0) + 180) * Math.PI / 180;
+    stinMistOffset = [+(Math.sin(smer) * delka).toFixed(1),
+                      +(-Math.cos(smer) * delka).toFixed(1)];
+    stinMistSila = +sila.toFixed(3);
+    if (mapa.getLayer('okolnik-mista-pata')) {
+      mapa.setPaintProperty('okolnik-mista-pata', 'icon-opacity',
+                            ['*', ['case', ['has', 'tl'], 0.38, 1],
+                             +(0.22 + 0.5 * stinMistSila).toFixed(3)]);
+    }
+    if (mapa.getLayer('okolnik-mista-stin')) {
+      mapa.setLayoutProperty('okolnik-mista-stin', 'icon-offset', stinMistOffset);
+      // 0.38 = TLUM (lokální konstanta vrstvy ikon, sem nedosáhne)
+      mapa.setPaintProperty('okolnik-mista-stin', 'icon-opacity',
+                            ['*', ['case', ['has', 'tl'], 0.38, 1], stinMistSila]);
+    }
+  } catch (e) { console.warn('[stiny mist]', e); }
+}
+window.nastavStinyMist = nastavStinyMist;
+
 function zajistiIkonu(id) {
   if (typeof id !== 'string') return Promise.resolve(false);
   // bubliny 2D značek se kreslí hned, bez fetch
@@ -5617,8 +5680,12 @@ function zajistiIkonu(id) {
   if (bezici) return bezici; // souběžné volání čeká na tentýž fetch
   const prace = (async () => {
     try {
-      const bw = id.endsWith('#bw');
-      const soubor = bw ? id.slice(0, -3) : id;
+      // ⭐ 5. 9. 2026: '#stin' = stín obrázku (tmavá zploštělá silueta,
+      // Ilustrace.stin), může být i za '#bw' ('…webp#bw#stin')
+      const stin = id.endsWith('#stin');
+      const zakladId = stin ? id.slice(0, -5) : id;
+      const bw = zakladId.endsWith('#bw');
+      const soubor = bw ? zakladId.slice(0, -3) : zakladId;
       const odpoved = await fetch(soubor);
       if (!odpoved.ok) throw new Error('HTTP ' + odpoved.status);
       let bitmapa = await createImageBitmap(await odpoved.blob());
@@ -5637,8 +5704,9 @@ function zajistiIkonu(id) {
       }
       // kresby jsou ~320–450 px; pixelRatio 2 → rozumný základ v CSS px
       if (!mapa.hasImage(id)) {
-        mapa.addImage(id, bw ? odbarvi(bitmapa) : bitmapa,
-                      { pixelRatio: 2 });
+        const data = stin ? Ilustrace.stin(bitmapa)
+          : (bw ? odbarvi(bitmapa) : bitmapa);
+        mapa.addImage(id, data, { pixelRatio: 2 });
       }
       bitmapa.close();
       if (ikonySelhane.has(id)) {
@@ -6327,6 +6395,57 @@ function vykresliMista() {
   }
   // Malovaná ikona Okolníku; `icon-image` je rovnou cesta k souboru,
   // takže `styleimagemissing` ví, co má stáhnout (viz zajistiIkonu).
+  // ⭐ 5. 9. 2026: STÍNY OBRÁZKŮ MÍST (přání „stíny za obrázky podle
+  // svitu slunce a měsíce"). Tatáž featura, obrázek `ik + '#stin'`
+  // (zajistiIkonu), kotva TOP = pata stínu u paty obrázku, leží na mapě
+  // (pitch/rotation alignment map), posun a síla podle světla –
+  // `nastavStinyMist` volá svetlo.js. Bubliny (b2d) stín nemají.
+  // kontaktní stín u paty (vidět vždy, i když vržený stín padá za obrázek)
+  zajistiStinPatu();
+  mapa.addLayer({
+    id: 'okolnik-mista-pata',
+    type: 'symbol',
+    source: 'okolnik-mista',
+    filter: ['all', ['has', 'ik'], ['!', ['has', 'point_count']],
+             ['!', ['has', 'b2d']]],
+    layout: {
+      'icon-image': 'stin-pata',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      'icon-anchor': 'center',
+      'icon-pitch-alignment': 'map',
+      'icon-rotation-alignment': 'map',
+      'icon-size': ['interpolate', ['linear'], ['zoom'],
+                    10, ['case', ['has', 'fv'], 0.24, 0.14],
+                    13, ['case', ['has', 'fv'], 0.30, 0.24],
+                    16, ['case', ['has', 'fv'], 0.30, 0.38],
+                    18, ['case', ['has', 'fv'], 0.30, 0.5]],
+    },
+    paint: { 'icon-opacity': ['*', ['case', ['has', 'tl'], TLUM, 1], 0.24] },
+  });
+  mapa.addLayer({
+    id: 'okolnik-mista-stin',
+    type: 'symbol',
+    source: 'okolnik-mista',
+    filter: ['all', ['has', 'ik'], ['!', ['has', 'point_count']],
+             ['!', ['has', 'b2d']]],
+    layout: {
+      'icon-image': ['concat', ['get', 'ik'], '#stin'],
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      'icon-anchor': 'top',
+      'icon-offset': stinMistOffset,
+      'icon-pitch-alignment': 'map',
+      'icon-rotation-alignment': 'map',
+      'icon-size': ['interpolate', ['linear'], ['zoom'],
+                    10, ['case', ['has', 'fv'], 0.24, 0.14],
+                    13, ['case', ['has', 'fv'], 0.30, 0.24],
+                    16, ['case', ['has', 'fv'], 0.30, 0.38],
+                    18, ['case', ['has', 'fv'], 0.30, 0.5]],
+    },
+    paint: { 'icon-opacity': ['*', ['case', ['has', 'tl'], TLUM, 1],
+                               stinMistSila] },
+  });
   mapa.addLayer({
     id: 'okolnik-mista-ikona',
     type: 'symbol',

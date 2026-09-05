@@ -940,6 +940,24 @@ const Ilustrace = (() => {
     // ⭐ 5. 9. 2026: STÍNY KRESEB – tatáž featura, obrázek `st`
     // (varianta #stin), leží na mapě (pitch/rotation alignment map),
     // posun `sof` od světla (viz vyrobFeatury + svetlo()), síla paint.
+    // kontaktní stín u paty kresby (elipsa `stin-pata` z main.js)
+    try { if (window.zajistiStinPatu) window.zajistiStinPatu(); } catch (e) { }
+    mapa.addLayer({
+      id: 'ink-ilustrace-pata', type: 'symbol', source: 'ilus-obrazky',
+      filter: ['has', 'pof'],
+      layout: {
+        'icon-image': 'stin-pata',
+        'icon-size': vyrazVelikosti(),
+        'icon-offset': ['get', 'pof'],
+        'icon-anchor': 'center',
+        'icon-pitch-alignment': 'map',
+        'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'symbol-sort-key': ['get', 'srt'],
+      },
+      paint: { 'icon-opacity': ['*', opacita, 0.26] },
+    });
     mapa.addLayer({
       id: 'ink-ilustrace-stin', type: 'symbol', source: 'ilus-obrazky',
       filter: ['has', 'st'],
@@ -1410,6 +1428,8 @@ const Ilustrace = (() => {
           srt: it.imp,
           // stav v podpisu — objevení/návštěva musí projít setData
           pd: it.stav || 'c',
+          // kontaktní stín: elipsa u paty kresby (vždy)
+          pof: [0, (it.nb ? 0 : 0.035 * p.vy) + p.vy / 2],
           // ⭐ 5. 9. 2026 STÍN: obrázek #stin (týž rozměr @m/@s) a posun od
           // světla – pata stínu u paty kresby, dál podle azimutu a výšky
           // světla (stinDx/stinDy v násobcích výšky kresby, viz svetlo())
@@ -1859,5 +1879,5 @@ const Ilustrace = (() => {
   }
 
   return { pripoj, filtruj, zavri: schovejDetail,
-           navstivene: nastavNavstivene, svetlo };
+           navstivene: nastavNavstivene, svetlo, stin: stinData };
 })();

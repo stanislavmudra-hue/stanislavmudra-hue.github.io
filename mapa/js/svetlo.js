@@ -95,6 +95,9 @@ const Svetlo = (() => {
           Ilustrace.svetlo(window.__svetlo, st);
         }
       } catch (e2) { /* kresby ještě nejsou */ }
+      try {
+        if (window.nastavStinyMist) window.nastavStinyMist(window.__svetlo, st);
+      } catch (e3) { /* vrstva míst ještě není */ }
     } catch (e) { console.warn('[svetlo]', e); }
   }
 
