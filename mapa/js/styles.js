@@ -565,8 +565,11 @@ function stylHerni(ctx) {
       lesy: { type: 'vector', url: r2('lesy.pmtiles'),
               attribution: '© ČÚZK ZABAGED®' },
       // 5. 9. večer: KRAJINA ze ZABAGED (tools/krajina_zabaged_export.py):
-      // t = orna / louka / sad / vinice / chmel / kroviny / mokrad / voda
-      krajina: { type: 'vector', url: r2('krajina.pmtiles'),
+      // t = orna / louka / sad / zahrada / vinice / chmel / kroviny / mokrad /
+      // voda / skaly / hrbitov; vrstva `body` (t strom/balvan/komin) a `cary`
+      // (t stromoradi/zivyplot/zed) – v2 5. 9. noc. ⚠️ Nové jméno souboru:
+      // proxy appky i prohlížeč kešují rozsahy podle jména.
+      krajina: { type: 'vector', url: r2('krajina2.pmtiles'),
                  attribution: '© ČÚZK ZABAGED®' },
     }),
     layers: [
@@ -598,6 +601,10 @@ function stylHerni(ctx) {
         paint: AKVAREL
           ? { 'fill-pattern': 'vzor-louka', 'fill-opacity': 0.65 }
           : { 'fill-color': '#B5D07C', 'fill-opacity': 0.6 } },
+      // skalní útvary (ZABAGED v2) – šedohnědá plocha, balvany dodá dekorace
+      { id: 'skaly', type: 'fill', source: 'krajina', 'source-layer': 'krajina',
+        filter: ['==', ['get', 't'], 'skaly'],
+        paint: { 'fill-color': '#A69D8F', 'fill-opacity': 0.7 } },
       { id: 'krajina-ostatni', type: 'fill', source: 'krajina',
         'source-layer': 'krajina',
         filter: ['in', ['get', 't'], ['literal', ['vinice', 'chmel', 'kroviny', 'mokrad']]],
@@ -660,8 +667,30 @@ function stylHerni(ctx) {
       // detailů, které se na místech nacházejí"): hřbitovy, hřiště a stadiony
       // (s bílými lajnami zblízka), parkoviště, průmysl/obchod/garáže/lomy,
       // školy a nemocnice – jemné tóny nad krajinou, pod domy.
+      // ⭐ 5. 9. noc: ZAHRADY u domů (ZABAGED typ_pudy ZA = 95 % tabulky
+      // sadů; dřív se braly jako sad POD zástavbou, takže nebyly vidět, a
+      // stromy z nich rostly na střechách). Leží NAD zástavbou: světlejší
+      // teplá zeleň + od z15 tenký plot po obvodu („přidej detaily do
+      // malby – zahrady u domů").
+      { id: 'zahrada', type: 'fill', source: 'krajina', 'source-layer': 'krajina',
+        minzoom: 13, filter: ['==', ['get', 't'], 'zahrada'],
+        paint: AKVAREL
+          ? { 'fill-pattern': 'vzor-louka', 'fill-opacity': 0.5 }
+          : { 'fill-color': '#C3D98B', 'fill-opacity': 0.55 } },
+      { id: 'zahrada-plot', type: 'line', source: 'krajina', 'source-layer': 'krajina',
+        minzoom: 15, filter: ['==', ['get', 't'], 'zahrada'],
+        paint: { 'line-color': '#6F5F3F', 'line-opacity': 0.5,
+                 'line-width': sirkaMetry(0.5, 0.45, 15) } },
+      // zdi (ZABAGED: opěrné, ostatní, protihlukové) – kamenná linka
+      { id: 'zed', type: 'line', source: 'krajina', 'source-layer': 'cary',
+        minzoom: 15, filter: ['==', ['get', 't'], 'zed'],
+        paint: { 'line-color': '#8A8072', 'line-opacity': 0.75,
+                 'line-width': sirkaMetry(0.8, 0.8, 15) } },
       { id: 'hrbitov', type: 'fill', source: 'omt', 'source-layer': 'landuse',
         minzoom: 12, filter: ['==', ['get', 'class'], 'cemetery'],
+        paint: { 'fill-color': '#B7C4A6', 'fill-opacity': 0.55 } },
+      { id: 'hrbitov-zab', type: 'fill', source: 'krajina', 'source-layer': 'krajina',
+        minzoom: 12, filter: ['==', ['get', 't'], 'hrbitov'],
         paint: { 'fill-color': '#B7C4A6', 'fill-opacity': 0.55 } },
       { id: 'hriste', type: 'fill', source: 'omt', 'source-layer': 'landuse',
         minzoom: 13,

@@ -5807,6 +5807,30 @@ const TRIDY_VYSKY = {
 /// drobnosti kreslíme 8 m (skutečné 3 m by na mapě nebyly vidět), B 12,
 /// C 22, D 40. Skutečnou velikost z půdorysu budovy doplní
 /// `doplnVelikostiMist` (vlastnost `sm`, `smB` = z budovy).
+/// ⭐ 5. 9. noc: ikony se do mapy vkládají s pixelRatio 2, takže icon-size 1
+/// = POLOVINA šířky obrázku v CSS px. Většina obrázků má 448 px (= 224 CSS),
+/// ~50 jich má ~300 px – ty by při stejném icon-size vyšly o třetinu menší
+/// (zastávka v Sezemicích 320 px). Korekce `kb` = 448 / šířka drží stejnou
+/// podlahu i měřítko metrů pro všechny. Tabulka z app/assets/icons (PIL).
+const SIRKY_IKON = {
+  aquapark: 446, autobusova_zastavka: 320, autodily: 300, autoservis: 300,
+  bar: 300, benzinka: 318, drogerie: 300, elektro: 300, fastfood: 300,
+  historicke_mesto: 336, horska_chata: 299, hospoda: 295, hotel: 331,
+  hrad: 334, informacni_centrum: 315, jeskyne: 304, jezero: 332,
+  karavanove_stani: 322, kavarna: 321, kemp: 324, lekarna: 300, les: 325,
+  louka: 330, mycka_automaticka: 300, mycka_samoobsluzna: 300, nabytek: 300,
+  nemocnice: 319, nocni_klub: 300, obchod_odevy: 300, odpocivadlo: 445,
+  ohniste: 317, piknik: 316, pitna_voda: 428, pohori: 327, pohotovost: 419,
+  posta: 445, pristresek: 445, radnice: 300, restaurace: 314,
+  rozcestnik: 405, rozhledna: 295, skalni_mesto: 319, skalni_oblouk: 435,
+  skalni_utvar: 309, udoli: 325, urad: 300, vinarna: 305,
+  vlakova_zastavka: 315, vyhlidka: 306, wc: 304, zajimavost: 300, zamek: 326,
+};
+function korekceSirky(ik) {
+  const m = /\/assets\/icons\/([a-z0-9_]+)\.webp/.exec(String(ik || ''));
+  const w = m && SIRKY_IKON[m[1]];
+  return w ? +(448 / w).toFixed(3) : 1;
+}
 function velikostMistaM(ik) {
   return { A: 8, B: 12, C: 22, D: 40 }[tridaVyskyMista(ik)] || 12;
 }
@@ -5825,21 +5849,29 @@ function velikostMist(sBublinou, klic) {
   // ⭐ 5. 9. noc („víš, jak je ta budova velká, tak nedělej zbytečně malý
   // obrázek; obrázky ať jsou jak stromy – objekt v mapě"): velikost =
   // SKUTEČNÁ velikost objektu `sm` (m, z půdorysu budovy nebo výchozí
-  // podle druhu) × px na metr daného zoomu, s PODLAHOU 0,16 (~72 px), ať
-  // je symbol k nalezení. Stopy po celých zoomech (přesné hodnoty v každé
-  // dlaždici), mezi nimi základ 2. Bubliny 2D a hvězda drží.
-  const F = 0.16;
+  // podle druhu) × px na metr daného zoomu, s PODLAHOU, ať je symbol
+  // k nalezení. Stopy po celých zoomech (přesné hodnoty v každé dlaždici),
+  // mezi nimi základ 2. Bubliny 2D a hvězda drží.
+  // ⛔⛔ 5. 9. noc (2): obrázky jdou do atlasu s pixelRatio 2 → icon-size 1
+  // = 224 CSS px, NE 448. Dřívější konstanta 448 dělala všechny obrázky
+  // POLOVIČNÍ a „podlaha 72 px" byla ve skutečnosti 36 CSS px („obrázky
+  // jsou příliš malé" – zastávka v Sezemicích 28 px vedle břízy 165 px).
+  // Teď: měřítko metrů přes 224, podlaha roste z 0,22 (z13, 49 CSS px –
+  // město plné míst) na 0,32 (z16+, 72 CSS px), korekce `kb` pro užší
+  // obrázky (viz korekceSirky), u shluků `kbH` prvního člena.
+  const podlaha = (z) => (z <= 13 ? 0.22 : z === 14 ? 0.25 : z === 15 ? 0.28 : 0.32);
   const sm = ['coalesce', ['get', klic || 'sm'], 12];
+  const kb = ['coalesce', ['get', klic === 'smH' ? 'kbH' : 'kb'], 1];
   const stop = (z) => {
-    const c = Math.pow(2, z - 18) / (0.19 * 448);   // icon-size na metr
-    const o = ['max', F, ['*', sm, +c.toFixed(6)]];
+    const c = Math.pow(2, z - 18) / (0.19 * 224);   // icon-size na metr
+    const o = ['*', kb, ['max', podlaha(z), ['*', sm, +c.toFixed(6)]]];
     return sBublinou
       ? ['case', ['has', 'fv'], 0.30, ['has', 'b2d'], 0.24, o]
       : ['case', ['has', 'fv'], 0.30, o];
   };
   const v = ['interpolate', ['exponential', 2], ['zoom'],
-    10, (sBublinou ? ['case', ['has', 'fv'], 0.24, ['has', 'b2d'], 0.14, 0.14]
-                   : ['case', ['has', 'fv'], 0.24, 0.14])];
+    10, (sBublinou ? ['case', ['has', 'fv'], 0.24, ['has', 'b2d'], 0.14, ['*', kb, 0.16]]
+                   : ['case', ['has', 'fv'], 0.24, ['*', kb, 0.16]])];
   for (let z = 13; z <= 22; z++) v.push(z, stop(z));
   return v;
 }
@@ -6574,6 +6606,7 @@ function vykresliMista() {
                 // realistický růst obrázku s mapou (viz velikostMist)
                 vt: tridaVyskyMista(m.ik),
                 sm: velikostMistaM(m.ik),
+                ...(korekceSirky(m.ik) !== 1 ? { kb: korekceSirky(m.ik) } : {}),
                 // bublina 2D značky se kreslí menší než malovaná kresba
                 // (výtka „značky po přiblížení zakrývají moc mapy")
                 ...(bublina ? { b2d: 1 } : {}),
@@ -6634,6 +6667,7 @@ function vykresliMista() {
       // velikost PRVNÍHO člena (týž, jehož obrázek se ukazuje) – `max` by
       // spároval obrázek pomníku s rozměrem sousední budovy (pomník 80 m)
       smH: [['coalesce', ['accumulated'], ['get', 'smH']], ['get', 'sm']],
+      kbH: [['coalesce', ['accumulated'], ['get', 'kbH']], ['coalesce', ['get', 'kb'], 1]],
       vtH: [['coalesce', ['accumulated'], ['get', 'vtH']], ['get', 'vt']],
       tlH: ['min', ['case', ['has', 'tl'], 1, 0]],
     },
