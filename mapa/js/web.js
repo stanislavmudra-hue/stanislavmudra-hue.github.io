@@ -235,16 +235,16 @@
         .filter(function (b) { return isFinite(b[0]) && isFinite(b[1]); });
     }).filter(function (t) { return t.length >= 2; });
     if (trasy.length) OkolnikMost.vypravy(trasy);
-    // kamera na poslední odkrytou buňku (pořadí buněk = pořadí odkrytí);
-    // až v klidu – přelet hned po startu engine přebíjel vlastním
-    // usazením kamery (ověřeno 5. 9. v náhledu)
+    // kamera na poslední odkrytou buňku (pořadí buněk = pořadí odkrytí).
+    // ⚠️ `OkolnikMost.letNa` tu nedržel (usazování kamery enginu ho
+    // přebilo), přímý `jumpTo` drží – ověřeno 5. 9. v náhledu
     if (body.length) {
       var p = body[body.length - 1];
-      var let_ = function () {
-        try { OkolnikMost.letNa(p[0], p[1], 12.2, false, true); } catch (e) { }
+      var skok = function () {
+        try { mapa.jumpTo({ center: [p[1], p[0]], zoom: 12.2 }); } catch (e) { }
       };
-      let_();
-      setTimeout(let_, 1500);
+      skok();
+      setTimeout(skok, 1500);
     }
     var kdy = stav._hlavicka && stav._hlavicka.aktualizovano
       ? new Date(stav._hlavicka.aktualizovano) : null;
@@ -265,6 +265,14 @@
         }).map(function (m) {
           return { id: m.s, lat: m.lat, lng: m.lon, b: '#2e7d5b', ik: m.s, t: m.n || '' };
         });
+        // engine „rodí" nová místa po jednom (180 ms) – pro appku správně
+        // (posílá pár míst z výřezu), tady by 455 kreseb naskakovalo přes
+        // minutu; označit je za známá, ať se vykreslí naráz
+        try {
+          if (typeof vykresliMista === 'function') {
+            vykresliMista._znama = new Set(pole.map(function (m) { return String(m.id); }));
+          }
+        } catch (e) { }
         OkolnikMost.mista(pole);
         console.log('[web] místa:', pole.length);
       }).catch(function (e) { console.warn('[web] místa', e); });
