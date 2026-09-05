@@ -477,9 +477,11 @@ const Dekorace = (() => {
         // Proto PRÁVĚ DVA STOPY se základem 2: strom `k` = 1 je ~22 m
         // (základ obrázku je 94 CSS px = 188 px @2, ⛔ ne 44: první odhad
         // 0,08 dělal stromy 38 m), roste a klesá přesně s krajinou.
+        // `ev` = výškový faktor terénu (vyskovyFaktor): co je výš, je blíž
+        // k oku, tak o kus větší (přání 5. 9. večer)
         'icon-size': ['interpolate', ['exponential', 2], ['zoom'],
-          13.25, ['*', ['get', 'k'], 0.046],
-          22, ['*', ['get', 'k'], 19.7]],
+          13.25, ['*', ['get', 'k'], ['coalesce', ['get', 'ev'], 1], 0.046],
+          22, ['*', ['get', 'k'], ['coalesce', ['get', 'ev'], 1], 19.7]],
       },
       paint: {
         // rychlý a pro všechny druhy stejně dlouhý nástup — hodnoty
@@ -1725,6 +1727,19 @@ const Dekorace = (() => {
     return nalez;                    // i prázdno je teď JISTÉ
   }
 
+  /// ⭐ 5. 9. 2026 večer: VELIKOST PODLE VÝŠKY TERÉNU („co je výš, udělat
+  /// malinko větší, perspektivně je blíž k oku"). Faktor 1 ve 400 m
+  /// (průměr ČR), ±1 % na 30 m: 200 m → 0,93, 800 m → 1,13, 1 200 m →
+  /// 1,27, strop 1,35. Výška z DEM (`queryTerrainElevation`, bez GPU);
+  /// dokud dlaždice terénu není, faktor chybí a doplní se příště.
+  function vyskovyFaktor(lon, lat) {
+    try {
+      const v = mapa.queryTerrainElevation && mapa.queryTerrainElevation([lon, lat]);
+      if (typeof v !== 'number' || !isFinite(v)) return null;
+      return +Math.max(0.9, Math.min(1.35, 1 + (v - 400) / 3000)).toFixed(3);
+    } catch (e) { return null; }
+  }
+
   function dopln() {
     if (!mapa || !ikonyHotove) return;   // malby se ještě stahují
     const z = mapa.getZoom();
@@ -1869,6 +1884,7 @@ const Dekorace = (() => {
           // světla a světlušky: číselné id pro feature-state (mihotání)
           const svDruh = druh === 'svetlo' ? 1
               : (druh === 'svetluska' ? 2 : 0);
+          const ev = vyskovyFaktor(lon, latB);
           bunky.set(klic, {
             type: 'Feature',
             ...(svDruh ? { id: ((ix * 92821 + iy * 31397 + svDruh * 7451)
@@ -1876,6 +1892,7 @@ const Dekorace = (() => {
             properties: {
               ik: ikona,
               k: cfg.k,
+              ...(ev != null ? { ev } : {}),
               ...(svDruh ? { sv: svDruh } : {}),
               rot: druh === 'stricha'
                 ? Math.round((hash(ix, iy, 4) - 0.5) * 70) : 0,
@@ -1919,9 +1936,16 @@ const Dekorace = (() => {
         }
       }
       const featury = [];
+      let evDoplneno = 0;
       for (const f of bunky.values()) {
         // stricha v keši může přežívat z dřívějška v běžící stránce
         if (f && !f.properties.ik.startsWith('deko-stricha')) {
+          // výškový faktor doplnit, když při zrození terén ještě nebyl
+          if (f.properties.ev === undefined && evDoplneno < 400) {
+            const ev = vyskovyFaktor(f.geometry.coordinates[0],
+                                     f.geometry.coordinates[1]);
+            if (ev != null) { f.properties.ev = ev; evDoplneno++; }
+          }
           featury.push(f);
         }
       }

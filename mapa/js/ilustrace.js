@@ -278,6 +278,8 @@ const Ilustrace = (() => {
     const mx = stropPx(p, sw);
     const ohran = (zz) =>
       Math.min(mx, Math.max(podlahaPx(p, zz, mx), p.g0 * Math.pow(2, zz)));
+    // 5. 9. večer: nad z16 roste s mapou (viz vyrazVelikosti)
+    if (z > 16) return ohran(16) * Math.pow(2, z - 16);
     const z0 = Math.max(4, Math.min(15, Math.floor(z)));
     const t = Math.max(0, Math.min(1, Math.pow(2, z - z0) - 1));
     return ohran(z0) + t * (ohran(z0 + 1) - ohran(z0));
@@ -378,7 +380,7 @@ const Ilustrace = (() => {
 
   function vyrazVelikosti() {
     const v = ['interpolate', ['exponential', 2], ['zoom']];
-    for (let z = 4; z <= 16; z++) {
+    const ohran = (z) => {
       // podlaha roste od narození (vlastnost `zi`) polovičním tempem —
       // musí přesně odpovídat `podlahaPx` v JS
       const podlaha = ['min',
@@ -386,10 +388,18 @@ const Ilustrace = (() => {
           ['^', 2, ['*', PODLAHA_TEMPO,
             ['max', 0, ['-', z, ['coalesce', ['get', 'zi'], 0]]]]]],
         ['*', PODLAHA_STROP_DIL, ['get', 'mx']]];
-      v.push(z, ['/',
-        ['min', ['get', 'mx'],
-         ['max', podlaha, ['*', ['get', 'g0'], Math.pow(2, z)]]],
-        ZAKLAD_CSS]);
+      return ['min', ['get', 'mx'],
+              ['max', podlaha, ['*', ['get', 'g0'], Math.pow(2, z)]]];
+    };
+    for (let z = 4; z <= 16; z++) {
+      v.push(z, ['/', ohran(z), ZAKLAD_CSS]);
+    }
+    // ⭐ 5. 9. 2026 večer („obrázky míst od určitého zmenšení už zvětšuj
+    // s přiblížením jako stromy a silnice"): strop `mx` platí do z16, dál
+    // kresba roste PŘESNĚ S MAPOU (×2 na zoom) z velikosti na stropu –
+    // jako malba. ⚠️ Totéž musí dělat `sirkaPx` (JS) níž.
+    for (let z = 17; z <= 22; z++) {
+      v.push(z, ['/', ['*', ohran(16), Math.pow(2, z - 16)], ZAKLAD_CSS]);
     }
     return v;
   }
