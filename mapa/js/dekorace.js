@@ -474,11 +474,12 @@ const Dekorace = (() => {
         // velikost symbolu po DLAŽDICÍCH mezi dvěma krycími stopy výrazu
         // (symbol_size.ts getSizeData) – s více stopy měla každá dlaždice
         // jinou křivku a na hraně zmrzla, než dojela nová (= poskakování).
-        // Proto PRÁVĚ DVA STOPY se základem 2: strom `k` = 1 je 18 m
-        // (2,15 × 44 px na z18), roste a klesá přesně s krajinou.
+        // Proto PRÁVĚ DVA STOPY se základem 2: strom `k` = 1 je ~22 m
+        // (základ obrázku je 94 CSS px = 188 px @2, ⛔ ne 44: první odhad
+        // 0,08 dělal stromy 38 m), roste a klesá přesně s krajinou.
         'icon-size': ['interpolate', ['exponential', 2], ['zoom'],
-          13.25, ['*', ['get', 'k'], 0.08],
-          22, ['*', ['get', 'k'], 34.4]],
+          13.25, ['*', ['get', 'k'], 0.046],
+          22, ['*', ['get', 'k'], 19.7]],
       },
       paint: {
         // rychlý a pro všechny druhy stejně dlouhý nástup — hodnoty
