@@ -457,26 +457,40 @@ const SILNICE_TRIDY = ['minor', 'tertiary', 'secondary', 'primary',
 // (lem, mezera pruhů, krajnice) se proto počítají po stopech v JS,
 // ne výrazem `['+', SIRKA, …]` (ten MapLibre odmítl a celý styl se
 // nenačetl, 5. 9. 2026).
+// ⭐ 5. 9. 2026 večer: SKUTEČNÉ MĚŘÍTKO (výtka „silnice a cesty se drží
+// na stejné velikosti, zoom je nezvětšuje"). Šířka v METRECH podle třídy
+// (jízdní pás dálnice 11,5 m … ulice 5,5 m) se převádí na pixely pro z18
+// (0,19 m/px na 50° s. š.) a mezi z12 a z18 se interpoluje se ZÁKLADEM 2,
+// tedy přesně tak, jak roste krajina (domy, pole). Pod z12 drží podlaha
+// čitelnosti 1–3 px jako u každé mapy. Dřív základ 1,6 → silnice rostly
+// 3× pomaleji než mapa a při přiblížení „stály".
+const SILNICE_M = { motorway: 11.5, trunk: 10.5, primary: 9.0,
+                    secondary: 7.5, tertiary: 6.5, minor: 5.5 };
+const SILNICE_Z12 = { motorway: 3.0, trunk: 2.7, primary: 2.2,
+                      secondary: 1.6, tertiary: 1.3, minor: 1.1 };
+const M_NA_PX_Z18 = 0.19;
 function sirkaSilnic(f) {
-  const stopy = [
-    [8, { motorway: 2.0, trunk: 1.8, primary: 1.5, secondary: 1.1, minor: 0.8 }],
-    [16, { motorway: 12, trunk: 11, primary: 8.5, secondary: 6.5, minor: 5.0 }],
-    // 5. 9. odpoledne: ⛔ interpolace se za posledním stopem ZASTAVÍ, takže
-    // od z16 silnice přestávaly růst a na z18 byla místní ulice 1 m široká
-    // vedle desetimetrových domů. Stop z18 = 4× (přesné měřítko: šířka
-    // v metrech zůstává, dálnice ~9 m na jízdní pás, ulice ~4 m).
-    [18, { motorway: 48, trunk: 44, primary: 34, secondary: 26, minor: 20 }],
-  ];
-  const v = ['interpolate', ['exponential', 1.6], ['zoom']];
+  const z18 = {};
+  for (const k of Object.keys(SILNICE_M)) z18[k] = SILNICE_M[k] / M_NA_PX_Z18;
+  const stopy = [[12, SILNICE_Z12], [18, z18]];
+  const v = ['interpolate', ['exponential', 2], ['zoom']];
   for (const [z, w] of stopy) {
     v.push(z, ['match', ['get', 'class'],
       'motorway', f(w.motorway, z), 'trunk', f(w.trunk, z),
       'primary', f(w.primary, z), 'secondary', f(w.secondary, z),
+      'tertiary', f(w.tertiary, z),
       f(w.minor, z)]);
   }
   return v;
 }
-const SILNICE_SIRKA = sirkaSilnic((w) => w);
+/// Šířka podle skutečných metrů pro jednu třídu (cesty, servisní, čáry):
+/// podlaha čitelnosti na `zPodlaha` (výchozí 12), přesné měřítko na z18.
+function sirkaMetry(podlaha, metry, zPodlaha) {
+  return ['interpolate', ['exponential', 2], ['zoom'],
+          zPodlaha == null ? 12 : zPodlaha, podlaha,
+          18, +(metry / M_NA_PX_Z18).toFixed(1)];
+}
+const SILNICE_SIRKA = sirkaSilnic((w) => +w.toFixed(2));
 
 function stylHerni(ctx) {
   return {
@@ -597,10 +611,12 @@ function stylHerni(ctx) {
       { id: 'reky', type: 'line', source: 'omt', 'source-layer': 'waterway',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': PALETA.tyrkys, 'line-blur': 0.4,
-                 // interpolace musí být vnější výraz (limit MapLibre)
-                 'line-width': ['interpolate', ['exponential', 1.4], ['zoom'],
-                   7, ['match', ['get', 'class'], 'river', 1.4, 0.5],
-                   16, ['match', ['get', 'class'], 'river', 5, 2.4]] } },
+                 // interpolace musí být vnější výraz (limit MapLibre);
+                 // 5. 9. večer: skutečné měřítko od z10 (řeka 5 m, potok 2 m
+                 // na z18), velké řeky kreslí plocha `voda`
+                 'line-width': ['interpolate', ['exponential', 2], ['zoom'],
+                   10, ['match', ['get', 'class'], 'river', 1.4, 0.6],
+                   18, ['match', ['get', 'class'], 'river', 26, 10]] } },
       // ⭐ v1.538: CESTY MUSÍ BÝT VIDĚT (výtka „v herním módu nejsou
       // moc vidět silnice a cesty“). Měly **pevnou šířku 1,1 px** —
       // při přiblížení tedy nerostly vůbec a tmavě zelená čárkovaná
@@ -610,7 +626,7 @@ function stylHerni(ctx) {
         'source-layer': 'transportation', minzoom: 12,
         filter: ['in', ['get', 'class'], ['literal', ['path', 'track']]],
         layout: { 'line-cap': 'round' },
-        paint: { 'line-color': '#6B5636', 'line-width': sirka(12, 1.4, 17, 4.0),
+        paint: { 'line-color': '#6B5636', 'line-width': sirkaMetry(1.4, 2.5),
                  'line-opacity': 0.95,
                  'line-dasharray': [2.2, 1.6] } },
       // ⭐ v1.540: ÚČELOVÉ CESTY (`service`) — příjezdy k domům, cesty
@@ -622,7 +638,7 @@ function stylHerni(ctx) {
         filter: ['==', ['get', 'class'], 'service'],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#A98F63',
-                 'line-width': sirka(14.5, 0.9, 17, 2.8) } },
+                 'line-width': sirkaMetry(0.9, 3.5, 14.5) } },
       // ⭐ 5. 9. 2026: SILNICE JAKO SILNICE (přání: „šedá cesta s čárami
       // dle reality – plná, dva pruhy, přerušovaná"). Tři patra: tmavý
       // lem, šedý asfalt (odstín podle třídy), bílé značení: přerušovaná
@@ -633,7 +649,7 @@ function stylHerni(ctx) {
         filter: ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#5E5850', 'line-opacity': 0.85,
-                 'line-width': sirkaSilnic((w) => +(w + 1.6).toFixed(2)) } },
+                 'line-width': sirkaSilnic((w, z) => +(w + (z >= 18 ? 3.4 : 1.4)).toFixed(2)) } },
       { id: 'silnice-asfalt', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 8,
         filter: ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]],
@@ -648,20 +664,20 @@ function stylHerni(ctx) {
                  ['literal', ['minor', 'tertiary', 'secondary']]],
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.9,
-                 'line-width': sirka(13, 0.5, 17, 1.4),
-                 'line-dasharray': [4, 3] } },
+                 'line-width': sirkaMetry(0.5, 0.4, 13),
+                 'line-dasharray': [6, 5] } },
       { id: 'silnice-stred-plna', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 12,
         filter: ['==', ['get', 'class'], 'primary'],
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.9,
-                 'line-width': sirka(12, 0.5, 17, 1.5) } },
+                 'line-width': sirkaMetry(0.5, 0.4, 12) } },
       { id: 'silnice-dva-pruhy', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 11,
         filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk']]],
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.9,
-                 'line-width': sirka(11, 0.5, 17, 1.4),
+                 'line-width': sirkaMetry(0.5, 0.4, 11),
                  'line-gap-width': sirkaSilnic((w) => +(w * 0.34).toFixed(2)) } },
       { id: 'silnice-krajnice', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 13.5,
@@ -669,8 +685,8 @@ function stylHerni(ctx) {
                  ['literal', ['motorway', 'trunk', 'primary']]],
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.7,
-                 'line-width': sirka(13.5, 0.4, 17, 1.0),
-                 'line-gap-width': sirkaSilnic((w, z) => +Math.max(0.2, w - (z <= 8 ? 1.0 : 3.2)).toFixed(2)) } },
+                 'line-width': sirkaMetry(0.4, 0.35, 13.5),
+                 'line-gap-width': sirkaSilnic((w, z) => +Math.max(0.2, w - (z >= 18 ? 4.0 : 1.2)).toFixed(2)) } },
       { id: 'budovy-vypln', type: 'fill', source: 'omt',
         'source-layer': 'building', minzoom: 14,
         paint: { 'fill-color': '#DCC9A5', 'fill-opacity': 0.8 } },

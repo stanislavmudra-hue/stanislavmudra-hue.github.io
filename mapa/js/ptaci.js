@@ -24,11 +24,24 @@ const Ptaci = (() => {
   const MAX_PTAKU = 1;
   const K = 0.42;                  // „k" druhu jako u stromů (základ 120 px)
 
-  const CSS = '@keyframes kaneMach{0%{transform:scaleY(1)}30%{transform:'
-    + 'scaleY(.6)}55%{transform:scaleY(1.04)}80%{transform:scaleY(.72)}100%{'
-    + 'transform:scaleY(1)}}'
-    + '.kane-kridla{transform-origin:50% 40%;transform-box:fill-box}'
-    + '.kane-machani .kane-kridla{animation:kaneMach .42s ease-in-out 3}'
+  // ⭐ 5. 9. večer („mávání křídel je anatomicky špatně"): dřív se obě
+  // křídla MAČKALA podél těla (scaleY), což žádný pták nedělá. Křídlo se
+  // otáčí v RAMENI: při pohledu shora se rozpětí zkrátí (křídlo jde dolů
+  // a k tělu → scaleX k rameni) a špička se při úderu dolů kývne dopředu,
+  // při zdvihu mírně dozadu (rotate kolem ramene; levé +, pravé −,
+  // protože y roste dolů). Každé křídlo je vlastní skupina s počátkem
+  // v rameni; tělo, hlava a ocas se nehýbou. Káně mává 3–4 údery a plachtí.
+  const CSS = '@keyframes kaneMachL{0%{transform:scaleX(1) rotate(0deg)}'
+    + '30%{transform:scaleX(.6) rotate(7deg)}55%{transform:scaleX(1.03) rotate(-2deg)}'
+    + '80%{transform:scaleX(.68) rotate(5deg)}100%{transform:scaleX(1) rotate(0deg)}}'
+    + '@keyframes kaneMachR{0%{transform:scaleX(1) rotate(0deg)}'
+    + '30%{transform:scaleX(.6) rotate(-7deg)}55%{transform:scaleX(1.03) rotate(2deg)}'
+    + '80%{transform:scaleX(.68) rotate(-5deg)}100%{transform:scaleX(1) rotate(0deg)}}'
+    + '.kane-kridlo-l,.kane-kridlo-r{transform-box:view-box}'
+    + '.kane-kridlo-l{transform-origin:57px 24px}'
+    + '.kane-kridlo-r{transform-origin:63px 24px}'
+    + '.kane-machani .kane-kridlo-l{animation:kaneMachL .4s ease-in-out 4}'
+    + '.kane-machani .kane-kridlo-r{animation:kaneMachR .4s ease-in-out 4}'
     + '.kane{pointer-events:none;position:absolute;top:0;left:0;'
     + 'will-change:transform;}'
     + '.kane-stin{pointer-events:none;position:absolute;top:0;left:0;'
@@ -39,20 +52,24 @@ const Ptaci = (() => {
   // „prsty", krátký široký vějíř ocasu, malá hlava. Tmavě hnědé shora,
   // na křídlech světlejší pásy per, na ocase světlé pruhy.
   const KANE_SVG = '<svg viewBox="0 0 120 56" width="120" height="56">'
-    + '<g class="kane-kridla">'
-    // levé křídlo
+    // levé křídlo (skupina s počátkem v rameni 57,24)
+    + '<g class="kane-kridlo-l">'
     + '<path fill="#4a3826" d="M60 24 C50 17 36 14 22 15 C14 15.5 7 17.5 2 21 '
     + 'L1 24.5 L5 22.5 L4 26.5 L8.5 24 L8.5 28.5 L13 25.5 L14 30 L18 26.5 '
     + 'C24 29 33 31 42 32 C49 32.5 55 31 60 30 Z"/>'
-    // pravé křídlo
+    + '<path fill="#7d6547" opacity="0.5" d="M20 19 C33 18 46 22 60 27 L60 30 '
+    + 'C46 25 33 21 20 19 Z"/>'
+    + '<path fill="#2f241a" opacity="0.35" d="M6 22 C12 26 17 28 24 29 '
+    + 'L22 25.5 C16 24 11 22.5 6 22 Z"/>'
+    + '</g>'
+    // pravé křídlo (počátek v rameni 63,24)
+    + '<g class="kane-kridlo-r">'
     + '<path fill="#4a3826" d="M60 24 C70 17 84 14 98 15 C106 15.5 113 17.5 118 21 '
     + 'L119 24.5 L115 22.5 L116 26.5 L111.5 24 L111.5 28.5 L107 25.5 L106 30 L102 26.5 '
     + 'C96 29 87 31 78 32 C71 32.5 65 31 60 30 Z"/>'
-    // světlejší pásy per na křídlech
-    + '<path fill="#7d6547" opacity="0.5" d="M20 19 C33 18 46 22 60 27 '
-    + 'C74 22 87 18 100 19 C87 21 74 25 60 30 C46 25 33 21 20 19 Z"/>'
-    + '<path fill="#2f241a" opacity="0.35" d="M6 22 C12 26 17 28 24 29 '
-    + 'L22 25.5 C16 24 11 22.5 6 22 Z M114 22 C108 26 103 28 96 29 '
+    + '<path fill="#7d6547" opacity="0.5" d="M60 27 C74 22 87 18 100 19 '
+    + 'C87 21 74 25 60 30 Z"/>'
+    + '<path fill="#2f241a" opacity="0.35" d="M114 22 C108 26 103 28 96 29 '
     + 'L98 25.5 C104 24 109 22.5 114 22 Z"/>'
     + '</g>'
     // tělo
@@ -188,7 +205,7 @@ const Ptaci = (() => {
       if (t > p.dalsiMach) {
         p.el.classList.add('kane-machani');
         p.dalsiMach = t + 9000 + Math.random() * 8000;
-        setTimeout(() => p.el.classList.remove('kane-machani'), 1400);
+        setTimeout(() => p.el.classList.remove('kane-machani'), 1750);
       }
       // výška: terén pod STŘEDEM kroužení, zřídka, dohánět pomalu
       if (t > p.dalsiMereni) {
@@ -271,5 +288,6 @@ const Ptaci = (() => {
     bezi = false;
   }
 
-  return { pripoj, odpoj, _ladeni: { pocet: () => ptaci.length } };
+  return { pripoj, odpoj, _ladeni: { pocet: () => ptaci.length,
+    mach: () => { for (const p of ptaci) p.dalsiMach = 0; } } };
 })();

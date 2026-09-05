@@ -1428,12 +1428,16 @@ const Ilustrace = (() => {
           srt: it.imp,
           // stav v podpisu — objevení/návštěva musí projít setData
           pd: it.stav || 'c',
-          // kontaktní stín: elipsa u paty kresby (vždy)
-          pof: [0, (it.nb ? 0 : 0.035 * p.vy) + p.vy / 2],
+          // kontaktní stín: elipsa u paty kresby. ⛔ NE POD MĚSTY (5. 9.
+          // večer, „pod obrázky míst stíny nedělej – třeba Ústí"): panorama
+          // města není těleso stojící na zemi, stín pod ním byl šmouha
+          ...(p.d === 'mesta' ? {} : {
+            pof: [0, (it.nb ? 0 : 0.035 * p.vy) + p.vy / 2],
+          }),
           // ⭐ 5. 9. 2026 STÍN: obrázek #stin (týž rozměr @m/@s) a posun od
           // světla – pata stínu u paty kresby, dál podle azimutu a výšky
           // světla (stinDx/stinDy v násobcích výšky kresby, viz svetlo())
-          ...(stinSila > 0 ? {
+          ...(stinSila > 0 && p.d !== 'mesta' ? {
             st: 'ilus:' + it.slug + '#stin' + pripona(it.stav || ''),
             sof: [stinDx * p.vy,
                   (it.nb ? 0 : 0.035 * p.vy) + p.vy * (1 + STIN_ZPLOSTENI) / 2
@@ -1636,7 +1640,31 @@ const Ilustrace = (() => {
     const m = (seznam || []).find((x) => x.s === slug);
     const karta = document.getElementById('ilus-detail');
     if (!m || !karta) return;
-    karta.querySelector('img').src = cestaKresby(m.s);
+    const img = karta.querySelector('img');
+    img.src = cestaKresby(m.s);
+    // ⭐ 5. 9. večer (web: „u šedého obrázku s otazníkem se v popisu ukáže
+    // barevný"): karta drží TÝŽ stav jako mapa – barevně jen navštívené,
+    // objevené sépiově, neobjevené jako silueta. Kresba je odměna.
+    let stav = '';
+    try {
+      stav = navstivene.has(m.s) ? ''
+        : ((typeof Mlha !== 'undefined' && Mlha.jeObjeveno(m.lon, m.lat))
+            ? '#bw' : '#sil');
+    } catch (e) { stav = ''; }
+    img.style.filter = stav === '#bw' ? 'grayscale(1) sepia(.35) contrast(.92)'
+      : (stav === '#sil' ? 'brightness(0) opacity(.28)' : '');
+    let hint = karta.querySelector('.stav-kresby');
+    if (!hint) {
+      hint = document.createElement('small');
+      hint.className = 'stav-kresby';
+      hint.style.cssText = 'display:block;text-align:center;font-size:11px;'
+        + 'color:#6b5a44;margin:-2px 0 6px';
+      karta.querySelector('h3').insertAdjacentElement('afterend', hint);
+    }
+    hint.textContent = stav === '#sil'
+      ? '? Neobjevené místo – kresba se ukáže, až ho na mapě odkryješ'
+      : (stav === '#bw' ? 'Objeveno – barvy získá návštěvou' : '');
+    hint.style.display = stav ? 'block' : 'none';
     karta.querySelector('h3').textContent = m.n;
     karta.querySelector('.druh').textContent = DRUHY[m.d] || '';
     const popis = karta.querySelector('p');
@@ -1879,5 +1907,6 @@ const Ilustrace = (() => {
   }
 
   return { pripoj, filtruj, zavri: schovejDetail,
-           navstivene: nastavNavstivene, svetlo, stin: stinData };
+           navstivene: nastavNavstivene, svetlo, stin: stinData,
+           detail: ukazDetail };
 })();

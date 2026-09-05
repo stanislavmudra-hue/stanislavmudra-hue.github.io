@@ -1932,9 +1932,9 @@ function pridejBudovy3d() {
 
 /// ⭐ 5. 9. 2026: 3D DOMY V HERNÍM STYLU – návrh A „hliněné domky“: krémové
 /// zdi, cihlové střechy nízkých domů (≤ 9,5 m, tři odstíny podle id), šedé
-/// střechy bloků; boky stíní světlo z `Svetlo` (slunce / měsíc). Zatím ZA
-/// PŘEPÍNAČEM (`window.budovyHerni(true)`, localStorage okolnik3d.budovy3d)
-/// – čeká na rozhodnutí o designu.
+/// střechy bloků; boky stíní světlo z `Svetlo` (slunce / měsíc). Od 5. 9.
+/// večer ZAPNUTO (uživatel vybral variantu A); `window.budovyHerni(false)`
+/// vypne (localStorage okolnik3d.budovy3d = '0').
 /// ⚠️ V MLZE SE DOMY NEKRESLÍ. Vrstva leží NAD mlhou (aby drapované vrstvy
 /// zůstaly v jednom kuse), takže neobjevený dům by z pergamenu trčel.
 /// Filtr proto vyjmenovává id OBJEVENÝCH budov (`match` = hash, ne lineární
@@ -1942,8 +1942,9 @@ function pridejBudovy3d() {
 /// a po každém objevení. Změřeno 5. 9. (Ústí, z16,3, náklon 42°): 50–54 fps
 /// bez domů i s domy – cena v šumu.
 const BUDOVY_HERNI_KLIC = 'okolnik3d.budovy3d';
+// 5. 9. večer („ty budovy pusť"): ZAPNUTO, vypnutí `window.budovyHerni(false)`
 let budovyHerniZap = (() => {
-  try { return localStorage.getItem(BUDOVY_HERNI_KLIC) === '1'; } catch (e) { return false; }
+  try { return localStorage.getItem(BUDOVY_HERNI_KLIC) !== '0'; } catch (e) { return true; }
 })();
 const budovyHerniStav = new Map();   // id → objeveno? (false se zkouší znovu)
 let budovyHerniCasovac = null;
