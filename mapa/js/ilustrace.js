@@ -299,7 +299,12 @@ const Ilustrace = (() => {
     // LIST (nikdo ho nestřídá) zůstává připnutý na stropu až do nástupu
     // POI vrstvy aplikace (13,4 jako v 2D) — jinak by malá místa mizela,
     // dokud je zoom daleko od jejich skutečné velikosti
-    return p.maPotomky ? strop : Math.max(strop, 13.4);
+    // ⭐ 5. 9. 2026 večer: LIST (bez potomků) se už NEROZPLÝVÁ – kresba
+    // místa zůstává a roste s mapou až do z22 (přání „obrázky míst zvětšuj
+    // s přiblížením"; při ověření na z17 v Ústí nebyla vidět ani jedna
+    // socha, všechny se rozplynuly za stropem). Rozplývání zůstává jen
+    // rodičům, kteří předávají dětem (města → jednotlivá místa).
+    return p.maPotomky ? strop : Infinity;
   }
 
   // SLADĚNÍ PÁSEM: následovník (dítě rodiče / slabší soused vůdce) se

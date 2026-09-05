@@ -6542,11 +6542,11 @@ function vykresliMista() {
       'icon-anchor': 'center',
       'icon-pitch-alignment': 'map',
       'icon-rotation-alignment': 'map',
-      'icon-size': ['interpolate', ['linear'], ['zoom'],
+      'icon-size': ['interpolate', ['exponential', 2], ['zoom'],
                     10, ['case', ['has', 'fv'], 0.24, 0.14],
                     13, ['case', ['has', 'fv'], 0.30, 0.24],
                     16, ['case', ['has', 'fv'], 0.30, 0.38],
-                    18, ['case', ['has', 'fv'], 0.30, 0.5]],
+                    22, ['case', ['has', 'fv'], 0.30, 24.3]],
     },
     paint: { 'icon-opacity': ['*', ['case', ['has', 'tl'], TLUM, 1], 0.32] },
   });
@@ -6564,11 +6564,11 @@ function vykresliMista() {
       'icon-offset': stinMistOffset,
       'icon-pitch-alignment': 'map',
       'icon-rotation-alignment': 'map',
-      'icon-size': ['interpolate', ['linear'], ['zoom'],
+      'icon-size': ['interpolate', ['exponential', 2], ['zoom'],
                     10, ['case', ['has', 'fv'], 0.24, 0.14],
                     13, ['case', ['has', 'fv'], 0.30, 0.24],
                     16, ['case', ['has', 'fv'], 0.30, 0.38],
-                    18, ['case', ['has', 'fv'], 0.30, 0.5]],
+                    22, ['case', ['has', 'fv'], 0.30, 24.3]],
     },
     paint: { 'icon-opacity': ['*', ['case', ['has', 'tl'], TLUM, 1],
                                stinMistSila] },
@@ -6591,15 +6591,20 @@ function vykresliMista() {
       // ⚠️ v1.247: 0,18 (≈27 CSS px) bylo na telefonu prakticky
       // NEVIDITELNÉ (hlášeno „ve 3D nevidím oblíbená") → bubliny 0,24
       // a hvězda oblíbených (fv) ještě o kus větší, obě bez růstu.
-      'icon-size': ['interpolate', ['linear'], ['zoom'],
+      // ⭐ 5. 9. 2026 večer („obrázky míst od určitého zmenšení už zvětšuj
+      // s přiblížením"): obrázky míst od z16 rostou PŘESNĚ S MAPOU (základ
+      // 2, stop až na z22 = 0,38 × 2^6), bubliny 2D značek a hvězda
+      // oblíbených drží velikost. Jen dva stopy nad z16 → hladce (viz
+      // paměť o pečení velikostí po dlaždicích).
+      'icon-size': ['interpolate', ['exponential', 2], ['zoom'],
                     10, ['case', ['has', 'fv'], 0.24,
                          ['has', 'b2d'], 0.14, 0.14],
                     13, ['case', ['has', 'fv'], 0.30,
                          ['has', 'b2d'], 0.22, 0.24],
                     16, ['case', ['has', 'fv'], 0.30,
                          ['has', 'b2d'], 0.24, 0.38],
-                    18, ['case', ['has', 'fv'], 0.30,
-                         ['has', 'b2d'], 0.24, 0.5]],
+                    22, ['case', ['has', 'fv'], 0.30,
+                         ['has', 'b2d'], 0.24, 24.3]],
     },
     paint: { 'icon-opacity': ['case', ['has', 'tl'], TLUM, 1] },
   });
