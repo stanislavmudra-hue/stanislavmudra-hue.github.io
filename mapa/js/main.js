@@ -6744,12 +6744,23 @@ function vykresliMista() {
       try { vykresliMista(); } catch (e) { /* příští tik */ }
     }, 180);
   }
+  // ⭐ engine 212 („na webu je Rtyně nad Bílinou, Sezemice, v telefonu vidím
+  // názvy lépe"): názvy zastávek IDOS nesou obec před čárkou („Rtyně n.
+  // Bílinou, Sezemice"); obec už na mapě je, na stuze zůstane jen část za
+  // poslední čárkou s velkým písmenem („Sezemice", „Kostel"). Jen zastávky.
+  const zkratNazevZastavky = (t, ik) => {
+    if (!/autobusova_zastavka|vlakova_zastavka|zastavka/.test(String(ik || ''))) return t;
+    const i = t.lastIndexOf(', ');
+    if (i < 0 || i > t.length - 3) return t;
+    const kus = t.slice(i + 2).trim();
+    return kus.charAt(0).toUpperCase() + kus.slice(1);
+  };
   const naFeature = (m) => {
       const bublina = typeof m.ik === 'string'
           && (m.ik.startsWith('emoji|') || m.ik.startsWith('brand|'));
       // popisek pod značkou posílá aplikace (datum záznamu). Kreslí ho
       // jen nezhlukovaná vrstva `okolnik-moje-ikona`; u POI `t` nechodí.
-      const stitek = (typeof m.t === 'string' && m.t) ? { t: m.t } : {};
+      const stitek = (typeof m.t === 'string' && m.t) ? { t: zkratNazevZastavky(m.t, m.ik) } : {};
       return {
         type: 'Feature',
         properties: m.ik
