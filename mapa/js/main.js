@@ -2048,12 +2048,31 @@ function prepoctiBudovyHerni() {
     mapa.setFilter('okolnik-budovy-herni-zdi', filtr);
     mapa.setFilter('okolnik-budovy-herni-strecha', filtr);
   } catch (e) { console.warn('[budovy herní] filtr', e); }
+  // ⭐ 5. 9. noc (engine 200): stíny jen pod DOMY, KTERÉ STOJÍ (odkryté =
+  // vytažené). Stín pod neodkrytým plochým domem vypadal jako šmouha bez
+  // domu (Bukov, snímek 108).
+  nastavFiltrStinuDomu(filtr);
+}
+
+/// Filtr 12 stínových vrstev domů (styles.js `stinyDomu`): třídní podmínka
+/// výšky + (s 3D domy) jen odkryté id; `null` = zpět všechny domy (3D vypnuto).
+function nastavFiltrStinuDomu(filtr) {
+  if (!mapa || typeof STINY_DOMU_TRIDY === 'undefined') return;
+  for (const [trida, , puvodni] of STINY_DOMU_TRIDY) {
+    for (let i = 1; i <= STINY_DOMU_T.length; i++) {
+      const id = 'stin-domu-' + trida + '-' + i;
+      if (!mapa.getLayer(id)) continue;
+      try { mapa.setFilter(id, filtr ? ['all', puvodni, filtr] : puvodni); }
+      catch (e) { /* styl se zrovna mění */ }
+    }
+  }
 }
 
 window.budovyHerni = function (zap) {
   budovyHerniZap = !!zap;
   try { localStorage.setItem(BUDOVY_HERNI_KLIC, zap ? '1' : '0'); } catch (e) { /* nic */ }
   nasadBudovyHerni();
+  if (budovyHerniZap) prepoctiBudovyHerni(); else nastavFiltrStinuDomu(null);
   return budovyHerniZap;
 };
 
