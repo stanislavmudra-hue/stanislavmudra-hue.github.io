@@ -31,6 +31,11 @@
   var BUNKA = 0.0018;                    // TrailStore.cell (stupně)
   var KOTOUC_KM = 160 * 1.45 / 1000;     // uncoverMeters × haloFactor
   var relace = null;
+  // sdílený stav pro web-ui.js (kresby, stav ze synchronizace, posluchači)
+  var W = window.OkolnikWeb = window.OkolnikWeb || {};
+  W.kresby = W.kresby || [];
+  W.stav = W.stav || null;
+  W.naStav = W.naStav || [];
 
   /* ───────────── vzhled ───────────── */
   function css() {
@@ -221,6 +226,8 @@
   }
 
   function aplikuj(stav) {
+    W.stav = stav;
+    W.naStav.forEach(function (f) { try { f(stav); } catch (e) { } });
     var body = bunkyNaBody(stav.trailCells);
     // cizí mlha z minulého účtu v tomhle prohlížeči → pryč
     var minulyUid = null;
@@ -273,6 +280,7 @@
             vykresliMista._znama = new Set(pole.map(function (m) { return String(m.id); }));
           }
         } catch (e) { }
+        W.kresby = pole;
         OkolnikMost.mista(pole);
         console.log('[web] místa:', pole.length);
       }).catch(function (e) { console.warn('[web] místa', e); });

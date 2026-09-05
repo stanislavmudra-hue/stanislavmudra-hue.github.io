@@ -214,7 +214,7 @@
 // v6 nenaběhne — „Failed to load module script").
 (function () {
   const V5 = new URLSearchParams(location.search).get('ml') === '5';
-  const VERZE = '?v=173';
+  const VERZE = '?v=174';
   const SKRIPTY = ['js/styles.js', 'js/fog.js', 'js/pocasi.js',
     'js/svetlo.js', 'js/trpyt.js',
     'js/postavicka.js', 'js/dekorace.js', 'js/ilustrace.js',
@@ -223,7 +223,7 @@
   // ⭐ 5. 9. 2026: WEBOVÝ REŽIM (okolnik.cz/mapa/?web=1) – stav hry ze
   // synchronizace pod účtem místo mostu do aplikace; až PO main.js
   if (new URLSearchParams(location.search).get('web') === '1') {
-    SKRIPTY.push('js/web.js');
+    SKRIPTY.push('js/web.js', 'js/web-ui.js');   // ovládání jako v appce
   }
   function dal() {
     const s = SKRIPTY.shift();
