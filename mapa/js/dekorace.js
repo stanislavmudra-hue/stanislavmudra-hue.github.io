@@ -49,7 +49,7 @@ const Dekorace = (() => {
       rozestup: 62,               // m mezi kandidáty (NEJJEMNĚJŠÍ, viz Z_JEMNE)
                                   // v1.419: 70→62 („hustší lesy“)
       zjemnit: true,
-      vrstvy: ['les'],
+      vrstvy: ['les', 'sad'],       // 5. 9. večer: i sady (ZABAGED)
       // ⭐ 8. 8. 2026: „stromy ať se ukazují už od zoomu 54 %".
       // Ukazatel v appce je `(zoom − 6,5) / 12,5`, takže 54 % = **z13,25**
       // (dřív 14,4 ≈ 63 %). ⚠️ Víc stromů z dálky = víc symbolů a kolizí;
@@ -61,7 +61,7 @@ const Dekorace = (() => {
               'deko-strom-4', 'deko-strom-5', 'deko-strom-6',
               'deko-strom-7', 'deko-strom-8', 'deko-strom-9',
               'deko-strom-10'],
-      k: 1.0,                     // 5. 9. večer: k = podíl výšky stromu (18 m)
+      k: 1.15,                    // 5. 9. večer: k = podíl výšky stromu (~25 m)
       hustota: 0.56,              // v1.425: „stromů uber o 20 %“ (0,70→0,56)
     },
     kvet: {
@@ -72,11 +72,11 @@ const Dekorace = (() => {
       // květiny skoro neměly kde vyrůst. Přidáno `pole` (farmland),
       // což je většina otevřené krajiny u nás.
       vrstvy: ['louka', 'pole'],
-      z0: 16.8,                   // 5. 9. večer: skutečná velikost ~1,6 m → vidět až zblízka
+      z0: 15.4,                   // 5. 9. večer: kytka ~5 m (přání „kytky větší"), ≥ 5 px
       // 6 květin: pátá řada listu + luční směs ze čtvrté řady
       ikony: ['deko-kvet-1', 'deko-kvet-2', 'deko-kvet-3',
               'deko-kvet-4', 'deko-kvet-5', 'deko-kvet-6'],
-      k: 0.09,                    // ~1,6 m
+      k: 0.25,                    // ~5 m (malba, ne měřítko)
       hustota: 0.62,
     },
     // ⭐ v1.423: rostliny od uživatele (archy jaro/léto/podzim,
@@ -86,13 +86,13 @@ const Dekorace = (() => {
       rozestup: 85,
       zjemnit: true,
       vrstvy: ['pole'],
-      z0: 16.2,                   // 5. 9. večer: ~2,3 m
+      z0: 15.2,                   // 5. 9. večer: plodina ~6 m
       // obilní pás (1–5) + kukuřice, slunečnice, řepka, len, pohanka
       ikony: ['deko-plodina-1', 'deko-plodina-2', 'deko-plodina-3',
               'deko-plodina-4', 'deko-plodina-5', 'deko-plodina-6',
               'deko-plodina-7', 'deko-plodina-8', 'deko-plodina-9',
               'deko-plodina-10'],
-      k: 0.13,                    // ~2,3 m
+      k: 0.3,                     // ~6 m
       hustota: 0.5,
     },
     bylina: {
@@ -100,12 +100,12 @@ const Dekorace = (() => {
       rozestup: 95,
       zjemnit: true,
       vrstvy: ['louka'],
-      z0: 16.4,                   // 5. 9. večer: ~2 m
+      z0: 15.4,                   // 5. 9. večer: bylina ~5 m
       // luční trávy (1–5), třtina, orobinec, jetel
       ikony: ['deko-bylina-1', 'deko-bylina-2', 'deko-bylina-3',
               'deko-bylina-4', 'deko-bylina-5', 'deko-bylina-6',
               'deko-bylina-7', 'deko-bylina-8'],
-      k: 0.11,                    // ~2 m
+      k: 0.25,                    // ~5 m
       hustota: 0.5,
     },
     podrost: {
@@ -113,10 +113,10 @@ const Dekorace = (() => {
       rozestup: 120,
       zjemnit: true,
       vrstvy: ['les'],
-      z0: 16.0,                   // 5. 9. večer: „kopřiva je velká jako strom" → ~3 m
+      z0: 15.2,                   // 5. 9. večer: kopřiva ~6 m (čtvrtina stromu)
       // kopřiva a kapradí do podlesí
       ikony: ['deko-podrost-1', 'deko-podrost-2'],
-      k: 0.17,                    // ~3 m
+      k: 0.3,                     // ~6 m
       hustota: 0.35,
     },
     ker: {
@@ -124,20 +124,20 @@ const Dekorace = (() => {
       rozestup: 155,
       zjemnit: true,
       vrstvy: ['louka', 'les', 'pole'],
-      z0: 15.6,                   // 5. 9. večer: keř ~4 m
+      z0: 14.8,                   // 5. 9. večer: keř ~9 m
       // ⚠️ Listy nesou jen DVA keře (borůvčí a kvetoucí keřík); dřívější
       // `ker-3`/`ker-4` byly z pečených ikon a v malbách nejsou.
       ikony: ['deko-ker-1', 'deko-ker-2'],
-      k: 0.22,                    // ~4 m
+      k: 0.4,                     // ~9 m
       hustota: 0.33,              // 29. 8.: −20 % (louky)
     },
     kamen: {
       rozestup: 170,
       zjemnit: true,
       vrstvy: ['louka', 'les'],
-      z0: 16.6,                   // 5. 9. večer: balvan ~2 m
+      z0: 15.4,                   // 5. 9. večer: balvan ~5 m („kameny větší")
       ikony: ['deko-kamen-1', 'deko-kamen-2', 'deko-kamen-3'],
-      k: 0.1,                     // ~2 m
+      k: 0.25,                    // ~5 m
       hustota: 0.42,
     },
     // ⭐ SVĚTLA SÍDEL (v1.384–385, „ať města a vesničky v noci
@@ -178,9 +178,9 @@ const Dekorace = (() => {
       rozestup: 600,
       zjemnit: true,
       vrstvy: ['louka', 'pole'],
-      z0: 16.4,                   // 5. 9. večer: sněhulák ~2 m
+      z0: 15.2,                   // 5. 9. večer: sněhulák ~6 m
       ikony: ['deko-snehulak'],
-      k: 0.11,
+      k: 0.3,
       hustota: 0.2,
       sezony: ['zima'],
     },
@@ -1861,7 +1861,9 @@ const Dekorace = (() => {
           let ikony = cfg.ikony;
           if (druh === 'strom' && q) {
             if (q.indexOf('les-jehlicnaty') >= 0) ikony = STROMY_JEHLICNATE;
-            else if (q.indexOf('les-listnaty') >= 0) ikony = STROMY_LISTNATE;
+            else if (q.indexOf('les-listnaty') >= 0 || q.indexOf('sad') >= 0) {
+              ikony = STROMY_LISTNATE;   // sady = ovocné (listnaté) stromy
+            }
           }
           const ikona = ikony[Math.floor(hash(ix, iy, 3) * ikony.length)];
           // světla a světlušky: číselné id pro feature-state (mihotání)

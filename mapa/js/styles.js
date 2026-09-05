@@ -564,6 +564,10 @@ function stylHerni(ctx) {
       // d = J jehličnaté / L listnaté / S smíšené / N bez určení, v = výška.
       lesy: { type: 'vector', url: r2('lesy.pmtiles'),
               attribution: '© ČÚZK ZABAGED®' },
+      // 5. 9. večer: KRAJINA ze ZABAGED (tools/krajina_zabaged_export.py):
+      // t = orna / louka / sad / vinice / chmel / kroviny / mokrad / voda
+      krajina: { type: 'vector', url: r2('krajina.pmtiles'),
+                 attribution: '© ČÚZK ZABAGED®' },
     }),
     layers: [
       // ===== BAREVNÉ PATRO (pod mlhou — odkrývá se objevováním) =====
@@ -572,11 +576,46 @@ function stylHerni(ctx) {
       // jako vybarvená ilustrace z dětského atlasu
       { id: 'pozadi', type: 'background',
         paint: { 'background-color': '#F1E4BE' } },
-      { id: 'pole', type: 'fill', source: 'omt', 'source-layer': 'landcover',
-        filter: ['==', ['get', 'class'], 'farmland'],
+      // ⭐ 5. 9. 2026 večer: KRAJINA ZE ZABAGED (ČÚZK) místo OSM landcover
+      // („zapoj tu krajinu"): orná půda, louky (trvalý travní porost), sady
+      // a zahrady, vinice, chmelnice, křoviny, mokřady – OSM má využití půdy
+      // v ČR děravé. Id `pole` a `louka` ZŮSTÁVAJÍ (index ploch dekorací je
+      // čte ze stylu). Vše leží POD lesem, aby hrany dvou zdrojů (OSM les ×
+      // ZABAGED louka) kryl les. Výkon: 5 výplní místo 2, jeden zdroj navíc.
+      { id: 'pole', type: 'fill', source: 'krajina', 'source-layer': 'krajina',
+        filter: ['==', ['get', 't'], 'orna'],
         paint: AKVAREL
           ? { 'fill-pattern': 'vzor-pole', 'fill-opacity': 0.6 }
           : { 'fill-color': '#E4DC96', 'fill-opacity': 0.55 } },
+      { id: 'louka', type: 'fill', source: 'krajina', 'source-layer': 'krajina',
+        filter: ['==', ['get', 't'], 'louka'],
+        paint: AKVAREL
+          ? { 'fill-pattern': 'vzor-louka', 'fill-opacity': 0.65 }
+          : { 'fill-color': '#BCD989', 'fill-opacity': 0.6 } },
+      // sady a zahrady: louka + teplejší tón; rostou v nich stromy (dekorace)
+      { id: 'sad', type: 'fill', source: 'krajina', 'source-layer': 'krajina',
+        filter: ['==', ['get', 't'], 'sad'],
+        paint: AKVAREL
+          ? { 'fill-pattern': 'vzor-louka', 'fill-opacity': 0.65 }
+          : { 'fill-color': '#B5D07C', 'fill-opacity': 0.6 } },
+      { id: 'krajina-ostatni', type: 'fill', source: 'krajina',
+        'source-layer': 'krajina',
+        filter: ['in', ['get', 't'], ['literal', ['vinice', 'chmel', 'kroviny', 'mokrad']]],
+        paint: AKVAREL
+          ? { 'fill-pattern': ['match', ['get', 't'],
+                'vinice', 'vzor-pole', 'chmel', 'vzor-pole', 'vzor-louka'],
+              'fill-opacity': 0.62 }
+          : { 'fill-color': ['match', ['get', 't'],
+                'vinice', '#D9CD7C', 'chmel', '#D9CD7C', 'kroviny', '#9DBE6E', '#A9CDA0'],
+              'fill-opacity': 0.6 } },
+      // tón druhu: sad teplejší zelená, vinice/chmelnice okr, křoviny tmavší,
+      // mokřad chladný
+      { id: 'krajina-ton', type: 'fill', source: 'krajina', 'source-layer': 'krajina',
+        filter: ['in', ['get', 't'], ['literal', ['sad', 'vinice', 'chmel', 'kroviny', 'mokrad']]],
+        paint: { 'fill-color': ['match', ['get', 't'],
+                   'sad', '#8FB04A', 'vinice', '#B9A24A', 'chmel', '#A8A052',
+                   'kroviny', '#3E6B34', '#4C8C86'],
+                 'fill-opacity': 0.16, 'fill-antialias': false } },
       // Vzory = jen BEZTVARÉ laviny barvy (žádné rozpoznatelné objekty
       // — jejich přeskládání mezi zoomy pak není vidět); stromy, kytky
       // a střechy kreslí jako skutečné BODY mapy js/dekorace.js
@@ -585,11 +624,6 @@ function stylHerni(ctx) {
         paint: AKVAREL
           ? { 'fill-pattern': 'vzor-les', 'fill-opacity': 0.92 }
           : { 'fill-color': '#69A257', 'fill-opacity': 0.85 } },
-      { id: 'louka', type: 'fill', source: 'omt', 'source-layer': 'landcover',
-        filter: ['in', ['get', 'class'], ['literal', ['grass', 'wetland']]],
-        paint: AKVAREL
-          ? { 'fill-pattern': 'vzor-louka', 'fill-opacity': 0.65 }
-          : { 'fill-color': '#BCD989', 'fill-opacity': 0.6 } },
       // ROZPITÉ OKRAJE LESŮ (stupeň 2): měkký tmavozelený nádech podél
       // hranic lesa — akvarel zapuštěný do mokrého papíru
       ...(AKVAREL ? [
