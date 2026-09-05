@@ -5865,28 +5865,23 @@ function tridaVyskyMista(ik) {
 /// icon-size obrázků míst (ikona, stín i pata sdílejí): podlaha 0,20 a
 /// realistický růst od prahu třídy; `sBublinou` = vrstva ikon (má b2d).
 function velikostMist(sBublinou, klic) {
-  // ⭐ 5. 9. noc („víš, jak je ta budova velká, tak nedělej zbytečně malý
-  // obrázek; obrázky ať jsou jak stromy – objekt v mapě"): velikost =
-  // SKUTEČNÁ velikost objektu `sm` (m, z půdorysu budovy nebo výchozí
-  // podle druhu) × px na metr daného zoomu, s PODLAHOU, ať je symbol
-  // k nalezení. Stopy po celých zoomech (přesné hodnoty v každé dlaždici),
-  // mezi nimi základ 2. Bubliny 2D a hvězda drží.
-  // ⛔⛔ 5. 9. noc (2): obrázky jdou do atlasu s pixelRatio 2 → icon-size 1
-  // = 224 CSS px, NE 448. Dřívější konstanta 448 dělala všechny obrázky
-  // POLOVIČNÍ a „podlaha 72 px" byla ve skutečnosti 36 CSS px („obrázky
-  // jsou příliš malé" – zastávka v Sezemicích 28 px vedle břízy 165 px).
-  // Teď: měřítko metrů přes 224, podlaha roste z 0,22 (z13, 49 CSS px –
-  // město plné míst) na 0,32 (z16+, 72 CSS px), korekce `kb` pro užší
-  // obrázky (viz korekceSirky), u shluků `kbH` prvního člena.
-  const podlaha = (z) => (z <= 13 ? 0.22 : z === 14 ? 0.25 : z === 15 ? 0.28 : 0.32);
-  const sm = ['coalesce', ['get', klic || 'sm'], 12];
-  const kb = ['coalesce', ['get', klic === 'smH' ? 'kbH' : 'kb'], 1];
+  // ⭐ engine 203 („obrázky nefixují velikost k velikosti objektu, zůstávají
+  // malé po přiblížení"): dřív podlaha 72 px držela B do z18,3 a A do z19,2
+  // a růst začínal až pak. Teď má každý obrázek ZÁKLAD v CSS px při z17 –
+  // podle třídy (A 56, B 72, C 96, D 128) nebo z půdorysu budovy
+  // (sm m × 2,63 px/m při z17), větší z obou – a od z17 roste/klesá ×2 na
+  // zoom jako všechno v mapě. Podlaha 48 px (z ≤ 16 u drobností), strop
+  // 270 px (kostel od z19). Ikony v atlasu mají pixelRatio 2 → icon-size 1
+  // = 224 CSS px; `kb` = korekce užších obrázků. Bubliny 2D a hvězda drží.
+  const shluk = klic === 'smH';
+  const sm = ['coalesce', ['get', shluk ? 'smH' : 'sm'], 12];
+  const kb = ['coalesce', ['get', shluk ? 'kbH' : 'kb'], 1];
+  const vt = ['coalesce', ['get', shluk ? 'vtH' : 'vt'], 'B'];
+  const nominal = ['match', vt, 'A', 56, 'C', 96, 'D', 128, 72];
+  const zaklad = ['max', nominal, ['*', sm, 2.63]];      // CSS px při z17
   const stop = (z) => {
-    const c = Math.pow(2, z - 18) / (0.19 * 224);   // icon-size na metr
-    // ⭐ engine 201: STROP 1,2 (~270 CSS px) místo rozplynutí – obrázek
-    // zůstane, jen přestane růst (video: kostel při z19 zmizel a na střeše
-    // zbyla samotná stuha).
-    const o = ['*', kb, ['min', 1.2, ['max', podlaha(z), ['*', sm, +c.toFixed(6)]]]];
+    const f = Math.pow(2, z - 17) / 224;                 // px@z17 → icon-size@z
+    const o = ['*', kb, ['min', 1.2, ['max', 0.214, ['*', zaklad, +f.toFixed(7)]]]];
     return sBublinou
       ? ['case', ['has', 'fv'], 0.30, ['has', 'b2d'], 0.24, o]
       : ['case', ['has', 'fv'], 0.30, o];
@@ -6149,9 +6144,50 @@ function nejmensiPodPrstem(fs) {
 const SHLUK_SEZNAM_ZOOM = 13;
 const SHLUK_SEZNAM_MAX = 8;
 
+/// ⭐ engine 203: „Erby s názvem obce nebo názvy obce dávej po oddálení před
+/// ostatní vrstvy." Pod z13,3 jdou jména sídel a erby NA VRCH stylu (nad
+/// kresby i obrázky míst – jsou pak i první při rozmisťování), nad z13,7 se
+/// vrátí na původní místo (hystereze proti kolébání zoomu terénem ±0,2).
+/// Stav se čte z pořadí vrstev, ne z příznaku – přežije výměnu stylu.
+const NAZVY_NAHORU = ['ink-mesta', 'ink-mestyse', 'ink-vesnice', 'ink-obce', 'erby-vrstva'];
+const NAZVY_Z_NAHORU = 13.3;
+const NAZVY_Z_DOLU = 13.7;
+let nazvyPuvodniNasledovnik = null;      // id vrstvy, před kterou se vracejí
+function poradiNazvuObci() {
+  if (!mapa || !mapa.style) return;
+  let poradi = null;
+  try { poradi = mapa.style._order || mapa.getStyle().layers.map((l) => l.id); }
+  catch (e) { return; }
+  if (!poradi || !poradi.length) return;
+  const iErby = poradi.indexOf('erby-vrstva');
+  const iMista = poradi.indexOf('okolnik-mista-ikona');
+  if (iErby < 0 || iMista < 0) return;
+  const nahore = iErby > iMista;
+  const z = mapa.getZoom();
+  const chci = z < NAZVY_Z_NAHORU ? true : (z > NAZVY_Z_DOLU ? false : nahore);
+  if (chci === nahore) return;
+  try {
+    if (chci) {
+      // zapamatovat, před koho se vracet (vrstva hned za erby)
+      nazvyPuvodniNasledovnik = poradi[iErby + 1] || null;
+      for (const id of NAZVY_NAHORU) if (mapa.getLayer(id)) mapa.moveLayer(id);
+    } else {
+      let pred = nazvyPuvodniNasledovnik;
+      if (!pred || !mapa.getLayer(pred)) {
+        pred = ['ink-ilustrace-stuhy', 'okolnik-mista-shluk-ikona', 'okolnik-mista-ikona']
+          .find((id) => mapa.getLayer(id)) || null;
+      }
+      for (const id of NAZVY_NAHORU) if (mapa.getLayer(id)) mapa.moveLayer(id, pred || undefined);
+    }
+  } catch (e) { console.warn('[názvy obcí] pořadí', e); }
+}
+
 function registrujKlikMista() {
   if (hookKlikuMist || !mapa) return;
   hookKlikuMist = true;
+  mapa.on('zoomend', poradiNazvuObci);
+  mapa.on('idle', poradiNazvuObci);
+  poradiNazvuObci();
   for (const vrstva of ['okolnik-mista-kruh', 'okolnik-mista-ikona']) {
     mapa.on('click', vrstva, (e) => {
       // ⭐ engine 201: pod prstem bývá víc obrázků (boží muka UVNITŘ obrázku
