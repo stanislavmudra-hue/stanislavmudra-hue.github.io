@@ -453,11 +453,25 @@ const AKVAREL = new URLSearchParams(location.search).get('akvarel') !== '0';
 // pro asfalt, lem i značení, ať všechna patra sedí na sebe.
 const SILNICE_TRIDY = ['minor', 'tertiary', 'secondary', 'primary',
                        'trunk', 'motorway'];
-const SILNICE_SIRKA = ['interpolate', ['exponential', 1.6], ['zoom'],
-  8, ['match', ['get', 'class'], 'motorway', 2.0, 'trunk', 1.8,
-      'primary', 1.5, 'secondary', 1.1, 0.8],
-  16, ['match', ['get', 'class'], 'motorway', 12, 'trunk', 11,
-      'primary', 8.5, 'secondary', 6.5, 5.0]];
+// ⚠️ ['zoom'] smí být jen v interpolate NA VRCHU výrazu – odvozené šířky
+// (lem, mezera pruhů, krajnice) se proto počítají po stopech v JS,
+// ne výrazem `['+', SIRKA, …]` (ten MapLibre odmítl a celý styl se
+// nenačetl, 5. 9. 2026).
+function sirkaSilnic(f) {
+  const stopy = [
+    [8, { motorway: 2.0, trunk: 1.8, primary: 1.5, secondary: 1.1, minor: 0.8 }],
+    [16, { motorway: 12, trunk: 11, primary: 8.5, secondary: 6.5, minor: 5.0 }],
+  ];
+  const v = ['interpolate', ['exponential', 1.6], ['zoom']];
+  for (const [z, w] of stopy) {
+    v.push(z, ['match', ['get', 'class'],
+      'motorway', f(w.motorway, z), 'trunk', f(w.trunk, z),
+      'primary', f(w.primary, z), 'secondary', f(w.secondary, z),
+      f(w.minor, z)]);
+  }
+  return v;
+}
+const SILNICE_SIRKA = sirkaSilnic((w) => w);
 
 function stylHerni(ctx) {
   return {
@@ -614,7 +628,7 @@ function stylHerni(ctx) {
         filter: ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#5E5850', 'line-opacity': 0.85,
-                 'line-width': ['+', SILNICE_SIRKA, 1.6] } },
+                 'line-width': sirkaSilnic((w) => +(w + 1.6).toFixed(2)) } },
       { id: 'silnice-asfalt', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 8,
         filter: ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]],
@@ -643,7 +657,7 @@ function stylHerni(ctx) {
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.9,
                  'line-width': sirka(11, 0.5, 17, 1.4),
-                 'line-gap-width': ['*', SILNICE_SIRKA, 0.34] } },
+                 'line-gap-width': sirkaSilnic((w) => +(w * 0.34).toFixed(2)) } },
       { id: 'silnice-krajnice', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 13.5,
         filter: ['in', ['get', 'class'],
@@ -651,7 +665,7 @@ function stylHerni(ctx) {
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.7,
                  'line-width': sirka(13.5, 0.4, 17, 1.0),
-                 'line-gap-width': ['-', SILNICE_SIRKA, sirka(13.5, 1.4, 17, 3.2)] } },
+                 'line-gap-width': sirkaSilnic((w, z) => +Math.max(0.2, w - (z <= 8 ? 1.0 : 3.2)).toFixed(2)) } },
       { id: 'budovy-vypln', type: 'fill', source: 'omt',
         'source-layer': 'building', minzoom: 14,
         paint: { 'fill-color': '#DCC9A5', 'fill-opacity': 0.8 } },
