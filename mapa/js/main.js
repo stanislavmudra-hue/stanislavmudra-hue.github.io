@@ -1727,7 +1727,7 @@ function aplikujDoplnky() {
   // patří SEM, jinak se na ni zase zapomene.
   for (const obnov of [vykresliMista, vykresliVypravy,
                        vykresliAktivniVypravu, vykresliZnacky,
-                       pridejBudovy3d]) {
+                       pridejBudovy3d, nasadBudovyHerni]) {
     setTimeout(obnov, 0);
   }
   pridejMaskuZahranici();   // cizinu kryje barva stylu (herní má pergamen)
@@ -1929,6 +1929,120 @@ function pridejBudovy3d() {
     mapa.once('idle', () => { try { mapa.triggerRepaint(); } catch (e) {} });
   } catch (e) { console.warn('[budovy] ', e); }
 }
+
+/// ⭐ 5. 9. 2026: 3D DOMY V HERNÍM STYLU – návrh A „hliněné domky“: krémové
+/// zdi, cihlové střechy nízkých domů (≤ 9,5 m, tři odstíny podle id), šedé
+/// střechy bloků; boky stíní světlo z `Svetlo` (slunce / měsíc). Zatím ZA
+/// PŘEPÍNAČEM (`window.budovyHerni(true)`, localStorage okolnik3d.budovy3d)
+/// – čeká na rozhodnutí o designu.
+/// ⚠️ V MLZE SE DOMY NEKRESLÍ. Vrstva leží NAD mlhou (aby drapované vrstvy
+/// zůstaly v jednom kuse), takže neobjevený dům by z pergamenu trčel.
+/// Filtr proto vyjmenovává id OBJEVENÝCH budov (`match` = hash, ne lineární
+/// `in`); těžiště se ptá `Mlha.jeObjeveno`, přepočet po dojetí dlaždic
+/// a po každém objevení. Změřeno 5. 9. (Ústí, z16,3, náklon 42°): 50–54 fps
+/// bez domů i s domy – cena v šumu.
+const BUDOVY_HERNI_KLIC = 'okolnik3d.budovy3d';
+let budovyHerniZap = (() => {
+  try { return localStorage.getItem(BUDOVY_HERNI_KLIC) === '1'; } catch (e) { return false; }
+})();
+const budovyHerniStav = new Map();   // id → objeveno? (false se zkouší znovu)
+let budovyHerniCasovac = null;
+
+function nasadBudovyHerni() {
+  if (!mapa || !mapa.getStyle()) return;
+  const cfg = STYLY[aktualniKod];
+  const ma = !!mapa.getLayer('okolnik-budovy-herni-zdi');
+  if (!budovyHerniZap || !cfg || !cfg.mlha) {
+    if (ma) {
+      try {
+        mapa.removeLayer('okolnik-budovy-herni-zdi');
+        mapa.removeLayer('okolnik-budovy-herni-strecha');
+      } catch (e) { /* nic */ }
+    }
+    return;
+  }
+  if (!nasadBudovyHerni._hooked) {
+    nasadBudovyHerni._hooked = true;
+    mapa.on('idle', naplanujBudovyHerni);
+    try {
+      if (typeof Mlha !== 'undefined' && Mlha.priObjeveni) {
+        Mlha.priObjeveni(() => naplanujBudovyHerni());
+      }
+    } catch (e) { /* nic */ }
+  }
+  if (ma) { naplanujBudovyHerni(); return; }
+  const H = ['coalesce', ['get', 'render_height'], 6];
+  const B = ['coalesce', ['get', 'render_min_height'], 0];
+  const NIZKY = ['<=', H, 9.5];
+  const nic = ['==', ['id'], -1];
+  const nastup = ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, 1];
+  const pred = prvniSymbolovaVrstva();
+  try {
+    mapa.addLayer({ id: 'okolnik-budovy-herni-zdi', type: 'fill-extrusion',
+      source: 'omt', 'source-layer': 'building', minzoom: 14.5, filter: nic,
+      paint: { 'fill-extrusion-color': '#EAD9B6',
+               'fill-extrusion-height': ['-', H, 0.6],
+               'fill-extrusion-base': B,
+               'fill-extrusion-opacity': nastup } }, pred);
+    mapa.addLayer({ id: 'okolnik-budovy-herni-strecha', type: 'fill-extrusion',
+      source: 'omt', 'source-layer': 'building', minzoom: 14.5, filter: nic,
+      paint: { 'fill-extrusion-color': ['case', NIZKY,
+                 ['match', ['%', ['id'], 3], 0, '#B9684A', 1, '#AE6045', '#C0745A'],
+                 '#8E8478'],
+               'fill-extrusion-height': H,
+               'fill-extrusion-base': ['-', H, 0.6],
+               'fill-extrusion-opacity': nastup,
+               'fill-extrusion-vertical-gradient': false } }, pred);
+  } catch (e) { console.warn('[budovy herní]', e); return; }
+  naplanujBudovyHerni();
+}
+
+function naplanujBudovyHerni() {
+  clearTimeout(budovyHerniCasovac);
+  budovyHerniCasovac = setTimeout(prepoctiBudovyHerni, 450);
+}
+
+function prepoctiBudovyHerni() {
+  if (!mapa || !mapa.getLayer('okolnik-budovy-herni-zdi')) return;
+  if (mapa.getZoom() < 14) return;
+  let prvky = [];
+  try { prvky = mapa.querySourceFeatures('omt', { sourceLayer: 'building' }); }
+  catch (e) { return; }
+  const ids = [];
+  const videno = new Set();
+  for (const f of prvky) {
+    const id = f.id;
+    if (id == null || videno.has(id)) continue;
+    videno.add(id);
+    let o = budovyHerniStav.get(id);
+    if (o !== true) {
+      const g = f.geometry;
+      let ring = null;
+      if (g && g.type === 'Polygon') ring = g.coordinates[0];
+      else if (g && g.type === 'MultiPolygon') ring = g.coordinates[0] && g.coordinates[0][0];
+      if (!ring || !ring.length) continue;
+      let sx = 0;
+      let sy = 0;
+      for (const q of ring) { sx += q[0]; sy += q[1]; }
+      try { o = !!Mlha.jeObjeveno(sx / ring.length, sy / ring.length); }
+      catch (e) { o = true; }
+      budovyHerniStav.set(id, o);
+    }
+    if (o) ids.push(id);
+  }
+  const filtr = ids.length ? ['match', ['id'], ids, true, false] : ['==', ['id'], -1];
+  try {
+    mapa.setFilter('okolnik-budovy-herni-zdi', filtr);
+    mapa.setFilter('okolnik-budovy-herni-strecha', filtr);
+  } catch (e) { console.warn('[budovy herní] filtr', e); }
+}
+
+window.budovyHerni = function (zap) {
+  budovyHerniZap = !!zap;
+  try { localStorage.setItem(BUDOVY_HERNI_KLIC, zap ? '1' : '0'); } catch (e) { /* nic */ }
+  nasadBudovyHerni();
+  return budovyHerniZap;
+};
 
 /// ⭐ ID PRVNÍ SYMBOLOVÉ VRSTVY. Čárové vrstvy vkládané NAD symboly rozbíjejí
 /// souvislý blok „drapovaných" vrstev na víc kusů a s terénem pak MapLibre

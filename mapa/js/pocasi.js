@@ -82,6 +82,36 @@ const Pocasi = (() => {
   // nad VRCHEM plná síla, mezi tím plynule.
   const MIZENI_SPODEK = 1.15;
   const MIZENI_VRCH = 2.4;
+  // ⭐ 5. 9. 2026: TVARY, VÝŠKY A ODSTÍNY MRAKŮ PODLE POČASÍ (přání
+  // „mraky by mohly mít i různé tvary, výšky a odstíny dle deště“).
+  // Jeden malovaný sprite (mrak.webp) se skládá do několika tvarů:
+  //   kupa   – beránek, jak byl doteď (polojasno)
+  //   hrozen – dva slepené beránky (větší oblačnost)
+  //   plochy – nízká roztažená vrstva (zataženo, sníh)
+  //   veze   – vysoká věž s hlavou (bouřka, silný déšť)
+  //   mlha   – roztažený řídký opar
+  // Tvar, velikost, zrcadlení i výška každého mraku plynou z jeho pevné
+  // identity (hash jemné buňky / pořadí bodu), takže se mezi překresleními
+  // nemění. Odstín: déšť a bouřka mají TĚŽKÝ TMAVÝ SPODEK (gradient při
+  // tónování), beránky jen lehký stín zespodu.
+  const TVARY_DRUHU = {
+    polojasno: ['kupa', 'kupa', 'kupa', 'hrozen'],
+    zatazeno: ['plochy', 'plochy', 'hrozen', 'kupa'],
+    dest: ['plochy', 'hrozen', 'veze', 'plochy'],
+    snih: ['plochy', 'plochy', 'hrozen', 'plochy'],
+    bourka: ['veze', 'veze', 'hrozen', 'veze'],
+    mlha: ['mlha', 'mlha', 'mlha', 'mlha'],
+  };
+  const SPODEK = { polojasno: 0.86, zatazeno: 0.80, dest: 0.66, snih: 0.84,
+                   bourka: 0.58, mlha: 0.96 };
+  function tvarMraku(druh, h) {
+    const t = TVARY_DRUHU[druh] || TVARY_DRUHU.zatazeno;
+    return t[Math.floor(h * t.length) % t.length];
+  }
+  /// výška konkrétního mraku: základ druhu × 0,78–1,25
+  function vyskaMrakuKm(druh, h) {
+    return (VYSKA_KM[druh] || 1.7) * (0.78 + 0.47 * h);
+  }
   // Nejjemnější mřížka, ze které se odvozuje identita a poloha mraku.
   // Musí být DĚLITELEM všech použitých kroků (ty jsou mocniny dvou v km),
   // aby zástupná buňka při změně kroku zůstala tatáž — na tom stojí, že
@@ -97,8 +127,8 @@ const Pocasi = (() => {
     return 1.5 * hCss * metryNaPx * Math.cos(pitch * Math.PI / 180);
   }
 
-  function silaVysky(druh, vyskaKamery) {
-    const hladina = (VYSKA_KM[druh] || 1.7) * 1000;
+  function silaVysky(druh, vyskaKamery, vyskaKm) {
+    const hladina = (vyskaKm || VYSKA_KM[druh] || 1.7) * 1000;
     const pomer = vyskaKamery / hladina;
     if (pomer <= MIZENI_SPODEK) return 0;
     if (pomer >= MIZENI_VRCH) return 1;
@@ -117,7 +147,8 @@ const Pocasi = (() => {
   let posledniKresba = 0;
   // plátno mraků kreslíme v polovičním rozlišení (roztažené CSS)
   const MERITKO_PLATNA = 0.5;
-  const tonovane = new Map();         // "druh|krokDne" → canvas
+  const tonovane = new Map();         // "druh|krokDne|tvar" → canvas
+  const tvary = new Map();            // tvar → složený netónovaný canvas
 
   // ——— Počasí ———
   function druhZKodu(k) {
@@ -329,18 +360,60 @@ const Pocasi = (() => {
     polojasno: [0xED, 0xF1, 0xF6],
     zatazeno: [0x9A, 0xA4, 0xB2],
     mlha: [0xC2, 0xCA, 0xD4],
-    dest: [0x7C, 0x87, 0x94],
-    snih: [0x9A, 0xA4, 0xB2],
-    bourka: [0x5E, 0x64, 0x70],
+    // 5. 9.: tmu nese gradient spodku (SPODEK), vrch smí být světlejší
+    dest: [0x7E, 0x88, 0x94],
+    snih: [0xA4, 0xAD, 0xB9],
+    bourka: [0x62, 0x68, 0x74],
   };
   const NOC = [0x5C, 0x66, 0x75];
 
-  function tonovany(druh, den) {
+  /// Složení tvaru z jediného malovaného spritu (jednou do keše).
+  function slozTvar(tvar) {
+    let c = tvary.get(tvar);
+    if (c) return c;
+    const W = mrak.naturalWidth;
+    const H = mrak.naturalHeight;
+    c = document.createElement('canvas');
+    const cc = c.getContext('2d');
+    if (tvar === 'plochy') {
+      // ⚠️ 0,6 výšky × 1,5 šířky byl na telefonu tenký bledý proužek,
+      // který na zamlžené mapě zanikal (ověřeno výpisem plátna 5. 9.)
+      c.width = Math.round(W * 1.35);
+      c.height = Math.round(H * 0.78);
+      cc.drawImage(mrak, 0, c.height * 0.04, c.width, c.height * 0.96);
+    } else if (tvar === 'mlha') {
+      c.width = Math.round(W * 1.7);
+      c.height = Math.round(H * 0.45);
+      cc.globalAlpha = 0.85;
+      cc.drawImage(mrak, 0, 0, c.width, c.height);
+    } else if (tvar === 'hrozen') {
+      c.width = Math.round(W * 1.45);
+      c.height = Math.round(H * 1.1);
+      cc.drawImage(mrak, c.width - W * 0.92, 0, W * 0.92, H * 0.92);   // zadní
+      cc.drawImage(mrak, 0, c.height - H, W, H);                       // přední
+    } else if (tvar === 'veze') {
+      c.width = Math.round(W * 1.05);
+      c.height = Math.round(H * 1.85);
+      cc.drawImage(mrak, c.width * 0.12, 0, W * 0.8, H * 0.85);          // hlava
+      cc.drawImage(mrak, c.width * 0.18, H * 0.55, W * 0.7, H * 0.8);    // dřík
+      cc.drawImage(mrak, 0, c.height - H, c.width, H);                   // základna
+    } else {
+      c.width = W;
+      c.height = H;
+      cc.drawImage(mrak, 0, 0);
+    }
+    tvary.set(tvar, c);
+    return c;
+  }
+
+  function tonovany(druh, den, tvar) {
+    tvar = tvar || 'kupa';
     const krok = Math.round(den * 4);          // 5 kroků den/noc stačí
-    const klic = druh + '|' + krok;
+    const klic = druh + '|' + krok + '|' + tvar;
     const hotovy = tonovane.get(klic);
     if (hotovy) return hotovy;
     if (!mrakNacten) return null;
+    const zaklad = slozTvar(tvar);
     const t = TONY[druh] || TONY.zatazeno;
     const d = krok / 4;
     const barva = [
@@ -348,17 +421,23 @@ const Pocasi = (() => {
       Math.round(NOC[1] + (t[1] - NOC[1]) * d),
       Math.round(NOC[2] + (t[2] - NOC[2]) * d),
     ];
+    const sp = SPODEK[druh] || 0.85;
     const c = document.createElement('canvas');
-    c.width = mrak.naturalWidth;
-    c.height = mrak.naturalHeight;
+    c.width = zaklad.width;
+    c.height = zaklad.height;
     const cc = c.getContext('2d');
-    cc.drawImage(mrak, 0, 0);
-    // násobení barvou zachová stínování spritu (jako modulate ve 2D)
+    cc.drawImage(zaklad, 0, 0);
+    // násobení barvou zachová stínování spritu (jako modulate ve 2D);
+    // svislý gradient udělá těžký spodek dešťových a bouřkových mraků
     cc.globalCompositeOperation = 'multiply';
-    cc.fillStyle = 'rgb(' + barva.join(',') + ')';
+    const g = cc.createLinearGradient(0, 0, 0, c.height);
+    g.addColorStop(0, 'rgb(' + barva.join(',') + ')');
+    g.addColorStop(0.5, 'rgb(' + barva.join(',') + ')');
+    g.addColorStop(1, 'rgb(' + barva.map((x) => Math.round(x * sp)).join(',') + ')');
+    cc.fillStyle = g;
     cc.fillRect(0, 0, c.width, c.height);
     cc.globalCompositeOperation = 'destination-in';
-    cc.drawImage(mrak, 0, 0);      // vrátit průhlednost spritu
+    cc.drawImage(zaklad, 0, 0);    // vrátit průhlednost spritu
     tonovane.set(klic, c);
     return c;
   }
@@ -565,9 +644,12 @@ const Pocasi = (() => {
         // u horizontu projekce diverguje (2622 px/km proti 48 ve
         // středu) — takový bod je prakticky v nekonečnu
         if (lokal > pxNaKmVodorovne * 4.5) { _zah.horizont++; continue; }
-        const g = Math.min(kratsi * 0.21, krok * 0.52 * lokal);
+        // 5. 9.: každý mrak má svou velikost (±), tvar a výšku
+        const g = Math.min(kratsi * 0.21, krok * 0.52 * lokal)
+          * (0.95 + 0.4 * hash(fx, fy, 11));
         if (g < 16) { _zah.maly++; continue; }
-        const y = p.y - (VYSKA_KM[pocasi.druh] || 1.7) * lokal * sinP;
+        const vKm = vyskaMrakuKm(pocasi.druh, hash(fx, fy, 9));
+        const y = p.y - vKm * lokal * sinP;
         if (p.x < -g * 1.6 || p.x > w + g * 1.6 || y < -g * 1.5) {
           _zah.mimo++;
           continue;
@@ -591,6 +673,9 @@ const Pocasi = (() => {
                      x: p.x - kotvaPx.x, y: y - kotvaPx.y,
                      yz: p.y - kotvaPx.y, g,
                      druh: pocasi.druh, alfa,
+                     tvar: tvarMraku(pocasi.druh, hash(fx, fy, 8)),
+                     vyskaKm: vKm,
+                     zrc: hash(fx, fy, 10) > 0.5,
                      f1: hash(fx, fy, 5) * 6.3,
                      f2: hash(fx, fy, 6) * 6.3 });
       }
@@ -677,7 +762,7 @@ const Pocasi = (() => {
     // výš — proto dvě smyčky, ať mraky zůstanou nad závoji.
     const videt = [];
     for (const m of obloha.mraky) {
-      const sila = silaVysky(m.druh, vyskaKamery);
+      const sila = silaVysky(m.druh, vyskaKamery, m.vyskaKm);
       if (sila <= 0.01) continue;
       // drift počítáme zvlášť, ať ho stín a mokro na zemi kopírují —
       // jinak by mrak plul a jeho stín stál
@@ -700,7 +785,7 @@ const Pocasi = (() => {
     }
     for (const v of videt) {
       kresliMrak(v.m.druh, v.x, v.y, v.m.g,
-                 Math.min(1, v.m.alfa * v.sila), den, naklon);
+                 Math.min(1, v.m.alfa * v.sila), den, naklon, v.m.tvar, v.m.zrc);
     }
     return videt.length;
   }
@@ -989,10 +1074,14 @@ const Pocasi = (() => {
         if (isFinite(d) && d > 0.0001) pxNaKm = d;
       }
       const g = Math.max(kratsi * 0.07, Math.min(strop,
-          VELIKOST_KM * pxNaKm));
+          VELIKOST_KM * pxNaKm)) * (0.9 + 0.3 * hash(idx, 4, 4));
+      // 5. 9.: tvar, výška a zrcadlení z pořadí bodu (pevné)
+      const tvar = tvarMraku(bod.druh, hash(idx, 1, 4));
+      const vKm = vyskaMrakuKm(bod.druh, hash(idx, 2, 4));
+      const zrc = hash(idx, 3, 4) > 0.5;
       // zvednutí nad krajinu: svislá osa se do obrazu promítá se
       // sinem náklonu (shora = nula, u horizontu plná výška)
-      const vyska = (VYSKA_KM[bod.druh] || 1.7) * pxNaKm * sinP;
+      const vyska = vKm * pxNaKm * sinP;
       const y = p.y - vyska;
       if (p.x < -g || p.x > w + g || y < -g * 1.4 || y > h + g) continue;
       // stejné počasí kousek vedle nic nepřidá
@@ -1011,17 +1100,17 @@ const Pocasi = (() => {
       if (sv && typeof sv.slunceEl === 'number' && sv.slunceEl > 2
           && bod.druh !== 'mlha') {
         const elR = Math.max(6, sv.slunceEl) * Math.PI / 180;
-        const delkaKm = Math.min(6, (VYSKA_KM[bod.druh] || 1.7) / Math.tan(elR));
+        const delkaKm = Math.min(6, vKm / Math.tan(elR));
         const smer = ((sv.slunceAz || 0) + 180) * Math.PI / 180;
         const sx = p.x + Math.sin(smer) * delkaKm * pxNaKm;
         const sy = p.y - Math.cos(smer) * delkaKm * pxNaKm;
         const silaStinu = alfa * 0.22 * Math.min(1, sv.slunceEl / 30);
-        kresliStinMraku(sx, sy, g, silaStinu, naklon);
+        kresliStinMraku(sx, sy, g * (tvar === 'plochy' ? 1.25 : 1), silaStinu, naklon);
       }
       // ať jsou při náklonu ZŘETELNĚJŠÍ (přání 10. 8.) — obloha má
       // být čitelná i proti pestré krajině
       kresliMrak(bod.druh, p.x, y, g,
-                 Math.min(1, alfa * (1 + 0.20 * naklon)), den, naklon);
+                 Math.min(1, alfa * (1 + 0.20 * naklon)), den, naklon, tvar, zrc);
     }
   }
 
@@ -1044,14 +1133,27 @@ const Pocasi = (() => {
     ctx.restore();
   }
 
-  function kresliMrak(druh, x, y, g, alfa, den, naklon) {
-    const sprite = tonovany(druh, den);
+  function kresliMrak(druh, x, y, g, alfa, den, naklon, tvar, zrc) {
+    tvar = tvar || 'kupa';
+    const sprite = tonovany(druh, den, tvar);
     if (!sprite) return;
-    const sirka = g * (druh === 'polojasno' ? 1.0 : 1.2);
+    const sirka = g * (druh === 'polojasno' ? 1.0 : 1.2)
+      * (tvar === 'plochy' || tvar === 'mlha' ? 1.3 : 1);
     const vyska = sirka * sprite.height / sprite.width;
     ctx.globalAlpha = Math.min(1,
         alfa * (druh === 'mlha' ? 0.6 : (druh === 'bourka' ? 0.95 : 0.92)));
-    ctx.drawImage(sprite, x - sirka / 2, y - vyska / 2, sirka, vyska);
+    // SPOLEČNÁ ZÁKLADNA: všechny tvary sedí spodkem tam, kde seděl
+    // beránek (y + 0,31 šířky); věže a hrozny rostou nahoru
+    const spodek = y + sirka * 0.31;
+    if (zrc) {
+      ctx.save();
+      ctx.translate(x, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(sprite, -sirka / 2, spodek - vyska, sirka, vyska);
+      ctx.restore();
+    } else {
+      ctx.drawImage(sprite, x - sirka / 2, spodek - vyska, sirka, vyska);
+    }
     // SRÁŽKOVÁ CLONA POD MRAKEM (jen při náklonu): mrak visí nad
     // krajinou, takže déšť/sníh smí padat celou tu výšku k zemi —
     // z pár čárek pod obláčkem je rázem vidět, KDE zrovna prší

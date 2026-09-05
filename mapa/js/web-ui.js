@@ -16,6 +16,11 @@
  * nejvýš 400 nejbližších, s obrázkem kategorie (nebo bublinou s emoji).
  * ERBY: `data/erby_index.json` × objevené obce ze synchronizace
  * (`trailCounts`) → `OkolnikMost.erby`, jako v aplikaci (do 300 nejbližších).
+ * MOJE VRSTVY (5. 9. odpoledne, „appka má 56 filtrů a web jen 51“): pět
+ * přepínačů jako v appce – Moje místa a Deník ze synchronizace, Oblíbená
+ * (souřadnice posílá appka od 1.609.1 v `favoritesMeta`), Turistické značky
+ * z `data/trails.json` (kopie z aplikace, jen výřez) a Cyklotrasy přes
+ * `OkolnikMost.cyklo`. Čitatel/jmenovatel Filtrů tak sedí s telefonem.
  */
 (function () {
   'use strict';
@@ -23,6 +28,17 @@
 
   var KLIC_FILTRY = 'okolnik.web.filtry.v2';
   var KLIC_REZIM = 'okolnik.web.rezim.v1';
+  var KLIC_VRSTVY = 'okolnik.web.vrstvy.v1';
+  var VRSTVY = [
+    { k: 'moje', l: 'Moje místa', e: '📍' },
+    { k: 'oblibena', l: 'Oblíbená', e: '⭐' },
+    { k: 'denik', l: 'Deník', e: '📖' },
+    { k: 'znacky', l: 'Turistické značky', e: '🥾' },
+    { k: 'cyklo', l: 'Cyklotrasy', e: '🚲' },
+  ];
+  var vrstvy = {};                   // k → bool
+  var znackyData = null;             // data/trails.json (až po zapnutí)
+  var znackyNacitam = false;
   var MAX_BODU = 400;
   var MAX_ERBU = 300;
   var KROK = 0.25;
@@ -261,6 +277,7 @@
     return out;
   }
   function nactiFiltry() {
+    nactiVrstvy();
     var u = nacti(KLIC_FILTRY, null);
     chipyVse().forEach(function (k) { aktivni[k] = u ? u[k] !== false : true; });
     chipKategorie = {};
@@ -273,7 +290,85 @@
   function obnovFiltryChip() {
     var vse = chipyVse();
     var n = vse.filter(function (k) { return aktivni[k]; }).length;
-    ui.filtry.textContent = 'Filtry ' + n + '/' + vse.length;
+    var v = VRSTVY.filter(function (x) { return vrstvy[x.k]; }).length;
+    ui.filtry.textContent = 'Filtry ' + (n + v) + '/' + (vse.length + VRSTVY.length);
+  }
+  /* ───────────── moje vrstvy (jako v appce) ───────────── */
+  function nactiVrstvy() {
+    var u = nacti(KLIC_VRSTVY, null);
+    VRSTVY.forEach(function (x) {
+      vrstvy[x.k] = u ? u[x.k] !== false : (x.k === 'moje' || x.k === 'oblibena' || x.k === 'denik');
+    });
+  }
+  function aplikujVrstvy() {
+    uloz(KLIC_VRSTVY, vrstvy);
+    obnovFiltryChip();
+    try { if (typeof OkolnikMost !== 'undefined') OkolnikMost.cyklo(!!vrstvy.cyklo); } catch (e) { }
+    if (vrstvy.znacky && !znackyData && !znackyNacitam) {
+      znackyNacitam = true;
+      fetch('data/trails.json').then(function (r) { return r.json(); })
+        .then(function (d) { znackyData = d || {}; znackyNacitam = false; posliZnacky(); })
+        .catch(function (e) { znackyNacitam = false; console.warn('[web-ui] značky', e); });
+    }
+    posliZnacky();
+    posliMista();
+  }
+  /* značky KČT: jen úseky ve výřezu (± 20 %), od zoomu 10,5 */
+  function posliZnacky() {
+    if (typeof OkolnikMost === 'undefined' || !mapa) return;
+    if (!vrstvy.znacky || !znackyData || mapa.getZoom() < 10.5) {
+      if (posliZnacky._poslano) { posliZnacky._poslano = false; try { OkolnikMost.znacky([]); } catch (e) { } }
+      return;
+    }
+    var b = mapa.getBounds();
+    var dx = (b.getEast() - b.getWest()) * 0.2, dy = (b.getNorth() - b.getSouth()) * 0.2;
+    var w = (b.getWest() - dx) * 1e5, e = (b.getEast() + dx) * 1e5;
+    var s = (b.getSouth() - dy) * 1e5, n = (b.getNorth() + dy) * 1e5;
+    var out = [];
+    for (var barva in znackyData) {
+      var useky = znackyData[barva];
+      for (var i = 0; i < useky.length; i++) {
+        var u = useky[i], uvnitr = false;
+        for (var j = 0; j + 1 < u.length; j += 2) {
+          if (u[j] >= s && u[j] <= n && u[j + 1] >= w && u[j + 1] <= e) { uvnitr = true; break; }
+        }
+        if (!uvnitr) continue;
+        var body = [];
+        for (var q = 0; q + 1 < u.length; q += 2) body.push([u[q] / 1e5, u[q + 1] / 1e5]);
+        out.push({ b: barva === 'o' ? 'r' : barva, body: body });
+        if (out.length >= 4000) break;
+      }
+    }
+    posliZnacky._poslano = true;
+    try { OkolnikMost.znacky(out); } catch (e) { console.warn('[web-ui] znacky', e); }
+  }
+  /* body mých vrstev ze synchronizovaného stavu */
+  function mojeBody() {
+    var w = window.OkolnikWeb, stav = w && w.stav;
+    var out = [];
+    if (!stav) return out;
+    if (vrstvy.moje) {
+      (stav.private || []).forEach(function (m, i) {
+        if (!m || !isFinite(+m.lat) || !isFinite(+m.lon)) return;
+        out.push({ id: 'moje:' + (m.id || i), lat: +m.lat, lng: +m.lon, b: '#7E57C2',
+          ik: 'emoji|📍|#7E57C2', t: m.name || 'Moje místo' });
+      });
+    }
+    if (vrstvy.oblibena) {
+      (stav.favoritesMeta || []).forEach(function (m, i) {
+        if (!m || !isFinite(+m.lat) || !isFinite(+m.lon)) return;
+        out.push({ id: 'fav:' + (m.id || i), lat: +m.lat, lng: +m.lon, b: '#FFC107',
+          ik: 'emoji|⭐|#FFC107', t: m.name || 'Oblíbené místo' });
+      });
+    }
+    if (vrstvy.denik) {
+      (stav.diary || []).forEach(function (m, i) {
+        if (!m || !isFinite(+m.lat) || !isFinite(+m.lon)) return;
+        out.push({ id: 'denik:' + (m.id || i), lat: +m.lat, lng: +m.lon, b: '#6D4C41',
+          ik: 'emoji|📖|#6D4C41', t: m.name || 'Zápis v deníku' });
+      });
+    }
+    return out;
   }
   function ikonaChipu(k) {
     var ch = kat.chipy[k] || {};
@@ -298,6 +393,23 @@
       chipyVse().forEach(function (k) { aktivni[k] = false; }); poFiltru(); vykresliFiltry();
     };
     mini.appendChild(vse); mini.appendChild(nic); telo.appendChild(mini);
+    // MOJE VRSTVY – jako v appce (ne kategorie míst, ale vlastní vrstvy)
+    var boxV = el('div', 'w-skupina');
+    var hV = el('h4');
+    var zapV = VRSTVY.filter(function (x) { return vrstvy[x.k]; }).length;
+    hV.appendChild(document.createTextNode('Moje vrstvy '));
+    hV.appendChild(el('span', null, zapV + '/' + VRSTVY.length));
+    boxV.appendChild(hV);
+    var druhyV = el('div', 'w-druhy');
+    VRSTVY.forEach(function (x) {
+      var bV = el('button', 'w-druh' + (vrstvy[x.k] ? '' : ' vyp'));
+      var emV = el('span', 'em'); emV.textContent = x.e; bV.appendChild(emV);
+      bV.appendChild(el('span', null, x.l));
+      bV.onclick = function () { vrstvy[x.k] = !vrstvy[x.k]; aplikujVrstvy(); vykresliFiltry(); };
+      druhyV.appendChild(bV);
+    });
+    boxV.appendChild(druhyV);
+    telo.appendChild(boxV);
     (kat.skupiny || []).forEach(function (sk) {
       var box = el('div', 'w-skupina');
       var h = el('h4');
@@ -400,6 +512,7 @@
       var m = vVyrezu[i];
       pole.push({ id: m.id, lat: m.lat, lng: m.lng, b: '#5B6B75', ik: ikonaMista(m), t: m.n });
     }
+    pole = pole.concat(mojeBody());
     try {
       if (typeof vykresliMista === 'function') {
         vykresliMista._znama = new Set(pole.map(function (x) { return String(x.id); }));
@@ -556,10 +669,11 @@
     ui.odkryto.innerHTML = '<span class="ik">⛶</span><span class="vel">'
       + (n ? (km2 < 10 ? km2.toFixed(1).replace('.', ',') : Math.round(km2)) + ' km²' : '–') + '</span>odkryto';
     posliErby(true);
+    naplanujMista();          // moje místa / deník / oblíbená ze stavu
   }
   function naplanujMista() {
     clearTimeout(casovac);
-    casovac = setTimeout(function () { posliMista(); posliErby(false); }, 350);
+    casovac = setTimeout(function () { posliMista(); posliErby(false); posliZnacky(); }, 350);
   }
 
   /* ───────────── start ───────────── */
@@ -592,6 +706,7 @@
         nastavRezim(r === 'cestovatel' ? 'cestovatel' : 'objevitel');
         posliMista();
         nactiErbyIndex();
+        aplikujVrstvy();
         mapa.on('moveend', naplanujMista);
         mapa.on('zoomend', naplanujMista);
       });

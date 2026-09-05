@@ -461,6 +461,11 @@ function sirkaSilnic(f) {
   const stopy = [
     [8, { motorway: 2.0, trunk: 1.8, primary: 1.5, secondary: 1.1, minor: 0.8 }],
     [16, { motorway: 12, trunk: 11, primary: 8.5, secondary: 6.5, minor: 5.0 }],
+    // 5. 9. odpoledne: ⛔ interpolace se za posledním stopem ZASTAVÍ, takže
+    // od z16 silnice přestávaly růst a na z18 byla místní ulice 1 m široká
+    // vedle desetimetrových domů. Stop z18 = 4× (přesné měřítko: šířka
+    // v metrech zůstává, dálnice ~9 m na jízdní pás, ulice ~4 m).
+    [18, { motorway: 48, trunk: 44, primary: 34, secondary: 26, minor: 20 }],
   ];
   const v = ['interpolate', ['exponential', 1.6], ['zoom']];
   for (const [z, w] of stopy) {
