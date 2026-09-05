@@ -469,9 +469,16 @@ const SILNICE_M = { motorway: 11.5, trunk: 10.5, primary: 9.0,
 const SILNICE_Z12 = { motorway: 3.0, trunk: 2.7, primary: 2.2,
                       secondary: 1.6, tertiary: 1.3, minor: 1.1 };
 const M_NA_PX_Z18 = 0.19;
+// 5. 9. večer, upřesnění „řeky jsou OK, silnice ne": řeky se na z18 kreslí
+// zhruba na 55 % skutečné šířky (řeka 8–10 m = 26 px ≈ 5 m) – silnice a
+// cesty dostávají TENTÝŽ poměr, aby rostly stejně jako řeky a nepůsobily
+// při přiblížení jako tlusté pásy.
+const SILNICE_MERITKO = 0.55;
 function sirkaSilnic(f) {
   const z18 = {};
-  for (const k of Object.keys(SILNICE_M)) z18[k] = SILNICE_M[k] / M_NA_PX_Z18;
+  for (const k of Object.keys(SILNICE_M)) {
+    z18[k] = SILNICE_M[k] * SILNICE_MERITKO / M_NA_PX_Z18;
+  }
   const stopy = [[12, SILNICE_Z12], [18, z18]];
   const v = ['interpolate', ['exponential', 2], ['zoom']];
   for (const [z, w] of stopy) {
@@ -488,9 +495,39 @@ function sirkaSilnic(f) {
 function sirkaMetry(podlaha, metry, zPodlaha) {
   return ['interpolate', ['exponential', 2], ['zoom'],
           zPodlaha == null ? 12 : zPodlaha, podlaha,
-          18, +(metry / M_NA_PX_Z18).toFixed(1)];
+          18, +(metry * SILNICE_MERITKO / M_NA_PX_Z18).toFixed(1)];
 }
 const SILNICE_SIRKA = sirkaSilnic((w) => +w.toFixed(2));
+
+
+// ⭐ 5. 9. 2026 večer: STÍNY DOMŮ („na mapě stíny z budov nejsou vidět").
+// Vytažené budovy v MapLibre stín nevrhají. Náhrada: půdorys budovy
+// posunutý od světla ve TŘECH krocích (1/3, 2/3, 1 délky stínu) – překryv
+// kopií dělá stín tmavší u paty a světlejší ke špičce, takže vypadá měkce
+// a zhruba pokryje i boky stínu hranolu. Dvě výškové třídy (do 7 m domky,
+// nad 7 m bloky), protože posun (`fill-translate`) je pro celou vrstvu
+// a nejde po budovách. Směr a délku nastavuje svetlo.js
+// (`nastavStinyDomu`) podle slunce / měsíce. Leží POD mlhou (drapované,
+// před ink-*), takže v neobjeveném kraji je kryje pergamen jako půdorysy.
+const STINY_DOMU_TRIDY = [
+  ['nizke', 6, ['<=', ['coalesce', ['get', 'render_height'], 6], 7]],
+  ['vysoke', 14, ['>', ['coalesce', ['get', 'render_height'], 6], 7]],
+];
+const STINY_DOMU_KROKY = 3;
+function stinyDomu() {
+  const v = [];
+  for (const [trida, , filtr] of STINY_DOMU_TRIDY) {
+    for (let i = 1; i <= STINY_DOMU_KROKY; i++) {
+      v.push({ id: 'stin-domu-' + trida + '-' + i, type: 'fill', source: 'omt',
+        'source-layer': 'building', minzoom: 14.5, filter: filtr,
+        paint: { 'fill-color': '#3B2A18', 'fill-antialias': false,
+                 'fill-opacity': ['interpolate', ['linear'], ['zoom'],
+                   14.5, 0, 15.2, 0.12],
+                 'fill-translate': [0, 0], 'fill-translate-anchor': 'map' } });
+    }
+  }
+  return v;
+}
 
 function stylHerni(ctx) {
   return {
@@ -507,7 +544,15 @@ function stylHerni(ctx) {
       'horizon-fog-blend': 0.9,
       'fog-ground-blend': 0.42,
     },
-    sources: zdroje(ctx, { sousedi: { type: 'geojson', data: SOUSEDI } }),
+    sources: zdroje(ctx, {
+      sousedi: { type: 'geojson', data: SOUSEDI },
+      // ⭐ 5. 9. 2026 večer: DRUH LESA ze ZABAGED (ČÚZK, CC BY 4.0) –
+      // vlastní dlaždice `lesy.pmtiles` na R2 (tools/lesy_zabaged_export.py
+      // + tools/lesy_schema.yml → planetiler). Vrstva `lesy`, vlastnost
+      // d = J jehličnaté / L listnaté / S smíšené / N bez určení, v = výška.
+      lesy: { type: 'vector', url: r2('lesy.pmtiles'),
+              attribution: '© ČÚZK ZABAGED®' },
+    }),
     layers: [
       // ===== BAREVNÉ PATRO (pod mlhou — odkrývá se objevováním) =====
       // 6. 8. „pohádkovější": teplejší papír, šťavnatější zeleně, zlatá
@@ -542,6 +587,22 @@ function stylHerni(ctx) {
           paint: { 'line-color': '#3E6B34', 'line-width': 7,
                    'line-blur': 6, 'line-opacity': 0.3 } },
       ] : []),
+      // ⭐ DRUH LESA (ZABAGED): jehličnatý tmavší a chladnější, listnatý
+      // světlejší a teplejší, smíšený jen nádech. OSM druh nezná (7 % lesů),
+      // proto samostatný zdroj `lesy`. Jen tón nad akvarelem; stromy podle
+      // druhu vybírá dekorace.js (vrstvy jsou i v jeho indexu ploch).
+      { id: 'les-jehlicnaty', type: 'fill', source: 'lesy', 'source-layer': 'lesy',
+        minzoom: 9, filter: ['==', ['get', 'd'], 'J'],
+        paint: { 'fill-color': '#1E4A3C', 'fill-opacity': 0.30,
+                 'fill-antialias': false } },
+      { id: 'les-smiseny', type: 'fill', source: 'lesy', 'source-layer': 'lesy',
+        minzoom: 9, filter: ['==', ['get', 'd'], 'S'],
+        paint: { 'fill-color': '#3E6B34', 'fill-opacity': 0.14,
+                 'fill-antialias': false } },
+      { id: 'les-listnaty', type: 'fill', source: 'lesy', 'source-layer': 'lesy',
+        minzoom: 9, filter: ['==', ['get', 'd'], 'L'],
+        paint: { 'fill-color': '#B7BE4C', 'fill-opacity': 0.22,
+                 'fill-antialias': false } },
       // MĚSTA MALOVANĚ (stupeň 2): střechy jako cihlové tahy štětce
       { id: 'zastavba', type: 'fill', source: 'omt', 'source-layer': 'landuse',
         minzoom: 10,
@@ -608,12 +669,13 @@ function stylHerni(ctx) {
         paint: AKVAREL
           ? { 'fill-pattern': 'vzor-voda', 'fill-opacity': 0.92 }
           : { 'fill-color': PALETA.tyrkys, 'fill-opacity': 0.92 } },
+      // Řeky: 5. 9. večer potvrzeno uživatelem „řeky jsou OK" – měřítko
+      // od z10 (řeka ~5 m, potok ~2 m na z18), velké řeky kreslí `voda`.
+      // Silnice mají od enginu 184 TENTÝŽ poměr (SILNICE_MERITKO).
       { id: 'reky', type: 'line', source: 'omt', 'source-layer': 'waterway',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': PALETA.tyrkys, 'line-blur': 0.4,
-                 // interpolace musí být vnější výraz (limit MapLibre);
-                 // 5. 9. večer: skutečné měřítko od z10 (řeka 5 m, potok 2 m
-                 // na z18), velké řeky kreslí plocha `voda`
+                 // interpolace musí být vnější výraz (limit MapLibre)
                  'line-width': ['interpolate', ['exponential', 2], ['zoom'],
                    10, ['match', ['get', 'class'], 'river', 1.4, 0.6],
                    18, ['match', ['get', 'class'], 'river', 26, 10]] } },
@@ -649,7 +711,7 @@ function stylHerni(ctx) {
         filter: ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#5E5850', 'line-opacity': 0.85,
-                 'line-width': sirkaSilnic((w, z) => +(w + (z >= 18 ? 3.4 : 1.4)).toFixed(2)) } },
+                 'line-width': sirkaSilnic((w, z) => +(w + (z >= 18 ? 2.4 : 1.4)).toFixed(2)) } },
       { id: 'silnice-asfalt', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 8,
         filter: ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]],
@@ -686,10 +748,11 @@ function stylHerni(ctx) {
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.7,
                  'line-width': sirkaMetry(0.4, 0.35, 13.5),
-                 'line-gap-width': sirkaSilnic((w, z) => +Math.max(0.2, w - (z >= 18 ? 4.0 : 1.2)).toFixed(2)) } },
+                 'line-gap-width': sirkaSilnic((w, z) => +Math.max(0.2, w - (z >= 18 ? 3.0 : 1.2)).toFixed(2)) } },
       { id: 'budovy-vypln', type: 'fill', source: 'omt',
         'source-layer': 'building', minzoom: 14,
         paint: { 'fill-color': '#DCC9A5', 'fill-opacity': 0.8 } },
+      ...stinyDomu(),
 
       // ===== INKOUSTOVÉ PATRO (nad mlhou — kronika viditelná vždy) =====
       // Vrstevnice: nad pergamenem dají neobjevenému terénu „mapovou" strukturu

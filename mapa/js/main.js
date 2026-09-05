@@ -2005,6 +2005,18 @@ function naplanujBudovyHerni() {
 
 function prepoctiBudovyHerni() {
   if (!mapa || !mapa.getLayer('okolnik-budovy-herni-zdi')) return;
+  // ⚠️ POŘADÍ (5. 9. večer): dekorace.js vkládá stromy PŘED první
+  // nedrapovanou vrstvu, tedy před domy → dům za stromem strom přemaloval.
+  // Domy patří před stromy (stromy jsou billboardy, ať zůstanou navrchu).
+  try {
+    const ls = mapa.getStyle().layers.map((l) => l.id);
+    const iD = ls.indexOf('okolnik-budovy-herni-zdi');
+    const iS = ls.indexOf('akvarel-dekorace');
+    if (iS >= 0 && iD > iS) {
+      mapa.moveLayer('okolnik-budovy-herni-zdi', 'akvarel-dekorace');
+      mapa.moveLayer('okolnik-budovy-herni-strecha', 'akvarel-dekorace');
+    }
+  } catch (e) { /* styl se zrovna mění */ }
   if (mapa.getZoom() < 14) return;
   let prvky = [];
   try { prvky = mapa.querySourceFeatures('omt', { sourceLayer: 'building' }); }

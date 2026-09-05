@@ -1419,12 +1419,21 @@ const Dekorace = (() => {
   // vrátil, proto je vyjmenovaná zvlášť. `SVEDCI` NESTAČÍ — těm se
   // geometrie nepřevádí, takže by se v `plochyPodBodem` nikdy neobjevila.
   const ZAKAZ_PLOCHY = ['voda'];
+  // ⭐ 5. 9. 2026 večer: DRUH LESA (ZABAGED, vrstvy `les-jehlicnaty` /
+  // `les-listnaty` v herním stylu) – jsou v indexu ploch, aby strom věděl,
+  // v jakém lese stojí. Smíšený a neurčený les = plná směs jako dřív.
+  const PLOCHY_DRUHU_LESA = ['les-jehlicnaty', 'les-listnaty'];
+  const STROMY_JEHLICNATE = ['deko-strom-6', 'deko-strom-7', 'deko-strom-8',
+                             'deko-strom-9', 'deko-strom-10'];
+  const STROMY_LISTNATE = ['deko-strom-1', 'deko-strom-2', 'deko-strom-3',
+                           'deko-strom-4', 'deko-strom-5'];
   const NOSNE = (() => {
     const s = {};
     for (const cfg of Object.values(DRUHY)) {
       for (const v of cfg.vrstvy) s[v] = 1;
     }
     for (const v of ZAKAZ_PLOCHY) s[v] = 1;
+    for (const v of PLOCHY_DRUHU_LESA) s[v] = 1;
     return s;
   })();
   // SVĚDCI: dekoraci nenesou, ale dokazují, že v tom místě data OPRAVDU
@@ -1841,8 +1850,13 @@ const Dekorace = (() => {
             bunky.set(klic, null);  // tady prokazatelně nic neroste
             continue;
           }
-          const ikona = cfg.ikony[
-            Math.floor(hash(ix, iy, 3) * cfg.ikony.length)];
+          // strom podle druhu lesa pod bodem (ZABAGED); jinde celá směs
+          let ikony = cfg.ikony;
+          if (druh === 'strom' && q) {
+            if (q.indexOf('les-jehlicnaty') >= 0) ikony = STROMY_JEHLICNATE;
+            else if (q.indexOf('les-listnaty') >= 0) ikony = STROMY_LISTNATE;
+          }
+          const ikona = ikony[Math.floor(hash(ix, iy, 3) * ikony.length)];
           // světla a světlušky: číselné id pro feature-state (mihotání)
           const svDruh = druh === 'svetlo' ? 1
               : (druh === 'svetluska' ? 2 : 0);

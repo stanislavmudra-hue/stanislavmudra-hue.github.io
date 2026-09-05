@@ -34,6 +34,37 @@ const Svetlo = (() => {
         + hex(A[2] + (B[2] - A[2]) * t);
   }
 
+  // ⭐ 5. 9. večer: STÍNY DOMŮ (styles.js `stinyDomu`) – posun půdorysů od
+  // světla. Délka = výška třídy / tan(výška světla), v px na z18 (0,19 m/px),
+  // na z12 1/64; mezi tím základ 2 = drží se krajiny. Slabší při nízkém
+  // slunci a pod mraky, v noci od měsíce, bez světla nic.
+  function nastavStinyDomu(az, el, zdroj, st) {
+    if (!mapa.getLayer('stin-domu-nizke-1')) return;
+    const elR = Math.max(8, el) * Math.PI / 180;
+    const smer = (az + 180) * Math.PI / 180;
+    let sila = zdroj === 'slunce' ? 0.13 * Math.min(1, Math.max(0, el) / 25)
+      : (zdroj === 'mesic' ? 0.06 * (st.mesicOsvit || 0.5) : 0);
+    sila *= 1 - 0.6 * Math.min(1, st.oblacnost || 0);
+    for (const [trida, vyska] of [['nizke', 6], ['vysoke', 14]]) {
+      const delka18 = vyska / Math.tan(elR) / 0.19;
+      for (let i = 1; i <= 3; i++) {
+        const k = i / 3;
+        const dx = Math.sin(smer) * delka18 * k;
+        const dy = -Math.cos(smer) * delka18 * k;
+        const id = 'stin-domu-' + trida + '-' + i;
+        if (!mapa.getLayer(id)) continue;
+        // ⛔ pole ve výrazu MUSÍ být `['literal', […]]` – holé [dx, dy] MapLibre
+        // tiše odmítl (hodnota zůstala [0,0], stíny neviditelné; 5. 9. večer)
+        mapa.setPaintProperty(id, 'fill-translate',
+          ['interpolate', ['exponential', 2], ['zoom'],
+           12, ['literal', [+(dx / 64).toFixed(2), +(dy / 64).toFixed(2)]],
+           18, ['literal', [+dx.toFixed(1), +dy.toFixed(1)]]]);
+        mapa.setPaintProperty(id, 'fill-opacity',
+          ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, +sila.toFixed(3)]);
+      }
+    }
+  }
+
   function aktualizuj() {
     try {
       if (!mapa || !mapa.getStyle || typeof Pocasi === 'undefined'
@@ -89,6 +120,8 @@ const Svetlo = (() => {
       }
       window.__svetlo = { zdroj, az: Math.round(az), el: Math.round(el),
                           barva, intenzita: +intenzita.toFixed(2) };
+      try { nastavStinyDomu(az, el, zdroj, st); }
+      catch (e4) { console.warn('[svetlo] stíny domů', e4); }
       // ⭐ 5. 9. 2026: stíny kreseb podle téhož světla (slunce / měsíc)
       try {
         if (typeof Ilustrace !== 'undefined' && Ilustrace.svetlo) {
