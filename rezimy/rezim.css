@@ -100,3 +100,4 @@ tr.ja td.jmeno::after { content: " (vy)"; color: var(--zelena); font-weight: 500
   border: 1px solid var(--linka); background: #eef1ee; }
 .mapa-info { color: var(--slabsi); margin: 0 0 10px; font-size: .95rem; }
 @media (max-width: 640px) { .mapa-moje { height: 360px; } }
+.mapa-lista { margin: 0 0 12px; }

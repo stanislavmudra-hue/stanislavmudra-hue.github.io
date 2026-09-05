@@ -1,0 +1,258 @@
+﻿<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Okolník 3D — mapový engine</title>
+<link id="ml-css" rel="stylesheet" href="vendor/maplibre-gl.css">
+<script>
+  // REŽIM APLIKACE (?app=1): demo panely schovat JEŠTĚ PŘED vykreslením
+  // těla. `zapniAppRezim()` v main.js běží až po stažení MapLibre (velký
+  // soubor) – do té doby stará tlačítka PROBLIKLA (výtka „po spuštění 3D
+  // probliknou původní ovládací tlačítka"). Třída na <html> + pravidlo
+  // v CSS níž je zakryjí od prvního snímku; main.js pak doskryje zbytek
+  // (maplibre ctrl prvky, které v HTML ještě nejsou).
+  if (new URLSearchParams(location.search).get('app') === '1') {
+    document.documentElement.classList.add('v-appce');
+  }
+</script>
+<style>
+  html.v-appce .panel, html.v-appce #napoveda, html.v-appce #znacka,
+  html.v-appce #teren-prepinac { display: none !important; }
+  html, body { margin: 0; height: 100%; overflow: hidden;
+    font-family: 'Montserrat', 'Segoe UI', system-ui, sans-serif; }
+  #mapa { position: absolute; inset: 0; }
+
+  /* ⛔ ZRNO PAPÍRU VYPNUTO (8. 8. 2026, přání uživatele „to zrno dej
+     prosím pryč"). Byl to celoobrazovkový překryv s `mix-blend-mode:
+     multiply`, který měl z kroniky udělat jeden kreslený list.
+     ⚠️ NEBYL to výkonový problém — změřeno (scratchpad/zrno.mjs, A,B,B,A):
+       3D+ s terénem, panování … 49,0/53,3 fps s ním, 51,1/54,8 bez
+       3D+ s terénem, stání …… 63,0/63,3 s ním, 64,3/63,9 bez
+       3D bez terénu, panování … 57,7/58,4 s ním, 55,3/58,5 bez
+     Vše v rozptylu. Odebráno čistě z výtvarných důvodů; vrátit se dá
+     obnovením řádku `body.styl-herni #zrno { display: block; }`. */
+  #zrno { position: absolute; inset: 0; z-index: 5; pointer-events: none;
+    display: none; background: url('assets/pergamen_zrno.png');
+    background-size: 128px 128px; opacity: 0.55;
+    mix-blend-mode: multiply; }
+
+  .panel { position: absolute; z-index: 10; display: flex; gap: 6px;
+    flex-wrap: wrap; align-items: center; }
+  .panel button {
+    border: 1px solid rgba(242,232,207,0.25); border-radius: 999px;
+    background: rgba(13,43,46,0.82); color: #F2E8CF;
+    padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+    /* backdrop blur odstraněn — na mobilu rozmazával WebGL každý snímek */
+    transition: background .15s, color .15s;
+  }
+  .panel button:hover { background: rgba(46,125,91,0.9); }
+  .panel button.aktivni { background: #F29D38; color: #0D2B2E;
+    border-color: #F29D38; }
+
+  #znacka { position: absolute; top: 10px; left: 10px; z-index: 10;
+    color: #F2E8CF; background: rgba(13,43,46,0.82); border-radius: 12px;
+    padding: 8px 14px; }
+  #znacka b { letter-spacing: 0.12em; }
+  #znacka small { opacity: 0.75; display: block; font-size: 10px; }
+
+  /* Levé panely jedou ve SLOUPCI, který se skládá sám — dřív měly pevná
+     top a při užším okně (zalomené řádky) se překrývaly, takže nebyly
+     vidět všechny filtry (výtka z 5. 8.). */
+  #leva-lista { position: absolute; top: 62px; left: 10px; z-index: 10;
+    display: flex; flex-direction: column; gap: 6px;
+    align-items: flex-start; max-width: min(92vw, 620px); }
+  #leva-lista .panel { position: static; }
+
+  #styly   { max-width: calc(100vw - 68px); }
+  #prelety button { font-weight: 500; font-size: 12px; padding: 5px 11px;
+    background: rgba(13,43,46,0.62); }
+
+  #ovladani { bottom: 64px; right: 10px; flex-direction: column;
+    align-items: flex-end; }
+
+  #mlha-ovladani { display: none; }
+  body.styl-herni #mlha-ovladani { display: flex; }
+  #mlha-ovladani button { background: rgba(46,125,91,0.85); }
+
+  /* Filtr druhů kreslených míst (jen herní styl) */
+  #ilus-filtr { display: none; }
+  body.styl-herni #ilus-filtr { display: flex; }
+  #ilus-filtr button { font-weight: 500; font-size: 11px; padding: 4px 10px;
+    background: rgba(13,43,46,0.62); }
+  #ilus-filtr button.aktivni { background: #F29D38; color: #0D2B2E;
+    border-color: #F29D38; }
+
+  /* Karta detailu místa po klepnutí na kresbu */
+  #ilus-detail { display: none; position: absolute; z-index: 11;
+    bottom: 96px; left: 50%; transform: translateX(-50%);
+    width: min(360px, 92vw); background: #F6ECD4;
+    border: 1px solid rgba(74,59,40,0.4); border-radius: 14px;
+    padding: 14px 16px 12px; color: #3A2812;
+    box-shadow: 0 8px 28px rgba(13,43,46,0.35); }
+  #ilus-detail img { display: block; margin: 0 auto 6px;
+    max-height: 170px; max-width: 100%; }
+  #ilus-detail h3 { margin: 0; text-align: center; font-size: 17px;
+    letter-spacing: 0.02em; }
+  #ilus-detail .druh { display: block; text-align: center; font-size: 11px;
+    opacity: 0.7; margin: 2px 0 8px; }
+  #ilus-detail p { margin: 0; font-size: 13px; line-height: 1.45;
+    max-height: 132px; overflow-y: auto; }
+  #ilus-detail .zavrit { position: absolute; top: 6px; right: 10px;
+    border: none; background: none; color: #3A2812; font-size: 20px;
+    cursor: pointer; padding: 2px 6px; }
+
+  #info { display: none; position: absolute; bottom: 28px; left: 10px;
+    z-index: 10; background: rgba(13,43,46,0.85); color: #F2E8CF;
+    border-radius: 10px; padding: 8px 13px; font-size: 13px;
+    /* backdrop blur odstraněn — na mobilu rozmazával WebGL každý snímek */ }
+
+  #napoveda { position: absolute; bottom: 28px; right: 10px; z-index: 9;
+    color: rgba(242,232,207,0.85); background: rgba(13,43,46,0.55);
+    font-size: 11px; border-radius: 8px; padding: 5px 9px; }
+
+  /* Navigace */
+  .panel-vyber { border-radius: 999px; border: 1px solid rgba(242,232,207,0.25);
+    background: rgba(13,43,46,0.82); color: #F2E8CF; padding: 6px 10px;
+    font-size: 13px; font-weight: 600; }
+  #nav-info { position: absolute; bottom: 96px; left: 50%;
+    transform: translateX(-50%); z-index: 11; background: rgba(13,43,46,0.88);
+    color: #F2E8CF; border-radius: 10px; padding: 7px 14px; font-size: 13px; }
+  #nav-graf { position: absolute; bottom: 28px; left: 50%;
+    transform: translateX(-50%); z-index: 11; width: min(560px, 86vw);
+    height: 64px; background: rgba(242,232,207,0.92); border-radius: 10px; }
+
+  @media (max-width: 640px) {
+    #znacka small { display: none; }
+    #napoveda { display: none; }
+    /* Čtyři chipy stylů se MUSÍ vejít na jeden řádek — zalomený „Herní"
+       končil schovaný pod řádkem přeletů a nešel stisknout */
+    #styly button { padding: 6px 9px; font-size: 12px; }
+    #prelety button { padding: 4px 8px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+<div id="mapa"></div>
+<div id="zrno"></div>
+
+<div id="znacka"><b>OKOLNÍK&nbsp;3D</b><small>mapový engine · v0.1 ·
+  OBJEV. PROŽIJ. SDÍLEJ.</small></div>
+
+<div id="leva-lista">
+<div id="styly" class="panel">
+  <button data-styl="zakladni" class="aktivni">Základní</button>
+  <button data-styl="letecka">Letecká</button>
+  <button data-styl="turisticka">Turistická</button>
+  <button data-styl="herni">Herní</button>
+</div>
+
+<div id="prelety" class="panel">
+  <button data-kam="snezka">▲ Sněžka</button>
+  <button data-kam="rip">▲ Říp</button>
+  <button data-kam="lysa">▲ Lysá hora</button>
+  <button data-kam="rtyne">⌂ Rtyně</button>
+  <button data-kam="praha">⌂ Praha</button>
+  <button data-kam="cesko">⟲ Celá ČR</button>
+</div>
+
+<div id="mlha-ovladani" class="panel">
+  <button id="mlha-demo">🥾 Demo výpravy</button>
+  <button id="mlha-reset">Reset mlhy</button>
+</div>
+
+<div id="ilus-filtr" class="panel">
+  <button data-skupina="vse" class="aktivni">Vše</button>
+  <button data-skupina="hrady">Hrady</button>
+  <button data-skupina="mesta">Města</button>
+  <button data-skupina="hory">Hory</button>
+  <button data-skupina="skaly">Skály</button>
+  <button data-skupina="voda">Voda</button>
+  <button data-skupina="jeskyne">Jeskyně</button>
+  <button data-skupina="pamatky">Památky</button>
+</div>
+</div><!-- /leva-lista -->
+
+<div id="ovladani" class="panel">
+  <button id="nav-prepinac">🧭 Navigace</button>
+  <select id="nav-profil-vyber" class="panel-vyber">
+    <option value="pesky">pěšky</option>
+    <option value="kolo">kolo</option>
+  </select>
+  <button id="nav-prolet" style="display:none">▶ Prolet</button>
+  <button id="nav-zrusit" style="display:none">✕ Zrušit</button>
+  <button id="teren-prepinac" class="aktivni">3D zapnuto</button>
+</div>
+<div id="nav-info" style="display:none"></div>
+<canvas id="nav-graf" style="display:none"></canvas>
+
+<div id="ilus-detail">
+  <button class="zavrit" title="Zavřít">×</button>
+  <img alt="">
+  <h3></h3>
+  <small class="druh"></small>
+  <p></p>
+</div>
+
+<div id="info"></div>
+<div id="napoveda">Klepnutí do mapy = nadmořská výška · pravé tlačítko / dva
+  prsty = náklon</div>
+
+<!-- Doplňky jsou samostatné globály (mlcontour, pmtiles) — maplibregl
+     sahají až z našich skriptů, smí se tedy načíst staticky napřed. -->
+<script src="vendor/maplibre-contour-pmtiles.min.js"></script>
+<script src="vendor/pmtiles.js"></script>
+<script>
+// ZAVADĚČ (8. 8., od 10. 8. je v6 VÝCHOZÍ — schváleno uživatelem):
+// MapLibre v6 je jen ES modul (.mjs, UMD zrušeno), záložní v5.24 je
+// klasický skript (`?ml=5`). Zavaděč napřed zajistí globál
+// `maplibregl` (v6 = namespace modulu přes dynamický import), teprve
+// pak řetězí NAŠE skripty v původním pořadí. ?v=N u našich skriptů
+// dál vynucuje čerstvý kód (VERZE níž; vendor se nemění).
+// ⚠️ Server MUSÍ posílat .mjs jako text/javascript (serve.py má
+// extensions_map; starší běžící server je nutné RESTARTOVAT, jinak
+// v6 nenaběhne — „Failed to load module script").
+(function () {
+  const V5 = new URLSearchParams(location.search).get('ml') === '5';
+  const VERZE = '?v=170';
+  const SKRIPTY = ['js/styles.js', 'js/fog.js', 'js/pocasi.js',
+    'js/svetlo.js', 'js/trpyt.js',
+    'js/postavicka.js', 'js/dekorace.js', 'js/ilustrace.js',
+    'js/erby.js', 'js/navigace.js', 'js/dobyvatel.js',
+    'js/modely3d.js', 'js/main.js'];
+  // ⭐ 5. 9. 2026: WEBOVÝ REŽIM (okolnik.cz/mapa/?web=1) – stav hry ze
+  // synchronizace pod účtem místo mostu do aplikace; až PO main.js
+  if (new URLSearchParams(location.search).get('web') === '1') {
+    SKRIPTY.push('js/web.js');
+  }
+  function dal() {
+    const s = SKRIPTY.shift();
+    if (!s) return;
+    const el = document.createElement('script');
+    el.src = s + VERZE;
+    el.onload = dal;
+    el.onerror = function () { console.error('[zavaděč] nenačten', s); };
+    document.body.appendChild(el);
+  }
+  if (V5) {
+    const el = document.createElement('script');
+    el.src = 'vendor/maplibre-gl.js';
+    el.onload = dal;
+    document.body.appendChild(el);
+  } else {
+    document.getElementById('ml-css').href = 'vendor/maplibre-gl-v6.css';
+    import('./vendor/maplibre-gl-v6.mjs')
+      .then(function (m) { window.maplibregl = m; dal(); })
+      .catch(function (e) {
+        console.error('[zavaděč] MapLibre v6 se nenačetl — nouzově v5',
+                      e);
+        const el = document.createElement('script');
+        el.src = 'vendor/maplibre-gl.js';
+        el.onload = dal;
+        document.body.appendChild(el);
+      });
+  }
+})();
+</script>
+</body>
+</html>

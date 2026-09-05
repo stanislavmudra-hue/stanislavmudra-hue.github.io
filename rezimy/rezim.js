@@ -763,15 +763,25 @@ function nakresliMapu(plátno, cells, trips, diary) {
   });
 }
 
+var HERNI_MAPA = '/mapa/?web=1&styl=herni';
+
+function odkazTlacitko(text, href) {
+  var a = prvek('a', 'tlacitko', text);
+  a.href = href;
+  return a;
+}
+
 function vykresliMapu() {
   var box = el('mapaMoje');
   if (!box) return;
   prazdny(box);
   if (!relace || UKAZKA) {
-    box.appendChild(stavovaKarta('Vaše mapa po přihlášení',
+    var k = stavovaKarta('Vaše mapa po přihlášení',
       'Přihlaste se stejným účtem jako v aplikaci a uvidíte tu svou ' +
       'odkrytou mapu, fotovýpravy a zápisy. Aplikace je pod váš účet ' +
-      'ukládá od verze 1.608 – jen pro vás, nikdy veřejně.', ''));
+      'ukládá od verze 1.608 – jen pro vás, nikdy veřejně.', '');
+    k.appendChild(odkazTlacitko('Prohlédnout herní mapu', HERNI_MAPA));
+    box.appendChild(k);
     return;
   }
   box.appendChild(nacitani('Načítám vaši mapu…'));
@@ -800,6 +810,10 @@ function vykresliMapu() {
       'Odkryto přibližně ' + cislo(cells.length * PLOCHA_BUNKY_KM2, 0) +
       ' km² · ' + trips.length + ' fotovýprav · ' + diary.length +
       ' zápisů' + kdy + '. Vidíte to jen vy.'));
+    // ⭐ 5. 9.: tatáž herní mapa jako v aplikaci (engine na /mapa/)
+    var lista = prvek('p', 'mapa-lista');
+    lista.appendChild(odkazTlacitko('Otevřít herní mapu', HERNI_MAPA));
+    box.appendChild(lista);
     var platno = prvek('div', 'mapa-moje');
     box.appendChild(platno);
     return zajistiMaplibre().then(function () {
