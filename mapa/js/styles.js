@@ -484,7 +484,10 @@ function sirkaSilnic(f) {
   // plochy rostou dál") → stop až na z22 = maxZoom, ×16 proti z18
   const z22 = {};
   for (const k of Object.keys(z18)) z22[k] = z18[k] * 16;
-  const stopy = [[12, SILNICE_Z12], [18, z18], [22, z22]];
+  // 4. kolo: JEN DVA STOPY (z12 podlaha, z22 skutečné) – datově závislé
+  // šířky peče MapLibre po dlaždicích mezi krycími stopy; s třemi stopy
+  // měla každá dlaždice jinou křivku a na hraně zmrzla (poskakování)
+  const stopy = [[12, SILNICE_Z12], [22, z22]];
   const v = ['interpolate', ['exponential', 2], ['zoom']];
   for (const [z, w] of stopy) {
     v.push(z, ['match', ['get', 'class'],
@@ -501,7 +504,6 @@ function sirkaMetry(podlaha, metry, zPodlaha) {
   const px18 = metry * SILNICE_MERITKO / M_NA_PX_Z18;
   return ['interpolate', ['exponential', 2], ['zoom'],
           zPodlaha == null ? 12 : zPodlaha, podlaha,
-          18, +px18.toFixed(1),
           22, +(px18 * 16).toFixed(1)];
 }
 const SILNICE_SIRKA = sirkaSilnic((w) => +w.toFixed(2));
@@ -688,7 +690,6 @@ function stylHerni(ctx) {
                  // interpolace musí být vnější výraz (limit MapLibre)
                  'line-width': ['interpolate', ['exponential', 2], ['zoom'],
                    10, ['match', ['get', 'class'], 'river', 1.4, 0.6],
-                   18, ['match', ['get', 'class'], 'river', 26, 10],
                    22, ['match', ['get', 'class'], 'river', 416, 160]] } },
       // ⭐ v1.538: CESTY MUSÍ BÝT VIDĚT (výtka „v herním módu nejsou
       // moc vidět silnice a cesty“). Měly **pevnou šířku 1,1 px** —

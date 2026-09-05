@@ -61,7 +61,7 @@ const Dekorace = (() => {
               'deko-strom-4', 'deko-strom-5', 'deko-strom-6',
               'deko-strom-7', 'deko-strom-8', 'deko-strom-9',
               'deko-strom-10'],
-      k: 0.72,                    // −20 % (přání 9. 8.: „ještě trochu menší")
+      k: 1.0,                     // 5. 9. večer: k = podíl výšky stromu (18 m)
       hustota: 0.56,              // v1.425: „stromů uber o 20 %“ (0,70→0,56)
     },
     kvet: {
@@ -72,11 +72,11 @@ const Dekorace = (() => {
       // květiny skoro neměly kde vyrůst. Přidáno `pole` (farmland),
       // což je většina otevřené krajiny u nás.
       vrstvy: ['louka', 'pole'],
-      z0: 14.6,
+      z0: 16.8,                   // 5. 9. večer: skutečná velikost ~1,6 m → vidět až zblízka
       // 6 květin: pátá řada listu + luční směs ze čtvrté řady
       ikony: ['deko-kvet-1', 'deko-kvet-2', 'deko-kvet-3',
               'deko-kvet-4', 'deko-kvet-5', 'deko-kvet-6'],
-      k: 0.48,                    // −20 % (přání 9. 8.)
+      k: 0.09,                    // ~1,6 m
       hustota: 0.62,
     },
     // ⭐ v1.423: rostliny od uživatele (archy jaro/léto/podzim,
@@ -86,13 +86,13 @@ const Dekorace = (() => {
       rozestup: 85,
       zjemnit: true,
       vrstvy: ['pole'],
-      z0: 13.6,
+      z0: 16.2,                   // 5. 9. večer: ~2,3 m
       // obilní pás (1–5) + kukuřice, slunečnice, řepka, len, pohanka
       ikony: ['deko-plodina-1', 'deko-plodina-2', 'deko-plodina-3',
               'deko-plodina-4', 'deko-plodina-5', 'deko-plodina-6',
               'deko-plodina-7', 'deko-plodina-8', 'deko-plodina-9',
               'deko-plodina-10'],
-      k: 0.5,
+      k: 0.13,                    // ~2,3 m
       hustota: 0.5,
     },
     bylina: {
@@ -100,12 +100,12 @@ const Dekorace = (() => {
       rozestup: 95,
       zjemnit: true,
       vrstvy: ['louka'],
-      z0: 13.8,
+      z0: 16.4,                   // 5. 9. večer: ~2 m
       // luční trávy (1–5), třtina, orobinec, jetel
       ikony: ['deko-bylina-1', 'deko-bylina-2', 'deko-bylina-3',
               'deko-bylina-4', 'deko-bylina-5', 'deko-bylina-6',
               'deko-bylina-7', 'deko-bylina-8'],
-      k: 0.44,
+      k: 0.11,                    // ~2 m
       hustota: 0.5,
     },
     podrost: {
@@ -113,10 +113,10 @@ const Dekorace = (() => {
       rozestup: 120,
       zjemnit: true,
       vrstvy: ['les'],
-      z0: 14.2,
+      z0: 16.0,                   // 5. 9. večer: „kopřiva je velká jako strom" → ~3 m
       // kopřiva a kapradí do podlesí
       ikony: ['deko-podrost-1', 'deko-podrost-2'],
-      k: 0.42,
+      k: 0.17,                    // ~3 m
       hustota: 0.35,
     },
     ker: {
@@ -124,20 +124,20 @@ const Dekorace = (() => {
       rozestup: 155,
       zjemnit: true,
       vrstvy: ['louka', 'les', 'pole'],
-      z0: 14.6,
+      z0: 15.6,                   // 5. 9. večer: keř ~4 m
       // ⚠️ Listy nesou jen DVA keře (borůvčí a kvetoucí keřík); dřívější
       // `ker-3`/`ker-4` byly z pečených ikon a v malbách nejsou.
       ikony: ['deko-ker-1', 'deko-ker-2'],
-      k: 0.54,                    // −20 % (přání 9. 8.)
+      k: 0.22,                    // ~4 m
       hustota: 0.33,              // 29. 8.: −20 % (louky)
     },
     kamen: {
       rozestup: 170,
       zjemnit: true,
       vrstvy: ['louka', 'les'],
-      z0: 15.1,
+      z0: 16.6,                   // 5. 9. večer: balvan ~2 m
       ikony: ['deko-kamen-1', 'deko-kamen-2', 'deko-kamen-3'],
-      k: 0.55,                    // ~24 px na z15,4
+      k: 0.1,                     // ~2 m
       hustota: 0.42,
     },
     // ⭐ SVĚTLA SÍDEL (v1.384–385, „ať města a vesničky v noci
@@ -178,9 +178,9 @@ const Dekorace = (() => {
       rozestup: 600,
       zjemnit: true,
       vrstvy: ['louka', 'pole'],
-      z0: 13.4,
+      z0: 16.4,                   // 5. 9. večer: sněhulák ~2 m
       ikony: ['deko-snehulak'],
-      k: 0.46,
+      k: 0.11,
       hustota: 0.2,
       sezony: ['zima'],
     },
@@ -469,11 +469,16 @@ const Dekorace = (() => {
         // zpět původní a příčina se musí hledat jinde (kandidáti:
         // přepočet composite icon-size při výměně bucketu dlaždice,
         // nástupová rampa jemné kohorty končící na 15,65).
-        'icon-size': ['interpolate', ['exponential', 1.8], ['zoom'],
-          13.25, ['*', ['get', 'k'], 0.30],
-          15.4, ['*', ['get', 'k'], 0.70],
-          17.6, ['*', ['get', 'k'], 2.55],
-          22, ['*', ['get', 'k'], 53.8]],
+        // ⭐⭐ 5. 9. 2026 večer, 4. kolo („vše má růst jako řeka, jako
+        // malba; vše ostatní poskakuje po krocích"): MapLibre peče
+        // velikost symbolu po DLAŽDICÍCH mezi dvěma krycími stopy výrazu
+        // (symbol_size.ts getSizeData) – s více stopy měla každá dlaždice
+        // jinou křivku a na hraně zmrzla, než dojela nová (= poskakování).
+        // Proto PRÁVĚ DVA STOPY se základem 2: strom `k` = 1 je 18 m
+        // (2,15 × 44 px na z18), roste a klesá přesně s krajinou.
+        'icon-size': ['interpolate', ['exponential', 2], ['zoom'],
+          13.25, ['*', ['get', 'k'], 0.08],
+          22, ['*', ['get', 'k'], 34.4]],
       },
       paint: {
         // rychlý a pro všechny druhy stejně dlouhý nástup — hodnoty
