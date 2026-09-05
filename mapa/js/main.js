@@ -1709,6 +1709,8 @@ function aplikujDoplnky() {
     Pocasi.pripoj(mapa);    // mraky dle skutečného počasí (v2.1)
     Erby.pripoj(mapa);      // erby dokončených obcí (v2.2)
     try { Trpyt.pripoj(mapa); } catch (e) { console.warn('[trpyt]', e); }
+    // ⭐ 5. 9. 2026: káně kroužící nad krajinou (den, herní styl)
+    try { Ptaci.pripoj(mapa); } catch (e) { console.warn('[ptaci]', e); }
     try { nasadDomalovani(); } catch (e) { console.warn('[domalovani]', e); }
   } else {
     Pocasi.zavri();

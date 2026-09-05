@@ -1164,7 +1164,8 @@ const Dekorace = (() => {
       // hrst můr na vesnici + pár netopýrů nad krajinou
       strop = Math.min(22, ((okna && okna.length) || 0) + 3);
     } else if (den) {
-      strop = Math.min(12, Math.max(kotvy.length, 1));
+      // 5. 9. 2026: „uber včel“ – 12 → 6
+      strop = Math.min(6, Math.max(kotvy.length, 1));
     } else {
       strop = Math.min(MUSEK_MAX, kotvy.length);
     }
@@ -1188,7 +1189,7 @@ const Dekorace = (() => {
                 : ['list', 'list', 'moucha', 'list']);
         typ = pool[musky.length % pool.length];
       } else if (den) {
-        typ = musky.length % 3 === 2 ? 'moucha' : 'vcela';
+        typ = musky.length % 2 === 0 ? 'moucha' : 'vcela';
       } else {
         typ = 'svetluska';
       }

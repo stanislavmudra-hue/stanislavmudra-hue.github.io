@@ -19,6 +19,10 @@
 // ~80 jiskřiček. Test: `window.__vynutSvetlo = {slunceEl: 30, oblacnost: 0}`.
 // ---------------------------------------------------------------------------
 const Trpyt = (() => {
+  // ⛔ 5. 9. 2026: VYPNUTO – čtyřcípé jiskřičky uživatel odmítl
+  // („hvězdičky dej pryč, nevypadá to dobře“). Kód zůstává pro
+  // případný jiný tvar odlesku (měkká záře bez cípů).
+  const TRPYT_ZAPNUT = false;
   const ZDROJ = 'trpyt';
   const VRSTVY = ['trpyt-0', 'trpyt-1', 'trpyt-2', 'trpyt-3'];
   const OPACITY = [1, 0.45, 0.08, 0.45];
@@ -216,6 +220,10 @@ const Trpyt = (() => {
   function vzorkuj(vynutit) {
     try {
       if (!mapa || !pripojeno || !mapa.getSource(ZDROJ)) return;
+      if (!TRPYT_ZAPNUT) {
+        if (rezim !== 'nic') { rezim = 'nic'; nastavData([]); zastavTik(); }
+        return;
+      }
       if (typeof Pocasi === 'undefined' || !Pocasi.stavSvetla) return;
       const st = Pocasi.stavSvetla();
       const z = mapa.getZoom();
