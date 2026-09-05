@@ -3004,8 +3004,11 @@ function aplikujNoc() {
     // tlumí přes raster-brightness-max, plochý pergamen barvou.
     // ⚠️ přechody explicitně vypnout — poučení ze zamrzlého
     // fill-opacity-transition (12. 8., čtyři buildy).
-    const JAS_MLHY = [1, 0.82, 0.62, 0.45];
-    const BARVA_PERGAMENU = ['#C8C6C3', '#A5A4A1', '#7D7C7A', '#5B5B5A'];
+    // engine 208 („na noční mapě je špatně vidět odkrytá oblast"): pergamen
+    // v noci tmavl skoro na odstín odkryté mapy pod nočním překryvem
+    // (#5B5B5A × #081226·0,78) – teď zůstává znatelně světlejší a teplejší
+    const JAS_MLHY = [1, 0.9, 0.78, 0.66];
+    const BARVA_PERGAMENU = ['#C8C6C3', '#B6B3AE', '#A29E97', '#8F8B84'];
     if (mapa.getLayer('mlha-rytina')) {
       mapa.setPaintProperty('mlha-rytina',
           'raster-brightness-max-transition', { duration: 0 });
@@ -5882,27 +5885,25 @@ function tridaVyskyMista(ik) {
 /// icon-size obrázků míst (ikona, stín i pata sdílejí): podlaha 0,20 a
 /// realistický růst od prahu třídy; `sBublinou` = vrstva ikon (má b2d).
 function velikostMist(sBublinou, klic) {
-  // ⭐ engine 203 („obrázky nefixují velikost k velikosti objektu, zůstávají
-  // malé po přiblížení"): dřív podlaha 72 px držela B do z18,3 a A do z19,2
-  // a růst začínal až pak. Teď má každý obrázek ZÁKLAD v CSS px při z17 –
-  // podle třídy (A 56, B 72, C 96, D 128) nebo z půdorysu budovy
-  // (sm m × 2,63 px/m při z17), větší z obou – a od z17 roste/klesá ×2 na
-  // zoom jako všechno v mapě. Podlaha 48 px (z ≤ 16 u drobností), strop
-  // 270 px (kostel od z19). Ikony v atlasu mají pixelRatio 2 → icon-size 1
-  // = 224 CSS px; `kb` = korekce užších obrázků. Bubliny 2D a hvězda drží.
+  // ⭐ engine 208 („kostel se při zoomu nezvětšuje – špatné zoomování
+  // kategorií dle velikosti budovy"): velikost = SKUTEČNÁ velikost objektu
+  // (`sm` v metrech: půdorys budovy, jinak výchozí podle třídy A 8 / B 12 /
+  // C 22 / D 40) × px na metr daného zoomu – tedy roste ×2 na zoom jako
+  // domy a stromy, BEZ STROPU (dřív 300 px zastavil kostel od z18,2, zatímco
+  // domy kolem rostly dál). Pod tím drží PODLAHA čitelnosti, která roste jen
+  // pomalu (48 px při z16 → 90 px při z22), aby drobnosti (boží muka 3 m)
+  // nebyly při z16–19 neviditelné, ale ani nepřerostly kostel: kostel 30 m
+  // má při z18 158 px, z19 316 px; boží muka drží podlahu 64/72 px a od z20
+  // rostou po svém. Ikony jsou v atlasu s pixelRatio 2 (icon-size 1 = 224
+  // CSS px), `kb` = korekce užších obrázků. Bubliny 2D a hvězda drží.
   const shluk = klic === 'smH';
   const sm = ['coalesce', ['get', shluk ? 'smH' : 'sm'], 12];
   const kb = ['coalesce', ['get', shluk ? 'kbH' : 'kb'], 1];
-  const vt = ['coalesce', ['get', shluk ? 'vtH' : 'vt'], 'B'];
-  const nominal = ['match', vt, 'A', 56, 'C', 96, 'D', 128, 72];
-  const zaklad = ['max', nominal, ['*', sm, 2.63]];      // CSS px při z17
-  const strop = ['match', vt, 'A', 0.536, 'B', 0.804, 'C', 1.071, 1.339];   // 120/180/240/300 px
+  const podlahaPx = (z) => (z <= 16 ? 48 : z >= 22 ? 90 : 48 + (z - 16) * 7);
   const stop = (z) => {
-    const f = Math.pow(2, z - 17) / 224;                 // px@z17 → icon-size@z
-    // engine 205: STROP PODLE TŘÍDY („boží muka jsou větší než celý kostel"):
-    // A 120 px, B 180, C 240, D 300 – drobnost přestane růst dřív než dominanta,
-    // poměr velikostí zůstane i při plném přiblížení
-    const o = ['*', kb, ['min', strop, ['max', 0.214, ['*', zaklad, +f.toFixed(7)]]]];
+    const c = Math.pow(2, z - 18) / (0.19 * 224);       // icon-size na metr
+    const o = ['*', kb, ['min', 3.0, ['max', +(podlahaPx(z) / 224).toFixed(4),
+                                      ['*', sm, +c.toFixed(7)]]]];
     return sBublinou
       ? ['case', ['has', 'fv'], 0.30, ['has', 'b2d'], 0.24, o]
       : ['case', ['has', 'fv'], 0.30, o];
