@@ -3027,13 +3027,21 @@ function aplikujNoc() {
     // ji dle časového zabarvení"): pergamen dostává odstín kroku noci –
     // soumrak teplý, noc modrošedá – a zůstává světlejší než odkrytá mapa
     // pod překryvem (jas ~95–110 proti ~45–90, změřeno u Trmic).
-    const JAS_MLHY = [1, 0.85, 0.7, 0.6];
+    const JAS_MLHY = [1, 0.82, 0.65, 0.5];
     const BARVA_PERGAMENU = ['#C8C6C3', '#A89C93', '#6F778A', '#505A6E'];
     if (mapa.getLayer('mlha-rytina')) {
-      mapa.setPaintProperty('mlha-rytina',
-          'raster-brightness-max-transition', { duration: 0 });
-      mapa.setPaintProperty('mlha-rytina',
-          'raster-brightness-max', JAS_MLHY[krok]);
+      // engine 211 („mapa stále světlá při oddálení"): rytina leží NAD
+      // barevným pergamenem, takže barva pergamenu byla vidět jen v dírách.
+      // V noci se rytina ztlumí, zprůhlední (prosvítá noční pergamen) a
+      // odbarví – změřeno u Ústí z10,5: mlha jas 50–65 proti odkryté 40–50.
+      const KRYTI_MLHY = [1, 1, 0.9, 0.8];
+      const SYTOST_MLHY = [0, 0, -0.2, -0.3];
+      for (const v of ['raster-brightness-max', 'raster-opacity', 'raster-saturation']) {
+        mapa.setPaintProperty('mlha-rytina', v + '-transition', { duration: 0 });
+      }
+      mapa.setPaintProperty('mlha-rytina', 'raster-brightness-max', JAS_MLHY[krok]);
+      mapa.setPaintProperty('mlha-rytina', 'raster-opacity', KRYTI_MLHY[krok]);
+      mapa.setPaintProperty('mlha-rytina', 'raster-saturation', SYTOST_MLHY[krok]);
     }
     if (mapa.getLayer('mlha-pergamen')) {
       mapa.setPaintProperty('mlha-pergamen',
