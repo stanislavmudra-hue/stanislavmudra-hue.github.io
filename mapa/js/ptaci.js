@@ -153,8 +153,10 @@ const Ptaci = (() => {
   /// Měřítko jako stromy (dekorace.js): exponential 1,8 mezi stopy.
   function meritko() {
     const z = mapa.getZoom();
-    // 5. 9. večer: stejná křivka jako stromy včetně růstu do z22
-    const stopy = [[13.25, 0.30], [15.4, 0.70], [17.6, 2.55], [22, 53.8]];
+    // ⛔ 5. 9. večer: růst do z22 jako u stromů byl OMYL – káně na z19 mělo
+    // rozpětí přes celou silnici (ověřeno snímkem). Pták není součást
+    // krajiny na zemi, nad 17,6 drží velikost.
+    const stopy = [[13.25, 0.30], [15.4, 0.70], [17.6, 2.55]];
     let v;
     if (z <= stopy[0][0]) v = stopy[0][1];
     else if (z >= stopy[stopy.length - 1][0]) v = stopy[stopy.length - 1][1];
