@@ -532,7 +532,7 @@ function stinyDomu() {
     for (let i = 1; i <= STINY_DOMU_T.length; i++) {
       v.push({ id: 'stin-domu-' + trida + '-' + i, type: 'fill', source: 'omt',
         'source-layer': 'building', minzoom: 14.5, filter: filtr,
-        paint: { 'fill-color': '#3B2A18', 'fill-antialias': false,
+        paint: { 'fill-color': '#2A1D10', 'fill-antialias': false,
                  'fill-opacity': ['interpolate', ['linear'], ['zoom'],
                    14.5, 0, 15.2, 0.05],
                  'fill-translate': [0, 0], 'fill-translate-anchor': 'map' } });
@@ -656,6 +656,32 @@ function stylHerni(ctx) {
         paint: AKVAREL
           ? { 'fill-pattern': 'vzor-mesta', 'fill-opacity': 0.75 }
           : { 'fill-color': '#E9C89C', 'fill-opacity': 0.6 } },
+      // ⭐ 5. 9. 2026 noc: VÍC DETAILŮ KRAJINY z OSM landuse („domalovat víc
+      // detailů, které se na místech nacházejí"): hřbitovy, hřiště a stadiony
+      // (s bílými lajnami zblízka), parkoviště, průmysl/obchod/garáže/lomy,
+      // školy a nemocnice – jemné tóny nad krajinou, pod domy.
+      { id: 'hrbitov', type: 'fill', source: 'omt', 'source-layer': 'landuse',
+        minzoom: 12, filter: ['==', ['get', 'class'], 'cemetery'],
+        paint: { 'fill-color': '#B7C4A6', 'fill-opacity': 0.55 } },
+      { id: 'hriste', type: 'fill', source: 'omt', 'source-layer': 'landuse',
+        minzoom: 13,
+        filter: ['in', ['get', 'class'], ['literal', ['pitch', 'playground', 'track', 'stadium']]],
+        paint: { 'fill-color': '#7FB069', 'fill-opacity': 0.5 } },
+      { id: 'hriste-lajny', type: 'line', source: 'omt', 'source-layer': 'landuse',
+        minzoom: 15, filter: ['in', ['get', 'class'], ['literal', ['pitch', 'track']]],
+        paint: { 'line-color': '#F4F1E6', 'line-opacity': 0.8,
+                 'line-width': sirkaMetry(0.6, 0.3, 15) } },
+      { id: 'parkoviste', type: 'fill', source: 'omt', 'source-layer': 'landuse',
+        minzoom: 14, filter: ['==', ['get', 'class'], 'parking'],
+        paint: { 'fill-color': '#A9A49B', 'fill-opacity': 0.5 } },
+      { id: 'prumysl', type: 'fill', source: 'omt', 'source-layer': 'landuse',
+        minzoom: 11,
+        filter: ['in', ['get', 'class'], ['literal', ['industrial', 'commercial', 'retail', 'garages', 'quarry']]],
+        paint: { 'fill-color': '#C9B79C', 'fill-opacity': 0.45 } },
+      { id: 'skoly', type: 'fill', source: 'omt', 'source-layer': 'landuse',
+        minzoom: 13,
+        filter: ['in', ['get', 'class'], ['literal', ['school', 'university', 'college', 'kindergarten', 'hospital']]],
+        paint: { 'fill-color': '#E3C9A8', 'fill-opacity': 0.45 } },
       // Akvarelový reliéf: teplé světlo, tmavě zelený stín (cíl = obrázek 3)
       //
       // ⭐ v1.529: VÍC PLASTIKY („našlo by do mapy herního stylu přidat

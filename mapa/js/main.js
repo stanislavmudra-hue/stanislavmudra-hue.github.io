@@ -5803,6 +5803,13 @@ const TRIDY_VYSKY = {
       'odpadkovy_kos', 'prebalovaci_pult', 'nabijeni_elektrokol',
       'nabijeci_stanice', 'vyhlidka', 'molo'],
 };
+/// Výchozí velikost objektu v metrech podle třídy (šířka obrázku): kříž a
+/// drobnosti kreslíme 8 m (skutečné 3 m by na mapě nebyly vidět), B 12,
+/// C 22, D 40. Skutečnou velikost z půdorysu budovy doplní
+/// `doplnVelikostiMist` (vlastnost `sm`, `smB` = z budovy).
+function velikostMistaM(ik) {
+  return { A: 8, B: 12, C: 22, D: 40 }[tridaVyskyMista(ik)] || 12;
+}
 function tridaVyskyMista(ik) {
   const m = /\/assets\/icons\/([a-z0-9_]+)\.webp/.exec(String(ik || ''));
   if (!m) return 'B';                       // obrázky /assets/places a jiné
@@ -5814,21 +5821,27 @@ function tridaVyskyMista(ik) {
 }
 /// icon-size obrázků míst (ikona, stín i pata sdílejí): podlaha 0,20 a
 /// realistický růst od prahu třídy; `sBublinou` = vrstva ikon (má b2d).
-function velikostMist(sBublinou) {
-  const F = 0.20;
-  const vt = ['coalesce', ['get', 'vt'], 'B'];
-  const obr = (d, c, b, a) => ['match', vt, 'D', d, 'C', c, 'B', b, a];
-  const stop = (fv, b2d, o) => (sBublinou
-    ? ['case', ['has', 'fv'], fv, ['has', 'b2d'], b2d, o]
-    : ['case', ['has', 'fv'], fv, o]);
-  return ['interpolate', ['exponential', 2], ['zoom'],
-    10, stop(0.24, 0.14, 0.14),
-    13, stop(0.30, 0.24, F),
-    17, stop(0.30, 0.24, F),
-    18, stop(0.30, 0.24, obr(F * 2, F, F, F)),
-    19, stop(0.30, 0.24, obr(F * 4, F * 2, F, F)),
-    20, stop(0.30, 0.24, obr(F * 8, F * 4, F * 2, F)),
-    22, stop(0.30, 0.24, obr(F * 32, F * 16, F * 8, F * 4))];
+function velikostMist(sBublinou, klic) {
+  // ⭐ 5. 9. noc („víš, jak je ta budova velká, tak nedělej zbytečně malý
+  // obrázek; obrázky ať jsou jak stromy – objekt v mapě"): velikost =
+  // SKUTEČNÁ velikost objektu `sm` (m, z půdorysu budovy nebo výchozí
+  // podle druhu) × px na metr daného zoomu, s PODLAHOU 0,16 (~72 px), ať
+  // je symbol k nalezení. Stopy po celých zoomech (přesné hodnoty v každé
+  // dlaždici), mezi nimi základ 2. Bubliny 2D a hvězda drží.
+  const F = 0.16;
+  const sm = ['coalesce', ['get', klic || 'sm'], 12];
+  const stop = (z) => {
+    const c = Math.pow(2, z - 18) / (0.19 * 448);   // icon-size na metr
+    const o = ['max', F, ['*', sm, +c.toFixed(6)]];
+    return sBublinou
+      ? ['case', ['has', 'fv'], 0.30, ['has', 'b2d'], 0.24, o]
+      : ['case', ['has', 'fv'], 0.30, o];
+  };
+  const v = ['interpolate', ['exponential', 2], ['zoom'],
+    10, (sBublinou ? ['case', ['has', 'fv'], 0.24, ['has', 'b2d'], 0.14, 0.14]
+                   : ['case', ['has', 'fv'], 0.24, 0.14])];
+  for (let z = 13; z <= 22; z++) v.push(z, stop(z));
+  return v;
 }
 /// Rozplynutí, když by obrázek zaplnil obrazovku (D od z19, C od z20, B od
 /// z21; A nikdy) – platí pro ikonu, stín i patu.
@@ -6087,7 +6100,7 @@ function registrujKlikMista() {
   // nedělá – expanzní zoom je proto vždycky vyšší než ten současný a na
   // seznam by nikdy nedošlo. Rozhoduje tedy pásmo, kde shluky ještě
   // existují, a počet členů (hromadu je rychlejší rozpadnout zoomem).
-  mapa.on('click', 'okolnik-mista-shluk', (e) => {
+  const klikShluk = (e) => {
     const f = e.features && e.features[0];
     if (!f) return;
     const zdroj = mapa.getSource('okolnik-mista');
@@ -6108,7 +6121,9 @@ function registrujKlikMista() {
       return;
     }
     priblizShluk(zdroj, cid, f);
-  });
+  };
+  mapa.on('click', 'okolnik-mista-shluk', klikShluk);
+  mapa.on('click', 'okolnik-mista-shluk-ikona', klikShluk);
 }
 
 /// Přiblížení na zoom, kde se shluk rozpadne (původní chování kliku).
@@ -6414,6 +6429,81 @@ function nasadOdznakIlustrace() {
       ['==', ['get', 's'], slug || '\u0000']);
 }
 
+/// ⭐ 5. 9. noc: SKUTEČNÁ VELIKOST MÍSTA Z PŮDORYSU BUDOVY. Po dojetí
+/// dlaždic se pro každý obrázek bez `smB` hledá budova (OMT `building`),
+/// v níž bod leží; z její plochy vyjde šířka objektu `sm` = √plocha × 1,25
+/// (8–80 m), a zdroj se přepíše. Bod mimo budovu (kříž, studánka) zůstane na
+/// výchozí velikosti druhu; zkouší se nejvýš 3×, než dojedou dlaždice.
+let posledniMistaGj = null;
+let velikostiMistCasovac = null;
+function naplanujVelikostiMist() {
+  clearTimeout(velikostiMistCasovac);
+  velikostiMistCasovac = setTimeout(doplnVelikostiMist, 600);
+}
+function vPolygonu(ring, x, y) {
+  let uvnitr = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0]; const yi = ring[i][1];
+    const xj = ring[j][0]; const yj = ring[j][1];
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+      uvnitr = !uvnitr;
+    }
+  }
+  return uvnitr;
+}
+function doplnVelikostiMist() {
+  try {
+    if (!mapa || !posledniMistaGj || mapa.getZoom() < 14) return;
+    const zdroj = mapa.getSource('okolnik-mista');
+    if (!zdroj) return;
+    // ⚠️ jen budovy (třídy B–D): kříž, pomník či studánka (A) stojí často
+    // na dvoře velké budovy a dostávaly by její rozměr (pomník 80 m)
+    const cekaji = posledniMistaGj.features.filter((f) =>
+      f.properties.ik && !f.properties.b2d && !f.properties.fv && !f.properties.smB
+      && f.properties.vt !== 'A' && (f.properties.smP || 0) < 3);
+    if (!cekaji.length) return;
+    const budovy = mapa.querySourceFeatures('omt', { sourceLayer: 'building' });
+    if (!budovy.length) return;
+    const polygony = [];
+    for (const b of budovy) {
+      const g = b.geometry;
+      let ring = null;
+      if (g && g.type === 'Polygon') ring = g.coordinates[0];
+      else if (g && g.type === 'MultiPolygon') ring = g.coordinates[0] && g.coordinates[0][0];
+      if (!ring || ring.length < 4) continue;
+      let x0 = 1e9; let x1 = -1e9; let y0 = 1e9; let y1 = -1e9;
+      for (const q of ring) {
+        if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0];
+        if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1];
+      }
+      polygony.push({ ring, x0, x1, y0, y1 });
+    }
+    let zmena = 0;
+    for (const f of cekaji) {
+      const lon = f.geometry.coordinates[0];
+      const lat = f.geometry.coordinates[1];
+      let nalez = null;
+      for (const q of polygony) {
+        if (lon < q.x0 || lon > q.x1 || lat < q.y0 || lat > q.y1) continue;
+        if (vPolygonu(q.ring, lon, lat)) { nalez = q; break; }
+      }
+      if (!nalez) { f.properties.smP = (f.properties.smP || 0) + 1; continue; }
+      const kLon = 111320 * Math.cos(lat * Math.PI / 180);
+      const r = nalez.ring;
+      let a = 0;
+      for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
+      const plocha = Math.abs(a) / 2 * kLon * 110574;
+      // strop podle druhu: hospoda nebude 80 m, i když stojí v hale
+      const strop = { B: 40, C: 60, D: 80 }[f.properties.vt] || 40;
+      const sm = Math.max(8, Math.min(strop, Math.sqrt(plocha) * 1.25));
+      if (Math.abs(sm - (f.properties.sm || 0)) > 0.5) zmena++;
+      f.properties.sm = +sm.toFixed(1);
+      f.properties.smB = 1;
+    }
+    if (zmena) zdroj.setData(posledniMistaGj);
+  } catch (e) { console.warn('[mista] velikosti', e); }
+}
+
 function vykresliMista() {
   if (!mapa) return;
   // ⚠️ PO VÝMĚNĚ STYLU JEŠTĚ CHVÍLI `isStyleLoaded() === false`. Dřív se
@@ -6483,6 +6573,7 @@ function vykresliMista() {
                 // 5. 9. noc: výšková třída skutečného objektu (A–D) pro
                 // realistický růst obrázku s mapou (viz velikostMist)
                 vt: tridaVyskyMista(m.ik),
+                sm: velikostMistaM(m.ik),
                 // bublina 2D značky se kreslí menší než malovaná kresba
                 // (výtka „značky po přiblížení zakrývají moc mapy")
                 ...(bublina ? { b2d: 1 } : {}),
@@ -6495,7 +6586,13 @@ function vykresliMista() {
         geometry: { type: 'Point', coordinates: [m.lng, m.lat] },
       };
   };
-  const gj = { type: 'FeatureCollection', features: viditelna.map(naFeature) };
+  // ⭐ 5. 9. noc: největší objekt první – shluk pak nese JEHO obrázek
+  // (clusterProperties berou prvního člena)
+  const featury = viditelna.map(naFeature).sort((a, b) =>
+    ((b.properties && b.properties.sm) || 0) - ((a.properties && a.properties.sm) || 0));
+  const gj = { type: 'FeatureCollection', features: featury };
+  posledniMistaGj = gj;
+  naplanujVelikostiMist();
   const gjMoje = {
     type: 'FeatureCollection', features: mojeMista.map(naFeature),
   };
@@ -6527,7 +6624,19 @@ function vykresliMista() {
     type: 'geojson', data: gj, maxzoom: 17,
     // ⭐ v1.405 (bod C): shluky drží do z14 — jednotlivé obrázky
     // nevyskočí všechny už na z13; rozpad dobíhá do z16 (v1.415)
-    cluster: true, clusterRadius: 48, clusterMaxZoom: 16,
+    // ⭐ 5. 9. noc: shluky i při plném přiblížení („pokud by obrázky opravdu
+    // kolidovaly, číslice nad obrázkem a po kliknutí výběr") – místa
+    // blíž než 60 px se slijí do HLAVNÍHO obrázku (první člen) s číslicí;
+    // klik hlásí appce `onShluk` se seznamem členů.
+    cluster: true, clusterRadius: 60, clusterMaxZoom: 22,
+    clusterProperties: {
+      ikH: [['coalesce', ['accumulated'], ['get', 'ikH']], ['get', 'ik']],
+      // velikost PRVNÍHO člena (týž, jehož obrázek se ukazuje) – `max` by
+      // spároval obrázek pomníku s rozměrem sousední budovy (pomník 80 m)
+      smH: [['coalesce', ['accumulated'], ['get', 'smH']], ['get', 'sm']],
+      vtH: [['coalesce', ['accumulated'], ['get', 'vtH']], ['get', 'vt']],
+      tlH: ['min', ['case', ['has', 'tl'], 1, 0]],
+    },
   });
   // ⭐ v1.555: VYBLEDLÉ MÍSTO = KOMUNITA HLÁSÍ ZÁNIK.
   //
@@ -6539,13 +6648,32 @@ function vykresliMista() {
   // (`_markerFor`: 0,3 pro nahlášené, 0,6 pro záznam neupravený 5 let).
   // Trochu výš než 0,3, protože herní mapa je tmavá a kresba na ní mizí.
   const TLUM = 0.38;
+  // shluk = hlavní obrázek (první člen) ve skutečné velikosti největšího
+  mapa.addLayer({
+    id: 'okolnik-mista-shluk-ikona',
+    type: 'symbol',
+    source: 'okolnik-mista',
+    filter: ['all', ['has', 'point_count'], ['has', 'ikH']],
+    layout: {
+      'icon-image': ['get', 'ikH'],
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      'icon-anchor': 'bottom',
+      'icon-size': velikostMist(false, 'smH'),
+    },
+    paint: { 'icon-opacity': 1 },
+  });
+  // číslice u paty hlavního obrázku (kruh + počet)
   mapa.addLayer({
     id: 'okolnik-mista-shluk',
     type: 'circle',
     source: 'okolnik-mista',
     filter: ['has', 'point_count'],
     paint: {
-      'circle-radius': ['step', ['get', 'point_count'], 15, 10, 19, 50, 24],
+      'circle-radius': ['case', ['has', 'ikH'], 10,
+                        ['step', ['get', 'point_count'], 15, 10, 19, 50, 24]],
+      // ⚠️ translate NENÍ datově řiditelný → stejný posun i u kruhových shluků
+      'circle-translate': [16, -12],
       'circle-color': '#2E7D5B',
       'circle-opacity': 0.92,
       'circle-stroke-width': 2,
@@ -6562,10 +6690,12 @@ function vykresliMista() {
       // ⚠️ `text-font` MUSÍ být sada, kterou styl zná – jinak MapLibre
       // shodí celou vrstvu POTICHU (past popsaná v předávce enginu).
       'text-font': ['Noto Sans Bold'],
-      'text-size': 13,
+      'text-size': ['case', ['has', 'ikH'], 11, 13],
       'text-allow-overlap': true,
+      'text-ignore-placement': true,
     },
-    paint: { 'text-color': '#F2E8CF' },
+    paint: { 'text-color': '#F2E8CF',
+             'text-translate': [16, -12] },
   });
   // Kruh zůstává jen pro místa BEZ kresby (appka jich pár nemá)
   mapa.addLayer({
@@ -6627,25 +6757,9 @@ function vykresliMista() {
     },
     paint: { 'icon-opacity': sZanikemMist(['*', ['case', ['has', 'tl'], TLUM, 1], 0.32], 0) },
   });
-  mapa.addLayer({
-    id: 'okolnik-mista-stin',
-    type: 'symbol',
-    source: 'okolnik-mista',
-    filter: ['all', ['has', 'ik'], ['!', ['has', 'point_count']],
-             ['!', ['has', 'b2d']]],
-    layout: {
-      'icon-image': ['concat', ['get', 'ik'], '#stin'],
-      'icon-allow-overlap': true,
-      'icon-ignore-placement': true,
-      'icon-anchor': 'top',
-      'icon-offset': stinMistOffset,
-      'icon-pitch-alignment': 'map',
-      'icon-rotation-alignment': 'map',
-      'icon-size': velikostMist(false),
-    },
-    paint: { 'icon-opacity': sZanikemMist(['*', ['case', ['has', 'tl'], TLUM, 1],
-                               stinMistSila], 0) },
-  });
+  // ⛔ 5. 9. noc: VRŽENÝ STÍN obrázků míst (`okolnik-mista-stin`) ZRUŠEN –
+  // posunutá zploštělá kopie pod billboardem vypadala, „jako by obrázek
+  // levitoval". Zůstává jen kontaktní stín u paty (`okolnik-mista-pata`).
   mapa.addLayer({
     id: 'okolnik-mista-ikona',
     type: 'symbol',
@@ -6721,7 +6835,7 @@ function vykresliMista() {
           // v kombinaci se zoom-interpolate text-size TIŠE přestane
           // kreslit CELOU vrstvu (vrstva žije, výraz uložen, symbolů
           // nula i tam, kde konstanta kreslila; ověřeno na zařízení).
-          'text-size': 8.5,
+          'text-size': 10.5,   // 5. 9. noc: 8,5 → 10,5 („text je mnohdy nečitelný")
           // ⚠️ ZÁMĚRNĚ VELKÉ = text se NIKDY nezalomí. Stuha má pevnou
           // výšku (roste jen do šířky), takže druhý řádek by z ní vylezl.
           // Dlouhý název tedy udělá delší stuhu, ne vyšší.

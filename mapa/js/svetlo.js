@@ -44,9 +44,11 @@ const Svetlo = (() => {
     const smer = (az + 180) * Math.PI / 180;
     // celková tma u zdi (~0,30 za plného slunce); každá z N kopií dostane
     // takovou průhlednost, aby se u zdi složily právě na ni
-    let celk = zdroj === 'slunce' ? 0.30 * Math.min(1, Math.max(0, el) / 25)
-      : (zdroj === 'mesic' ? 0.14 * (st.mesicOsvit || 0.5) : 0);
-    celk *= 1 - 0.6 * Math.min(1, st.oblacnost || 0);
+    // 5. 9. noc („stíny domů už nejsou téměř vidět"): 0,30 → 0,50, mraky
+    // ubírají jen 40 %
+    let celk = zdroj === 'slunce' ? 0.50 * Math.min(1, Math.max(0, el) / 25)
+      : (zdroj === 'mesic' ? 0.22 * (st.mesicOsvit || 0.5) : 0);
+    celk *= 1 - 0.4 * Math.min(1, st.oblacnost || 0);
     const T = (typeof STINY_DOMU_T !== 'undefined') ? STINY_DOMU_T : [1 / 3, 2 / 3, 1];
     const sila = celk > 0 ? 1 - Math.pow(1 - celk, 1 / T.length) : 0;
     for (const [trida, vyska] of [['nizke', 6], ['vysoke', 14]]) {

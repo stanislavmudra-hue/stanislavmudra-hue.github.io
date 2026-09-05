@@ -192,8 +192,16 @@ const Ptaci = (() => {
       p.drift += (Math.random() - 0.5) * 0.6 * dt;
       p.sx += Math.cos(p.drift) * 0.5 * dt * mLon;
       p.sy += Math.sin(p.drift) * 0.5 * dt * mLat;
-      if (p.sx < b.getWest() || p.sx > b.getEast()
-          || p.sy < b.getSouth() || p.sy > b.getNorth()) {
+      // ⭐ 5. 9. noc („po přiblížení káně zmizí a posune se jinam"): mimo
+      // výřez se pták nepřesazuje hned – při zoomu se výřez jen zúžil. Letí
+      // dál; teprve když je mimo 6 s a mapa stojí, přesadí se (a plynule
+      // se rozsvítí přes `op`).
+      const mimo = p.sx < b.getWest() || p.sx > b.getEast()
+          || p.sy < b.getSouth() || p.sy > b.getNorth();
+      if (!mimo) p.mimoOd = 0;
+      else if (!p.mimoOd) p.mimoOd = t;
+      if (mimo && t - p.mimoOd > 6000 && !(mapa.isMoving && mapa.isMoving())) {
+        p.mimoOd = 0;
         const c = mapa.getCenter();
         p.sx = c.lng + (Math.random() - 0.5) * (b.getEast() - b.getWest()) * 0.4;
         p.sy = c.lat + (Math.random() - 0.5) * (b.getNorth() - b.getSouth()) * 0.4;
