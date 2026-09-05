@@ -2873,6 +2873,21 @@ function nastavNocniKresbu(krok) {
 /// zavolat aplikujNoc() ručně).
 let krokNoci = -1;
 
+/// ⭐ engine 209 („na noční mapě je špatně vidět odkrytá oblast"): noční
+/// překryv ležel NAD mlhou, takže ztmavil i pergamen (změřeno: mlha i
+/// odkrytá mapa jas ~40). Překryv patří POD mlhu – odkrytá mapa je v noci
+/// tmavá, neodkrytý pergamen zůstává světlý (jas ~110). Mlha se zakládá až
+/// po `load`, proto se pořadí hlídá při každém volání noci i při idle.
+function srovnejNocPodMlhu() {
+  try {
+    if (!mapa || !mapa.getLayer('noc-prekryv') || !mapa.getLayer('mlha-pergamen')) return;
+    const p = mapa.style._order || mapa.getStyle().layers.map((l) => l.id);
+    if (p.indexOf('noc-prekryv') > p.indexOf('mlha-pergamen')) {
+      mapa.moveLayer('noc-prekryv', 'mlha-pergamen');
+    }
+  } catch (e) { /* styl se zrovna mění */ }
+}
+
 function aplikujNoc() {
   try {
     window.__casy = window.__casy || {};
@@ -2884,6 +2899,7 @@ function aplikujNoc() {
     if (typeof Pocasi === 'undefined' || !Pocasi.stavNoci) return;
     const krok = Pocasi.stavNoci();
     window.__casy.nocKrok = krok;
+    srovnejNocPodMlhu();
     const svetla = mapa.getLayer('dekorace-svetla');
     const svChce = krok >= 2 ? 'visible' : 'none';
     const svMa = svetla
@@ -6184,6 +6200,7 @@ const NAZVY_Z_DOLU = 15.7;
 let nazvyPuvodniNasledovnik = null;      // id vrstvy, před kterou se názvy vracejí
 function poradiNazvuObci() {
   if (!mapa || !mapa.style) return;
+  srovnejNocPodMlhu();
   let poradi = null;
   try { poradi = mapa.style._order || mapa.getStyle().layers.map((l) => l.id); }
   catch (e) { return; }
