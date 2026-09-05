@@ -5767,8 +5767,77 @@ window.nastavStinyMist = nastavStinyMist;
 /// obrázky se mohou rozplynout, překrývaly by vše"), od z17,6 do z18,4 se
 /// rozplynou – i se stínem a patou. Bubliny 2D značek a hvězda oblíbených
 /// nerostou, a proto zůstávají (`poZaniku` je pro ně původní výraz).
-function sZanikemMist(vyraz, poZaniku) {
-  return ['interpolate', ['linear'], ['zoom'], 17.6, vyraz, 18.4, poZaniku];
+/// ⭐ 5. 9. 2026 noc: OBRÁZKY MÍST ROSTOU S MAPOU, ALE REALISTICKY („ne
+/// kříž velký jak půl vesnice"). Každé místo má VÝŠKOVOU TŘÍDU skutečného
+/// objektu podle druhu: A ≤ 6 m (kříž, socha, zastávka, studánka), B 7–15 m
+/// (kaple, hospoda, obchod, pošta), C 16–30 m (kostel? ne – muzeum, nádraží,
+/// škola, skalní útvar), D > 30 m (hrad, zámek, rozhledna, kostel s věží,
+/// pohoří, skalní město). Symbol drží čitelnou podlahu 0,20 (~90 px) a od
+/// zoomu, kde by skutečná velikost podlahu přerostla (D z17, C z18, B z19,
+/// A z20), roste ×2 na zoom jako krajina. Stopy jsou celočíselné, aby každá
+/// dlaždice pekla přesný úsek křivky (viz paměť o krycích stopech). Bubliny
+/// 2D značek a hvězda oblíbených drží velikost.
+const TRIDY_VYSKY = {
+  D: ['hrad', 'zamek', 'rozhledna', 'vez', 'zricenina', 'kostel', 'pohori',
+      'kopec', 'vrchol', 'udoli', 'souteska', 'lom', 'skaly', 'skalni_mesto',
+      'piskovcove_skaly', 'kamenne_more', 'historicke_mesto', 'letiste',
+      'ski_areal', 'jezero', 'les', 'louka', 'reka', 'vinice', 'raseliniste',
+      'most', 'lanovka'],
+  C: ['muzeum', 'galerie', 'nadrazi', 'skola', 'nemocnice', 'radnice', 'urad',
+      'kulturni_dum', 'kino_divadlo', 'knihovna', 'hotel', 'lazne', 'stadion',
+      'fotbalovy_stadion', 'hokejovy_stadion', 'atleticky_stadion', 'aquapark',
+      'skanzen', 'poutni_misto', 'pamatka', 'amfiteatr', 'zoopark', 'arboretum',
+      'botanicka_zahrada', 'park', 'lanovy_park', 'bikepark', 'golf', 'farma',
+      'ranc', 'horska_chata', 'pristav', 'kemp', 'koupaliste', 'plaz',
+      'sportoviste', 'tenisove_kurty', 'kluziste', 'skatepark', 'pumptrack',
+      'minigolf', 'bobova_draha', 'jizdarna', 'hriste', 'detske_hriste',
+      'parkoviste', 'parkoviste_karavanu', 'karavanove_stani', 'sberny_dvur',
+      'stavebniny', 'autobazar', 'autoservis', 'mycka_automaticka',
+      'mycka_samoobsluzna', 'benzinka', 'skala', 'skalni_vez', 'skalni_stena',
+      'skalni_oblouk', 'skalni_utvar', 'cedicove_varhany', 'jeskyne', 'vodopad',
+      'vetrny_mlyn', 'pamatny_strom', 'rybnik', 'lezecka_stena'],
+  A: ['bozi_muka', 'kriz', 'pomnik', 'kasna', 'studanka', 'studna', 'pitna_voda',
+      'autobusova_zastavka', 'vlakova_zastavka', 'pristresek', 'odpocivadlo',
+      'lavicka', 'piknik', 'ohniste', 'rozcestnik', 'informacni_bod',
+      'informacni_tabule', 'naucna_tabule', 'toalety', 'wc', 'sprcha', 'bankomat',
+      'odpadkovy_kos', 'prebalovaci_pult', 'nabijeni_elektrokol',
+      'nabijeci_stanice', 'vyhlidka', 'molo'],
+};
+function tridaVyskyMista(ik) {
+  const m = /\/assets\/icons\/([a-z0-9_]+)\.webp/.exec(String(ik || ''));
+  if (!m) return 'B';                       // obrázky /assets/places a jiné
+  const n = m[1];
+  if (TRIDY_VYSKY.D.indexOf(n) >= 0) return 'D';
+  if (TRIDY_VYSKY.C.indexOf(n) >= 0) return 'C';
+  if (TRIDY_VYSKY.A.indexOf(n) >= 0) return 'A';
+  return 'B';
+}
+/// icon-size obrázků míst (ikona, stín i pata sdílejí): podlaha 0,20 a
+/// realistický růst od prahu třídy; `sBublinou` = vrstva ikon (má b2d).
+function velikostMist(sBublinou) {
+  const F = 0.20;
+  const vt = ['coalesce', ['get', 'vt'], 'B'];
+  const obr = (d, c, b, a) => ['match', vt, 'D', d, 'C', c, 'B', b, a];
+  const stop = (fv, b2d, o) => (sBublinou
+    ? ['case', ['has', 'fv'], fv, ['has', 'b2d'], b2d, o]
+    : ['case', ['has', 'fv'], fv, o]);
+  return ['interpolate', ['exponential', 2], ['zoom'],
+    10, stop(0.24, 0.14, 0.14),
+    13, stop(0.30, 0.24, F),
+    17, stop(0.30, 0.24, F),
+    18, stop(0.30, 0.24, obr(F * 2, F, F, F)),
+    19, stop(0.30, 0.24, obr(F * 4, F * 2, F, F)),
+    20, stop(0.30, 0.24, obr(F * 8, F * 4, F * 2, F)),
+    22, stop(0.30, 0.24, obr(F * 32, F * 16, F * 8, F * 4))];
+}
+/// Rozplynutí, když by obrázek zaplnil obrazovku (D od z19, C od z20, B od
+/// z21; A nikdy) – platí pro ikonu, stín i patu.
+function sZanikemMist(vyraz) {
+  const vt = ['coalesce', ['get', 'vt'], 'B'];
+  const po = (tridy) => ['case', ['in', vt, ['literal', tridy]], 0, vyraz];
+  return ['interpolate', ['linear'], ['zoom'],
+    19, vyraz, 19.8, po(['D']), 20, po(['D']), 20.8, po(['D', 'C']),
+    21, po(['D', 'C']), 21.8, po(['D', 'C', 'B'])];
 }
 
 function zajistiIkonu(id) {
@@ -6411,6 +6480,9 @@ function vykresliMista() {
         type: 'Feature',
         properties: m.ik
             ? { id: m.id, b: m.b || '#E07B39', ...stitek,
+                // 5. 9. noc: výšková třída skutečného objektu (A–D) pro
+                // realistický růst obrázku s mapou (viz velikostMist)
+                vt: tridaVyskyMista(m.ik),
                 // bublina 2D značky se kreslí menší než malovaná kresba
                 // (výtka „značky po přiblížení zakrývají moc mapy")
                 ...(bublina ? { b2d: 1 } : {}),
@@ -6551,11 +6623,7 @@ function vykresliMista() {
       'icon-anchor': 'center',
       'icon-pitch-alignment': 'map',
       'icon-rotation-alignment': 'map',
-      'icon-size': ['interpolate', ['exponential', 2], ['zoom'],
-                    10, ['case', ['has', 'fv'], 0.24, 0.14],
-                    13, ['case', ['has', 'fv'], 0.30, 0.24],
-                    16, ['case', ['has', 'fv'], 0.30, 0.38],
-                    22, ['case', ['has', 'fv'], 0.30, 24.3]],
+      'icon-size': velikostMist(false),
     },
     paint: { 'icon-opacity': sZanikemMist(['*', ['case', ['has', 'tl'], TLUM, 1], 0.32], 0) },
   });
@@ -6573,11 +6641,7 @@ function vykresliMista() {
       'icon-offset': stinMistOffset,
       'icon-pitch-alignment': 'map',
       'icon-rotation-alignment': 'map',
-      'icon-size': ['interpolate', ['exponential', 2], ['zoom'],
-                    10, ['case', ['has', 'fv'], 0.24, 0.14],
-                    13, ['case', ['has', 'fv'], 0.30, 0.24],
-                    16, ['case', ['has', 'fv'], 0.30, 0.38],
-                    22, ['case', ['has', 'fv'], 0.30, 24.3]],
+      'icon-size': velikostMist(false),
     },
     paint: { 'icon-opacity': sZanikemMist(['*', ['case', ['has', 'tl'], TLUM, 1],
                                stinMistSila], 0) },
@@ -6600,20 +6664,7 @@ function vykresliMista() {
       // ⚠️ v1.247: 0,18 (≈27 CSS px) bylo na telefonu prakticky
       // NEVIDITELNÉ (hlášeno „ve 3D nevidím oblíbená") → bubliny 0,24
       // a hvězda oblíbených (fv) ještě o kus větší, obě bez růstu.
-      // ⭐ 5. 9. 2026 večer („obrázky míst od určitého zmenšení už zvětšuj
-      // s přiblížením"): obrázky míst od z16 rostou PŘESNĚ S MAPOU (základ
-      // 2, stop až na z22 = 0,38 × 2^6), bubliny 2D značek a hvězda
-      // oblíbených drží velikost. Jen dva stopy nad z16 → hladce (viz
-      // paměť o pečení velikostí po dlaždicích).
-      'icon-size': ['interpolate', ['exponential', 2], ['zoom'],
-                    10, ['case', ['has', 'fv'], 0.24,
-                         ['has', 'b2d'], 0.14, 0.14],
-                    13, ['case', ['has', 'fv'], 0.30,
-                         ['has', 'b2d'], 0.22, 0.24],
-                    16, ['case', ['has', 'fv'], 0.30,
-                         ['has', 'b2d'], 0.24, 0.38],
-                    22, ['case', ['has', 'fv'], 0.30,
-                         ['has', 'b2d'], 0.24, 24.3]],
+      'icon-size': velikostMist(true),
     },
     paint: { 'icon-opacity': sZanikemMist(['case', ['has', 'tl'], TLUM, 1],
                ['case', ['any', ['has', 'b2d'], ['has', 'fv']],
