@@ -6149,28 +6149,54 @@ const SHLUK_SEZNAM_MAX = 8;
 /// kresby i obrázky míst – jsou pak i první při rozmisťování), nad z13,7 se
 /// vrátí na původní místo (hystereze proti kolébání zoomu terénem ±0,2).
 /// Stav se čte z pořadí vrstev, ne z příznaku – přežije výměnu stylu.
-const NAZVY_NAHORU = ['ink-mesta', 'ink-mestyse', 'ink-vesnice', 'ink-obce', 'erby-vrstva'];
-const NAZVY_Z_NAHORU = 13.3;
-const NAZVY_Z_DOLU = 13.7;
-let nazvyPuvodniNasledovnik = null;      // id vrstvy, před kterou se vracejí
+// ⛔⛔ engine 204 (uživatel: „na předchozí verzi erby šly"): do enginu 202
+// ležely erby jako poslední přidaná vrstva NAD VŠÍM. Engine 203 je při
+// z ≥ 13,7 stahoval spolu s názvy pod kresby a obrázky → „erby nevidím
+// vůbec". Erby se už NIKDY nestahují – drží se navrchu; přesouvají se jen
+// názvy sídel.
+const NAZVY_NAHORU = ['ink-mesta', 'ink-mestyse', 'ink-vesnice', 'ink-obce'];
+// engine 204: 13,3/13,7 → 15,3/15,7 – uživatel se na vesnici dívá při
+// z14–16 a název byl pořád pod obrázky
+const NAZVY_Z_NAHORU = 15.3;
+const NAZVY_Z_DOLU = 15.7;
+let nazvyPuvodniNasledovnik = null;      // id vrstvy, před kterou se názvy vracejí
 function poradiNazvuObci() {
   if (!mapa || !mapa.style) return;
   let poradi = null;
   try { poradi = mapa.style._order || mapa.getStyle().layers.map((l) => l.id); }
   catch (e) { return; }
   if (!poradi || !poradi.length) return;
-  const iErby = poradi.indexOf('erby-vrstva');
-  const iMista = poradi.indexOf('okolnik-mista-ikona');
-  if (iErby < 0 || iMista < 0) return;
-  const nahore = iErby > iMista;
-  const z = mapa.getZoom();
-  const chci = z < NAZVY_Z_NAHORU ? true : (z > NAZVY_Z_DOLU ? false : nahore);
-  if (chci === nahore) return;
   try {
+    // erby vždy navrchu (viz výše)
+    const iErby = poradi.indexOf('erby-vrstva');
+    if (iErby >= 0 && iErby !== poradi.length - 1) {
+      mapa.moveLayer('erby-vrstva');
+      poradi = mapa.style._order || poradi;
+    }
+    // názvy: nezávisle na erbech (web bez erbů je dřív nikdy nepřesunul)
+    const iMista = poradi.indexOf('okolnik-mista-ikona');
+    if (iMista < 0) return;
+    let iRef = -1;
+    for (const id of NAZVY_NAHORU) {
+      iRef = poradi.indexOf(id);
+      if (iRef >= 0) break;
+    }
+    if (iRef < 0) return;
+    const nahore = iRef > iMista;
+    const z = mapa.getZoom();
+    const chci = z < NAZVY_Z_NAHORU ? true : (z > NAZVY_Z_DOLU ? false : nahore);
+    if (chci === nahore) return;
     if (chci) {
-      // zapamatovat, před koho se vracet (vrstva hned za erby)
-      nazvyPuvodniNasledovnik = poradi[iErby + 1] || null;
+      // před koho se vracet: první vrstva za posledním z názvů, která není
+      // název ani erb (původně `ink-sousedi`)
+      let posledni = -1;
+      for (const id of NAZVY_NAHORU) posledni = Math.max(posledni, poradi.indexOf(id));
+      let n = posledni + 1;
+      while (n < poradi.length
+             && (NAZVY_NAHORU.indexOf(poradi[n]) >= 0 || poradi[n] === 'erby-vrstva')) n++;
+      nazvyPuvodniNasledovnik = poradi[n] || null;
       for (const id of NAZVY_NAHORU) if (mapa.getLayer(id)) mapa.moveLayer(id);
+      if (mapa.getLayer('erby-vrstva')) mapa.moveLayer('erby-vrstva');   // erb nad názvy
     } else {
       let pred = nazvyPuvodniNasledovnik;
       if (!pred || !mapa.getLayer(pred)) {

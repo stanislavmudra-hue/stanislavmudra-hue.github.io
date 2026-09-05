@@ -144,10 +144,22 @@ const Erby = (() => {
     });
   }
 
+  let cekaniNaMlhu = 0;
   async function vykresli() {
     if (!mapa) return;
     // Jen v herním stylu — poznávacím znamením je mlha (jako Ilustrace).
-    if (!mapa.getSource('mlha-maska')) return;
+    if (!mapa.getSource('mlha-maska')) {
+      // ⛔ engine 204: dřív tichý konec BEZ opakování – když web poslal erby
+      // dřív, než mlha založila zdroj (pomalé načtení), erby se už nikdy
+      // nenakreslily („erby nevidím vůbec"). Teď se až 30 s zkouší znovu;
+      // v jiném než herním stylu mlha nepřijde a čekání skončí samo.
+      if (cekaniNaMlhu++ < 60) {
+        clearTimeout(vykresli._m);
+        vykresli._m = setTimeout(vykresli, 500);
+      }
+      return;
+    }
+    cekaniNaMlhu = 0;
     const gj = kolekce();
     try {
       const zdroj = mapa.getSource('erby-zdroj');
@@ -197,6 +209,7 @@ const Erby = (() => {
   // Volat po style.load herního stylu (z aplikujDoplnky); opakovaně bezpečné
   function pripoj(map) {
     mapa = map;
+    cekaniNaMlhu = 0;   // nový styl = nové čekání na mlhu
     selhane.clear();   // nový styl = nová šance pro dřív selhané soubory
     vykresli();
   }
@@ -204,6 +217,7 @@ const Erby = (() => {
   // Nový seznam erbů (most, [{lng, lat, url}] už překlopené). NAHRAZUJE.
   function nastav(pole) {
     seznam = Array.isArray(pole) ? pole : [];
+    cekaniNaMlhu = 0;
     vykresli();
   }
 

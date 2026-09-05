@@ -400,6 +400,7 @@ const KRONIKA = {
 //   2. barva podle kategorie — sídla tuš, terén sépie, voda modrozelená,
 //   3. větší skoky velikostí (poměr ~1,35), méně stupňů,
 //   4. tučné JEN pro nejvyšší stupeň, zbytek nese kontrast barvy.
+// engine 204: velikost může být i zoomový výraz (názvy po oddálení větší)
 const obceLayout = (font, velikost, verzalky) => ({
   'text-field': NAZEV, 'text-font': font, 'text-size': velikost,
   'text-anchor': 'top', 'text-offset': [0, 0.45],
@@ -1026,24 +1027,26 @@ function stylHerni(ctx) {
       // ⚠️ Pořadí = pořadí rozmisťování: první vyhrává kolize, proto
       // města nahoře. `minzoom` (ne filtr se `['zoom']`) proto, aby při
       // oddálení jména mizela OKAMŽITĚ — viz poznámka o zoomu dlaždice.
+      // engine 204 („název obce je malý"): písmo podle zoomu – po oddálení
+      // větší, v detailu menší (vesnice 10,5 → 13/11,5, osady 9 → 11/9,5)
       { id: 'ink-mesta', type: 'symbol', source: 'omt', 'source-layer': 'place',
         filter: ['==', ['get', 'class'], 'city'],
-        layout: obceLayout(FONT_B, 17, true),
+        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 18, 16, 17], true),
         paint: obcePaint(KRONIKA.inkTmava) },
       { id: 'ink-mestyse', type: 'symbol', source: 'omt', 'source-layer': 'place',
         filter: ['==', ['get', 'class'], 'town'],
         // ⭐ 12. 8.: tučně 14 — viz poznámka u `mestyse` v turistické
-        layout: obceLayout(FONT_B, 14, false),
+        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 15, 16, 14], false),
         paint: obcePaint(KRONIKA.inkTmava) },
       { id: 'ink-vesnice', type: 'symbol', source: 'omt', 'source-layer': 'place',
         minzoom: 10,
         filter: ['==', ['get', 'class'], 'village'],
-        layout: obceLayout(FONT, 10.5, false),
+        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 13, 16, 11.5], false),
         paint: obcePaint(KRONIKA.ink) },
       { id: 'ink-obce', type: 'symbol', source: 'omt', 'source-layer': 'place',
         minzoom: 12,
         filter: ['==', ['get', 'class'], 'hamlet'],
-        layout: obceLayout(FONT, 9, false),
+        layout: obceLayout(FONT, ['interpolate', ['linear'], ['zoom'], 11, 11, 16, 9.5], false),
         paint: obcePaint(KRONIKA.inkSvetla) },
       // Popisky sousedních států při oddálení (2D protějšek: `_neighborArrows`).
       // ⚠️ MUSÍ ZŮSTAT ÚPLNĚ POSLEDNÍ: mlha se vkládá PŘED první vrstvu
