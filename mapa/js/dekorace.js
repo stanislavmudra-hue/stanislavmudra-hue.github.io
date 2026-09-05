@@ -431,6 +431,13 @@ const Dekorace = (() => {
       layout: {
         'icon-image': ['get', 'ik'],
         'icon-anchor': 'bottom',
+        // ⭐ engine 210 („stromy / rostliny levitují nad povrchem při
+        // přiblížení"): billboard stojí patou na kotvě; ve svahu a při
+        // náklonu je terén pod jedním okrajem paty níž, takže část paty
+        // (i zapečený stín) visí nad zemí. Pata se proto lehce zapouští
+        // do terénu (8 px obrázku @2 = 4 CSS px × velikost); ve svahu ji
+        // terén překryje, na rovině zmizí jen spodek stínu.
+        'icon-offset': [0, 8],
         'icon-rotate': ['get', 'rot'],
         'icon-allow-overlap': true,
         'icon-ignore-placement': true,

@@ -3023,8 +3023,12 @@ function aplikujNoc() {
     // engine 208 („na noční mapě je špatně vidět odkrytá oblast"): pergamen
     // v noci tmavl skoro na odstín odkryté mapy pod nočním překryvem
     // (#5B5B5A × #081226·0,78) – teď zůstává znatelně světlejší a teplejší
-    const JAS_MLHY = [1, 0.9, 0.78, 0.66];
-    const BARVA_PERGAMENU = ['#C8C6C3', '#B6B3AE', '#A29E97', '#8F8B84'];
+    // engine 210 („přesvětlená zamlžená mapa z dálky je nevzhledná – zbarvuj
+    // ji dle časového zabarvení"): pergamen dostává odstín kroku noci –
+    // soumrak teplý, noc modrošedá – a zůstává světlejší než odkrytá mapa
+    // pod překryvem (jas ~95–110 proti ~45–90, změřeno u Trmic).
+    const JAS_MLHY = [1, 0.85, 0.7, 0.6];
+    const BARVA_PERGAMENU = ['#C8C6C3', '#A89C93', '#6F778A', '#505A6E'];
     if (mapa.getLayer('mlha-rytina')) {
       mapa.setPaintProperty('mlha-rytina',
           'raster-brightness-max-transition', { duration: 0 });
