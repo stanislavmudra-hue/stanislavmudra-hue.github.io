@@ -780,7 +780,6 @@ function vykresliMapu() {
       'Přihlaste se stejným účtem jako v aplikaci a uvidíte tu svou ' +
       'odkrytou mapu, fotovýpravy a zápisy. Aplikace je pod váš účet ' +
       'ukládá od verze 1.608 – jen pro vás, nikdy veřejně.', '');
-    k.appendChild(odkazTlacitko('Prohlédnout herní mapu', HERNI_MAPA));
     box.appendChild(k);
     return;
   }

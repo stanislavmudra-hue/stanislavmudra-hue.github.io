@@ -2,6 +2,7 @@
 <html lang="cs">
 <head>
 <meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Okolník 3D — mapový engine</title>
 <link id="ml-css" rel="stylesheet" href="vendor/maplibre-gl.css">
@@ -213,8 +214,35 @@
 // extensions_map; starší běžící server je nutné RESTARTOVAT, jinak
 // v6 nenaběhne — „Failed to load module script").
 (function () {
+  // ⭐ 5. 9. 2026: NA WEBU JEN PO PŘIHLÁŠENÍ (přání: „mapa na webu bude
+  // vidět až po přihlášení … aby nebylo moc vidět, jak to celé funguje").
+  // Bez relace Můj Okolník (localStorage okolnikUcet1) se engine vůbec
+  // nenačte – jen karta s odkazem na přihlášení.
+  const WEB = new URLSearchParams(location.search).get('web') === '1';
+  if (WEB) {
+    let relace = null;
+    try { relace = JSON.parse(localStorage.getItem('okolnikUcet1') || 'null'); }
+    catch (e) { relace = null; }
+    if (!relace || !relace.refreshToken || !relace.uid) {
+      document.body.innerHTML = '<div style="position:absolute;inset:0;'
+        + 'display:flex;align-items:center;justify-content:center;'
+        + 'background:#F2E8CF;font:15px/1.5 system-ui,sans-serif;color:#1d2624">'
+        + '<div style="max-width:420px;background:#fff;border-radius:16px;'
+        + 'padding:22px 26px;box-shadow:0 8px 30px rgba(0,0,0,.15)">'
+        + '<b style="display:block;font-size:19px;color:#0D2B2E;margin-bottom:6px">'
+        + 'Herní mapa je pro přihlášené</b>'
+        + 'Přihlaste se stejným účtem jako v aplikaci Okolník a uvidíte '
+        + 'svou odkrytou mapu, fotovýpravy a zápisy.<br><br>'
+        + '<a href="/ucet/" style="display:inline-block;background:#F29D38;'
+        + 'color:#1d1400;font-weight:700;border-radius:999px;padding:9px 16px;'
+        + 'text-decoration:none">Přihlásit se na Můj Okolník</a> &nbsp; '
+        + '<a href="/" style="color:#2E7D5B">Zpět na okolnik.cz</a>'
+        + '</div></div>';
+      return;
+    }
+  }
   const V5 = new URLSearchParams(location.search).get('ml') === '5';
-  const VERZE = '?v=174';
+  const VERZE = '?v=175';
   const SKRIPTY = ['js/styles.js', 'js/fog.js', 'js/pocasi.js',
     'js/svetlo.js', 'js/trpyt.js',
     'js/postavicka.js', 'js/dekorace.js', 'js/ilustrace.js',

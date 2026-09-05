@@ -89,6 +89,12 @@ const Svetlo = (() => {
       }
       window.__svetlo = { zdroj, az: Math.round(az), el: Math.round(el),
                           barva, intenzita: +intenzita.toFixed(2) };
+      // ⭐ 5. 9. 2026: stíny kreseb podle téhož světla (slunce / měsíc)
+      try {
+        if (typeof Ilustrace !== 'undefined' && Ilustrace.svetlo) {
+          Ilustrace.svetlo(window.__svetlo, st);
+        }
+      } catch (e2) { /* kresby ještě nejsou */ }
     } catch (e) { console.warn('[svetlo]', e); }
   }
 

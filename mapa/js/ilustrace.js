@@ -509,6 +509,25 @@ const Ilustrace = (() => {
     return platnoCtx;
   }
 
+  /// ⭐ 5. 9. 2026: STÍN KRESBY – tmavá silueta zploštělá na 45 % výšky
+  /// (leží na zemi, vrstva `ink-ilustrace-stin` má icon-pitch-alignment
+  /// map), lehce rozostřená. Směr a délku podle slunce/měsíce dává
+  /// `svetlo()` přes offset featury, sílu paint vrstvy.
+  const STIN_ZPLOSTENI = 0.45;
+  function stinData(bitmapa) {
+    const w = bitmapa.width;
+    const h = Math.max(4, Math.round(bitmapa.height * STIN_ZPLOSTENI));
+    const ctx = plocha(w, h);
+    ctx.filter = 'blur(1.5px)';
+    ctx.drawImage(bitmapa, 0, 0, w, h);
+    ctx.filter = 'none';
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = '#1a1208';
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'source-over';
+    return ctx.getImageData(0, 0, w, h);
+  }
+
   function odbarvenaData(bitmapa) {
     const w = bitmapa.width; const h = bitmapa.height;
     const ctx = plocha(w, h);
@@ -719,8 +738,9 @@ const Ilustrace = (() => {
           const prip = pripona(u.varianta);
           const zaklad = zakladVarianty(u.varianta);
           const data = zaklad === '#sil' ? siluetaData(u.bitmapa)
+            : (zaklad === '#stin' ? stinData(u.bitmapa)
             : (zaklad === '#bw' ? odbarvenaData(u.bitmapa)
-                                : u.bitmapa);
+                                : u.bitmapa));
           // ⚠️⚠️ `pixelRatio` DOPOČÍTAT, NE NAPEVNO 2.
           // `icon-size` počítá „žádaná šířka v CSS px / ZAKLAD_CSS" (140)
           // a CSS šířka ikony je pixely / pixelRatio. Obě varianty proto
@@ -915,6 +935,26 @@ const Ilustrace = (() => {
         'text-opacity': opacita,
         'text-color': '#3A2812',
       },
+    });
+
+    // ⭐ 5. 9. 2026: STÍNY KRESEB – tatáž featura, obrázek `st`
+    // (varianta #stin), leží na mapě (pitch/rotation alignment map),
+    // posun `sof` od světla (viz vyrobFeatury + svetlo()), síla paint.
+    mapa.addLayer({
+      id: 'ink-ilustrace-stin', type: 'symbol', source: 'ilus-obrazky',
+      filter: ['has', 'st'],
+      layout: {
+        'icon-image': ['get', 'st'],
+        'icon-size': vyrazVelikosti(),
+        'icon-offset': ['get', 'sof'],
+        'icon-anchor': 'center',
+        'icon-pitch-alignment': 'map',
+        'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'symbol-sort-key': ['get', 'srt'],
+      },
+      paint: { 'icon-opacity': ['*', opacita, stinSila] },
     });
 
     mapa.addLayer({
@@ -1289,14 +1329,16 @@ const Ilustrace = (() => {
       // kresby dotáhnout a PŘEPARSOVAT (past pozdního addImage) —
       // ale jen dokud platí TAHLE sestava; opožděný fetch nesmí
       // přepsat novější setData (závod při rychlém zoomu)
-      const potreba = [...new Set(fO.map((f) => f.properties.ik))];
+      const potreba = [...new Set(fO.map((f) => f.properties.ik)
+        .concat(fO.map((f) => f.properties.st).filter(Boolean)))];
       Promise.all(potreba.map((ik) => {
         // `ilus:<slug>[#bw|#sil][@m]` — odloupnout obojí, ať se dotáhne
         // právě ta varianta, kterou sestava opravdu žádá
         const male = ik.endsWith('@m');
         const bezM = male ? ik.slice(0, -2) : ik;
         const zaklad = bezM.endsWith('#bw') ? '#bw'
-          : (bezM.endsWith('#sil') ? '#sil' : '');
+          : (bezM.endsWith('#sil') ? '#sil'
+          : (bezM.endsWith('#stin') ? '#stin' : ''));
         const slug = bezM.slice(5, zaklad ? -zaklad.length : undefined);
         return zajisti(slug, zaklad + (male ? '@m' : ''));
       })).then((vysledky) => {
@@ -1368,6 +1410,15 @@ const Ilustrace = (() => {
           srt: it.imp,
           // stav v podpisu — objevení/návštěva musí projít setData
           pd: it.stav || 'c',
+          // ⭐ 5. 9. 2026 STÍN: obrázek #stin (týž rozměr @m/@s) a posun od
+          // světla – pata stínu u paty kresby, dál podle azimutu a výšky
+          // světla (stinDx/stinDy v násobcích výšky kresby, viz svetlo())
+          ...(stinSila > 0 ? {
+            st: 'ilus:' + it.slug + '#stin' + pripona(it.stav || ''),
+            sof: [stinDx * p.vy,
+                  (it.nb ? 0 : 0.035 * p.vy) + p.vy * (1 + STIN_ZPLOSTENI) / 2
+                    + stinDy * p.vy],
+          } : {}),
         },
         geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
       };
@@ -1769,6 +1820,44 @@ const Ilustrace = (() => {
     prepocitej();
   }
 
+  /// ⭐ 5. 9. 2026: SVĚTLO → STÍNY KRESEB. Volá svetlo.js po každém
+  /// přepočtu (slunce / měsíc / tma). Směr = OD světla (azimut + 180°),
+  /// délka podle výšky světla (cot, ohraničeno), síla podle zdroje
+  /// a oblačnosti. Vlastní posun nese každá featura (`sof`), takže se
+  /// po změně přestaví featury; síla je paint vrstvy.
+  let stinSila = 0;
+  let stinDx = 0;
+  let stinDy = 0;
+  function svetlo(sv, st) {
+    try {
+      if (!sv) return;
+      let sila = 0;
+      if (sv.zdroj === 'slunce') {
+        sila = 0.32 * Math.max(0.45, Math.min(1, (sv.el || 0) / 25));
+      } else if (sv.zdroj === 'mesic') {
+        sila = 0.16 * Math.max(0.3, Math.min(1, (st && st.mesicOsvit) || 0.5));
+      }
+      if (st && typeof st.oblacnost === 'number') sila *= (1 - 0.6 * st.oblacnost);
+      const elRad = Math.max(8, Math.min(80, sv.el || 45)) * Math.PI / 180;
+      const delka = 0.35 * Math.max(0.25, Math.min(2.2, 1 / Math.tan(elRad)));
+      const smer = ((sv.az || 0) + 180) * Math.PI / 180;
+      const dx = Math.sin(smer) * delka;
+      const dy = -Math.cos(smer) * delka;
+      const zmena = Math.abs(dx - stinDx) > 0.02 || Math.abs(dy - stinDy) > 0.02
+        || Math.abs(sila - stinSila) > 0.02 || (sila > 0) !== (stinSila > 0);
+      stinSila = +sila.toFixed(3);
+      stinDx = +dx.toFixed(3);
+      stinDy = +dy.toFixed(3);
+      if (mapa && mapa.getLayer && mapa.getLayer('ink-ilustrace-stin')) {
+        // `opacita` je lokální výraz vrstvy kreseb – vzít ho z ní
+        const op = mapa.getPaintProperty('ink-ilustrace', 'icon-opacity');
+        mapa.setPaintProperty('ink-ilustrace-stin', 'icon-opacity',
+                              ['*', op == null ? 1 : op, stinSila]);
+      }
+      if (zmena) naplanuj();
+    } catch (e) { console.warn('[Ilustrace] stín', e); }
+  }
+
   return { pripoj, filtruj, zavri: schovejDetail,
-           navstivene: nastavNavstivene };
+           navstivene: nastavNavstivene, svetlo };
 })();
