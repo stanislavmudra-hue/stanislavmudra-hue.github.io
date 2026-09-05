@@ -71,7 +71,7 @@ const Dekorace = (() => {
       rozestup: 40,
       zjemnit: true,
       vrstvy: ['sad', 'zahrada'],
-      z0: 14.6,
+      z0: 15.4,                   // engine 202: 14,6 → 15,4 (kandidátů 40 m bylo moc)
       ikony: ['deko-strom-1', 'deko-strom-2', 'deko-strom-3',
               'deko-strom-4', 'deko-strom-5'],
       k: 0.55,                    // ~12 m
@@ -82,7 +82,7 @@ const Dekorace = (() => {
       rozestup: 45,
       zjemnit: true,
       vrstvy: ['skaly'],
-      z0: 14.2,
+      z0: 15.0,                   // engine 202: 14,2 → 15,0
       ikony: ['deko-kamen-1', 'deko-kamen-2', 'deko-kamen-3'],
       k: 0.45,                    // ~10 m
       hustota: 0.7,
@@ -1490,6 +1490,7 @@ const Dekorace = (() => {
   const kesDlazdic = new Map();     // "vrstva|z/x/y" → [polygon]
   let idxMrizka = null;             // "gx:gy" → [polygon]
   let idxCary = null;               // "gx:gy" (MRIZKA_CAR) → [úsek silnice]
+  let idxBudovy = null;             // "gx:gy" (MRIZKA_CAR) → [půdorys domu] (engine 201)
   let idxVelke = [];                // polygony přes moc buněk mřížky
   let idxDlazdice = null;           // Set("z/x/y") — kde data MÁME
   let idxZoomy = [];                // zoomy dlaždic v indexu, od nejjemnější
@@ -1529,16 +1530,23 @@ const Dekorace = (() => {
   /// průchod jen vyjmenuje prvky načtených dlaždic, GEOMETRIE SE PŘEVÁDÍ
   /// JEN U NOVÝCH (viz `kesDlazdic`), a `dopln` si o index řekne jen když
   /// opravdu přibyla netknutá buňka.
+  const PREVOD_ROZPOCET_MS = 14;    // engine 202: převod nových dlaždic na průchod
   function postavIndex() {
     if (!mapa) return;
     const defs = definicePloch();
     if (!defs || !defs.length) { idxMrizka = null; return; }
     const z = mapa.getZoom();
+    const tStart = performance.now();
+    let rozpocetVycerpan = false;
     const mrizka = new Map();
     const mrizkaCary = new Map();
+    const mrizkaBudovy = new Map();
     const velke = [];
     const dlazdice = new Set();
     for (const d of defs) {
+      // engine 201: půdorysy domů (tisíce na dlaždici) až od z15 – níž jsou
+      // stromy drobné a prořez to dohoní
+      if (d.id === 'budovy-vypln' && z < 15) continue;
       // vrstva mimo svůj zoomový rozsah se nekreslí → neplatí ani tady
       if (d.zmin != null && z < d.zmin) continue;
       if (d.zmax != null && z >= d.zmax) continue;
@@ -1573,6 +1581,14 @@ const Dekorace = (() => {
       }
       // ② převod geometrie (jediné opravdu drahé místo) jen u NOVÝCH
       if (nove.size) {
+        // ⭐ engine 202: ROZPOČET – převod geometrie (tisíce půdorysů domů na
+        // dlaždici) se dělí mezi průchody; co se nestihne, není v keši a
+        // převede se příště (body v těch dlaždicích zatím jen počkají)
+        if (rozpocetVycerpan || performance.now() - tStart > PREVOD_ROZPOCET_MS) {
+          rozpocetVycerpan = true;
+          for (const kk of nove) klice.delete(kk);
+          nove.clear();
+        }
         for (const kk of nove) kesDlazdic.set(kk, []);
         for (const f of prvky) {
           const t = f.tile;
@@ -1607,6 +1623,7 @@ const Dekorace = (() => {
         kesDlazdic.delete(kk);
         kesDlazdic.set(kk, polygony);
         if (d.cara) { for (const p of polygony) doMrizkyCara(mrizkaCary, p); }
+        else if (d.id === 'budovy-vypln') { for (const p of polygony) doMrizkyCara(mrizkaBudovy, p); }
         else { for (const p of polygony) doMrizky(mrizka, velke, p); }
       }
     }
@@ -1615,6 +1632,7 @@ const Dekorace = (() => {
     }
     idxMrizka = mrizka;
     idxCary = mrizkaCary;
+    idxBudovy = mrizkaBudovy;
     idxVelke = velke;
     idxDlazdice = dlazdice;
     idxZoomy = [];
@@ -1761,6 +1779,11 @@ const Dekorace = (() => {
                                 + Math.floor(lat / MRIZKA));
     if (bunka) sesbirej(bunka, lon, lat, nalez);
     if (idxVelke.length) sesbirej(idxVelke, lon, lat, nalez);
+    if (idxBudovy) {                 // půdorysy domů v jemné mřížce (engine 201)
+      const bb = idxBudovy.get(Math.floor(lon / MRIZKA_CAR) + ':'
+                               + Math.floor(lat / MRIZKA_CAR));
+      if (bb) sesbirej(bb, lon, lat, nalez);
+    }
     return nalez;                    // i prázdno je teď JISTÉ
   }
 
@@ -1827,14 +1850,43 @@ const Dekorace = (() => {
   /// ho někdo potřebuje: netknutá buňka, přesné dekorace nebo prořez).
   let passId = 0;
   let indexPass = -1;
+  let indexKamera = '';
+  let indexDlazdiceHotovy = false;
+  let indexCas = 0;
+  const casy = { index: [], dopln: [] };
+  function zapisCas(klic, ms) {
+    const a = casy[klic];
+    a.push(+ms.toFixed(1));
+    if (a.length > 12) a.shift();
+  }
+  /// ⭐ engine 201: index se NESTAVÍ 5× po každém zastavení (19–44 ms kus,
+  /// změřeno Ústí z16,5), ale jen když se od minula pohnula kamera, dojely
+  /// dlaždice (`areTilesLoaded` false → true) nebo uplynulo 2,5 s.
   function zajistiIndex() {
     if (indexPass === passId) return;
     indexPass = passId;
+    let kamera = '';
+    let hotovo = false;
+    try {
+      const c = mapa.getCenter();
+      kamera = mapa.getZoom().toFixed(2) + '|' + c.lng.toFixed(5) + '|' + c.lat.toFixed(5);
+      hotovo = !!mapa.areTilesLoaded();
+    } catch (e) { /* mapa se zrovna mění */ }
+    const ted = performance.now();
+    if (idxMrizka && kamera === indexKamera
+        && (hotovo === indexDlazdiceHotovy || !hotovo)
+        && ted - indexCas < 2500) return;
+    indexKamera = kamera;
+    indexDlazdiceHotovy = hotovo;
+    indexCas = ted;
+    const t0 = performance.now();
     try { postavIndex(); } catch (e) {
       console.warn('[dekorace] index se nepostavil:', e);
       idxMrizka = null;
       idxCary = null;
+      idxBudovy = null;
     }
+    zapisCas('index', performance.now() - t0);
   }
 
   /// ⭐ 5. 9. noc: PROŘEZ – dekorace postavené dřív (z hrubších dlaždic bez
@@ -1843,11 +1895,20 @@ const Dekorace = (() => {
   /// zastavení mapy, jen od z14,5 a jen s dlaždicemi z14 v indexu.
   let prorezPass = -1;
   let prorezKolo = 0;
+  let presnePass = -1;
+  let presneKoloN = 0;
+  function presneKolo() {
+    if (presnePass !== posledniPass) { presnePass = posledniPass; presneKoloN = 0; }
+    presneKoloN++;
+    return presneKoloN === 1 || presneKoloN === 3 || presneKoloN >= 5;
+  }
   function prorez(z, x0, x1, y0, y1) {
     if (prorezPass !== posledniPass) { prorezPass = posledniPass; prorezKolo = 0; }
     prorezKolo++;
-    if (z < 14.5 || (prorezKolo !== 2 && prorezKolo !== 5)) return false;
-    zajistiIndex();
+    if (z < 15 || (prorezKolo !== 2 && prorezKolo !== 5)) return false;
+    // engine 202: index se NEVYNUCUJE – prořez běží jen s indexem, který
+    // v tomto průchodu postavily nové buňky (v prozkoumané krajině nic)
+    if (indexPass !== passId) return false;
     if (!idxMrizka || !idxZoomy.length || idxZoomy[0] < 14) return false;
     let zmena = false;
     for (const [klic, f] of bunky) {
@@ -1881,29 +1942,15 @@ const Dekorace = (() => {
           || typeof Mlha.jeObjeveno !== 'function') return true;
       try { return Mlha.jeObjeveno(lon, lat); } catch (e) { return true; }
     };
-    // true = volno, false = střecha/silnice, null = dlaždici ještě nemám
-    const volno = (lon, lat) => {
-      zajistiIndex();
-      const q = plochyPodBodem(lon, lat);
-      if (!q) return null;
-      if (q.indexOf('budovy-vypln') >= 0) return false;
-      return !naCare(lon, lat);
-    };
-    const pridej = (klic, lon, lat, ikona, k, z0) => {
-      bunky.set(klic, {
-        type: 'Feature',
-        properties: { ik: ikona, k, rot: 0, ...nastup(z0) },
-        geometry: { type: 'Point', coordinates: [lon, lat] },
-      });
-      pocetFeatur++; n++; pridano = true;
-    };
-    const listnaty = (a, b) => STROMY_LISTNATE[
-      Math.floor(hash(a, b, 5) * STROMY_LISTNATE.length)];
+    // ⭐ engine 202: NEJDŘÍV kandidáti (klíč, mlha, výřez) BEZ indexu – v už
+    // prozkoumané krajině žádní nejsou a index se nestaví (dřív se stavěl
+    // po každém zastavení = 20–40 ms jank). Index až pro skutečné nováčky.
+    const kandidati = [];
     let body = [];
     try {
       body = mapa.querySourceFeatures('krajina', { sourceLayer: 'body', validate: false });
     } catch (e) { body = []; }
-    for (let i = 0; i < body.length && n < PRESNE_MAX; i++) {
+    for (let i = 0; i < body.length && kandidati.length < PRESNE_MAX; i++) {
       const f = body[i];
       const t = f.properties && f.properties.t;
       if (t !== 'strom' && t !== 'balvan') continue;
@@ -1913,21 +1960,7 @@ const Dekorace = (() => {
       const klic = 'zb:' + t + ':' + c[0].toFixed(5) + ',' + c[1].toFixed(5);
       if (bunky.has(klic)) continue;
       if (!objeveno(c[0], c[1])) continue;
-      const v = volno(c[0], c[1]);
-      if (v === null) continue;
-      if (v === false) { bunky.set(klic, null); continue; }
-      const a = Math.round(c[0] * 1e5), b = Math.round(c[1] * 1e5);
-      if (t === 'balvan') {
-        pridej(klic, c[0], c[1], 'deko-kamen-' + (1 + Math.floor(hash(a, b, 6) * 3)), 0.4, 14.2);
-        continue;
-      }
-      const lesik = f.properties.s === 'L';
-      pridej(klic, c[0], c[1], listnaty(a, b), lesik ? 1.0 : 1.15, 12.8);
-      if (lesik) {
-        const kx = 111320 * Math.cos(c[1] * Math.PI / 180), ky = 111320;
-        pridej(klic + ':2', c[0] + 9 / kx, c[1] + 4 / ky, listnaty(a + 1, b), 0.95, 12.8);
-        pridej(klic + ':3', c[0] - 7 / kx, c[1] + 8 / ky, listnaty(a, b + 1), 0.9, 12.8);
-      }
+      kandidati.push({ klic, lon: c[0], lat: c[1], t, lesik: f.properties.s === 'L' });
     }
     if (z >= ALEJ_OD_Z) {
       let cary = [];
@@ -1936,7 +1969,7 @@ const Dekorace = (() => {
           sourceLayer: 'cary', filter: ['==', ['get', 't'], 'stromoradi'], validate: false });
       } catch (e) { cary = []; }
       const D = ALEJ_ROZESTUP;
-      for (let i = 0; i < cary.length && n < PRESNE_MAX; i++) {
+      for (let i = 0; i < cary.length && kandidati.length < PRESNE_MAX; i++) {
         let g = null;
         try { g = cary[i].geometry; } catch (e) { continue; }
         if (!g) continue;
@@ -1945,7 +1978,7 @@ const Dekorace = (() => {
         if (!casti) continue;
         for (const linie of casti) {
           let zbytek = D / 2;
-          for (let j = 1; j < linie.length && n < PRESNE_MAX; j++) {
+          for (let j = 1; j < linie.length && kandidati.length < PRESNE_MAX; j++) {
             const ax = linie[j - 1][0], ay = linie[j - 1][1];
             const bx = linie[j][0], by = linie[j][1];
             const kx = 111320 * Math.cos(ay * Math.PI / 180), ky = 111320;
@@ -1962,14 +1995,48 @@ const Dekorace = (() => {
               const klic = 'zc:' + gx + ':' + gy;
               if (bunky.has(klic)) continue;
               if (!objeveno(lon, lat)) continue;
-              const v = volno(lon, lat);
-              if (v === null) continue;
-              if (v === false) { bunky.set(klic, null); continue; }
-              pridej(klic, lon, lat, listnaty(gx, gy), 0.85, 12.8);
+              kandidati.push({ klic, lon, lat, t: 'alej', gx, gy });
             }
             zbytek = sD - delka;
           }
         }
+      }
+    }
+    if (!kandidati.length) return false;
+    zajistiIndex();
+    // true = volno, false = střecha/silnice, null = dlaždici ještě nemám
+    const volno = (lon, lat) => {
+      const q = plochyPodBodem(lon, lat);
+      if (!q) return null;
+      if (q.indexOf('budovy-vypln') >= 0) return false;
+      return !naCare(lon, lat);
+    };
+    const pridej = (klic, lon, lat, ikona, k, z0) => {
+      bunky.set(klic, {
+        type: 'Feature',
+        properties: { ik: ikona, k, rot: 0, ...nastup(z0) },
+        geometry: { type: 'Point', coordinates: [lon, lat] },
+      });
+      pocetFeatur++; n++; pridano = true;
+    };
+    const listnaty = (a, b) => STROMY_LISTNATE[
+      Math.floor(hash(a, b, 5) * STROMY_LISTNATE.length)];
+    for (const kd of kandidati) {
+      if (n >= PRESNE_MAX) break;
+      const v = volno(kd.lon, kd.lat);
+      if (v === null) continue;
+      if (v === false) { bunky.set(kd.klic, null); continue; }
+      if (kd.t === 'alej') { pridej(kd.klic, kd.lon, kd.lat, listnaty(kd.gx, kd.gy), 0.85, 12.8); continue; }
+      const a = Math.round(kd.lon * 1e5), b = Math.round(kd.lat * 1e5);
+      if (kd.t === 'balvan') {
+        pridej(kd.klic, kd.lon, kd.lat, 'deko-kamen-' + (1 + Math.floor(hash(a, b, 6) * 3)), 0.4, 14.2);
+        continue;
+      }
+      pridej(kd.klic, kd.lon, kd.lat, listnaty(a, b), kd.lesik ? 1.0 : 1.15, 12.8);
+      if (kd.lesik) {
+        const kx = 111320 * Math.cos(kd.lat * Math.PI / 180), ky = 111320;
+        pridej(kd.klic + ':2', kd.lon + 9 / kx, kd.lat + 4 / ky, listnaty(a + 1, b), 0.95, 12.8);
+        pridej(kd.klic + ':3', kd.lon - 7 / kx, kd.lat + 8 / ky, listnaty(a, b + 1), 0.9, 12.8);
       }
     }
     return pridano;
@@ -1984,6 +2051,10 @@ const Dekorace = (() => {
   }
 
   function dopln() {
+    const t0 = performance.now();
+    try { doplnJadro(); } finally { zapisCas('dopln', performance.now() - t0); }
+  }
+  function doplnJadro() {
     if (!mapa || !ikonyHotove) return;   // malby se ještě stahují
     const z = mapa.getZoom();
     // ⚠️ MUSÍ SEDĚT S NEJNIŽŠÍM `z0` V `DRUHY` (stromy 13,25 = 54 %
@@ -2164,7 +2235,9 @@ const Dekorace = (() => {
 
     // přesné dekorace ze ZABAGED a prořez střech/silnic (5. 9. noc)
     try {
-      if (presneDekorace(z, zapad - rw, vychod + rw, jih - rh, sever + rh)) pridano = true;
+      // engine 202: jen 1., 3. a 5. průchod po zastavení (procházení alejí
+      // v načtených dlaždicích není zadarmo)
+      if (presneKolo() && presneDekorace(z, zapad - rw, vychod + rw, jih - rh, sever + rh)) pridano = true;
     } catch (e) { console.warn('[dekorace] přesné:', e); }
     try {
       if (prorez(z, zapad - rw, vychod + rw, jih - rh, sever + rh)) pridano = true;
@@ -2342,7 +2415,7 @@ const Dekorace = (() => {
   // 2567 bodů, shoda 99,03 %; VŠECH 25 rozdílů leželo do 1,31 m od hrany
   // polygonu — tam se starý dotaz mýlí sám (zpětný průmět přes terén bod
   // posouvá; u jednoho stromu v dálce dokonce o 41 m).
-  return { pripoj, _ladeni: { postavIndex, plochyPodBodem,
+  return { pripoj, _ladeni: { postavIndex, plochyPodBodem, dopln, casy: () => casy,
     stav: () => ({ kes: kesDlazdic.size, mrizka: idxMrizka && idxMrizka.size,
                    velke: idxVelke.length, zoomy: idxZoomy, zCil: idxZCil,
                    dlazdic: idxDlazdice && idxDlazdice.size }) } };

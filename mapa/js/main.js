@@ -5883,7 +5883,10 @@ function velikostMist(sBublinou, klic) {
   const kb = ['coalesce', ['get', klic === 'smH' ? 'kbH' : 'kb'], 1];
   const stop = (z) => {
     const c = Math.pow(2, z - 18) / (0.19 * 224);   // icon-size na metr
-    const o = ['*', kb, ['max', podlaha(z), ['*', sm, +c.toFixed(6)]]];
+    // ⭐ engine 201: STROP 1,2 (~270 CSS px) místo rozplynutí – obrázek
+    // zůstane, jen přestane růst (video: kostel při z19 zmizel a na střeše
+    // zbyla samotná stuha).
+    const o = ['*', kb, ['min', 1.2, ['max', podlaha(z), ['*', sm, +c.toFixed(6)]]]];
     return sBublinou
       ? ['case', ['has', 'fv'], 0.30, ['has', 'b2d'], 0.24, o]
       : ['case', ['has', 'fv'], 0.30, o];
@@ -5897,11 +5900,10 @@ function velikostMist(sBublinou, klic) {
 /// Rozplynutí, když by obrázek zaplnil obrazovku (D od z19, C od z20, B od
 /// z21; A nikdy) – platí pro ikonu, stín i patu.
 function sZanikemMist(vyraz) {
-  const vt = ['coalesce', ['get', 'vt'], 'B'];
-  const po = (tridy) => ['case', ['in', vt, ['literal', tridy]], 0, vyraz];
-  return ['interpolate', ['linear'], ['zoom'],
-    19, vyraz, 19.8, po(['D']), 20, po(['D']), 20.8, po(['D', 'C']),
-    21, po(['D', 'C']), 21.8, po(['D', 'C', 'B'])];
+  // ⭐ engine 201: ŽÁDNÉ rozplynutí. Dřív D od z19 / C od z20 / B od z21 –
+  // obrázek zmizel a zůstala stuha („přeskoky obrázků" ve videu z webu).
+  // Velikost teď stropuje `velikostMist`, obrázek zůstává vždy.
+  return vyraz;
 }
 
 function zajistiIkonu(id) {
@@ -6127,6 +6129,19 @@ async function nactiIkonyZdroje(gj, zdrojId) {
 /// když je vrstva mezitím zahozená a založená znovu.
 let hookKlikuMist = false;
 
+/// Nejmenší objekt (`sm`) z prvků pod prstem – malé věci (boží muka, kašna)
+/// mají přednost před velkým obrázkem, v jehož ploše leží.
+function nejmensiPodPrstem(fs) {
+  if (!fs || !fs.length) return null;
+  let v = fs[0];
+  for (const f of fs) {
+    const a = (f.properties && f.properties.sm) || 12;
+    const b = (v.properties && v.properties.sm) || 12;
+    if (a < b) v = f;
+  }
+  return v;
+}
+
 /// Od kterého zoomu nabídne klik na shluk SEZNAM členů místo přiblížení
 /// a kolik jich pustíme do panelu aplikace. Shluky existují jen pod
 /// `clusterMaxZoom` (13), takže vyšší práh by seznam nikdy nespustil;
@@ -6139,7 +6154,9 @@ function registrujKlikMista() {
   hookKlikuMist = true;
   for (const vrstva of ['okolnik-mista-kruh', 'okolnik-mista-ikona']) {
     mapa.on('click', vrstva, (e) => {
-      const f = e.features && e.features[0];
+      // ⭐ engine 201: pod prstem bývá víc obrázků (boží muka UVNITŘ obrázku
+      // kostela) – bere se NEJMENŠÍ objekt (`sm`), ne první v pořadí
+      const f = nejmensiPodPrstem(e.features);
       if (window.Dobyvatel && Dobyvatel.spolklKlik(e)) return;
       if (f) mostHlas('onBod', f.properties.id);
     });
@@ -6502,14 +6519,17 @@ function vPolygonu(ring, x, y) {
   }
   return uvnitr;
 }
-function doplnVelikostiMist() {
+function doplnVelikostiMist(gjPrimo) {
   try {
-    if (!mapa || !posledniMistaGj || mapa.getZoom() < 14) return;
+    // engine 201: `gjPrimo` = kolekce před prvním zápisem – jen doplní
+    // vlastnosti, bez setData (žádný skok velikosti po dojetí dlaždic)
+    const gj = gjPrimo || posledniMistaGj;
+    if (!mapa || !gj || mapa.getZoom() < 14) return;
     const zdroj = mapa.getSource('okolnik-mista');
-    if (!zdroj) return;
+    if (!zdroj && !gjPrimo) return;
     // ⚠️ jen budovy (třídy B–D): kříž, pomník či studánka (A) stojí často
     // na dvoře velké budovy a dostávaly by její rozměr (pomník 80 m)
-    const cekaji = posledniMistaGj.features.filter((f) =>
+    const cekaji = gj.features.filter((f) =>
       f.properties.ik && !f.properties.b2d && !f.properties.fv && !f.properties.smB
       && f.properties.vt !== 'A' && (f.properties.smP || 0) < 3);
     if (!cekaji.length) return;
@@ -6551,7 +6571,7 @@ function doplnVelikostiMist() {
       f.properties.sm = +sm.toFixed(1);
       f.properties.smB = 1;
     }
-    if (zmena) zdroj.setData(posledniMistaGj);
+    if (zmena && !gjPrimo && zdroj) zdroj.setData(gj);
   } catch (e) { console.warn('[mista] velikosti', e); }
 }
 
@@ -6640,9 +6660,14 @@ function vykresliMista() {
   };
   // ⭐ 5. 9. noc: největší objekt první – shluk pak nese JEHO obrázek
   // (clusterProperties berou prvního člena)
-  const featury = viditelna.map(naFeature).sort((a, b) =>
-    ((b.properties && b.properties.sm) || 0) - ((a.properties && a.properties.sm) || 0));
+  const featury = viditelna.map(naFeature);
   const gj = { type: 'FeatureCollection', features: featury };
+  // ⭐ engine 201: velikosti z půdorysů HNED (dlaždice bývají načtené), aby
+  // první vykreslení nepřeskakovalo; co chybí, doplní odložený průchod.
+  // Řazení (největší první = obrázek shluku) až PO doplnění.
+  doplnVelikostiMist(gj);
+  featury.sort((a, b) =>
+    ((b.properties && b.properties.sm) || 0) - ((a.properties && a.properties.sm) || 0));
   posledniMistaGj = gj;
   naplanujVelikostiMist();
   const gjMoje = {
@@ -6680,7 +6705,9 @@ function vykresliMista() {
     // kolidovaly, číslice nad obrázkem a po kliknutí výběr") – místa
     // blíž než 60 px se slijí do HLAVNÍHO obrázku (první člen) s číslicí;
     // klik hlásí appce `onShluk` se seznamem členů.
-    cluster: true, clusterRadius: 60, clusterMaxZoom: 22,
+    // engine 201: 60 → 44 px a jen do z17 („boží muka u kostela nejdou
+    // kliknout, musím hodně přiblížit"); od z18 každé místo samo za sebe
+    cluster: true, clusterRadius: 44, clusterMaxZoom: 17,
     clusterProperties: {
       ikH: [['coalesce', ['accumulated'], ['get', 'ikH']], ['get', 'ik']],
       // velikost PRVNÍHO člena (týž, jehož obrázek se ukazuje) – `max` by
