@@ -2049,6 +2049,8 @@ function prepoctiZabagedHerni(vrstvaId, sourceLayer) {
   for (const f of prvky) {
     const fid = f.properties && f.properties.fid;
     if (fid == null || videno.has(fid)) continue;
+    // engine 224: mosty kreslí vlastní vrstva nad terénem (okolnik-mosty-3d)
+    if (sourceLayer === 'stavby' && f.properties.t === 'most') continue;
     videno.add(fid);
     const klic = sourceLayer + ':' + fid;
     let o = budovyHerniStav.get(klic);
@@ -2538,6 +2540,99 @@ function prepoctiStinyDomu() {
   } catch (e) { /* nic */ }
 }
 
+/// ⭐ engine 224: MOSTY NAD TERÉNEM. Silnice jsou drapované, most přes údolí se
+/// propadal do údolí. ZABAGED v5 dává pás mostu (stavby t=most) s koncovými
+/// body osy (ax, ay, bx, by); výška mostovky = průměr výšky terénu u konců
+/// (tam most sedí na zemi). MapLibre zvedá extruzi o terén ve STŘEDU prvku,
+/// a prvek z dlaždice je jen kus pásu – proto základna každého kusu = mostovka
+/// − terén pod středem toho kusu (kusy pak leží v jedné rovině). Výšky přes
+/// `queryTerrainElevation` (relativní ke středu mapy, s převýšením) – rozdíly
+/// jsou v jednotkách shaderu. ZABAGED výška nad terénem `v` slouží jako strop
+/// (× převýšení × 1,3). Bez terénu se nic nekreslí (silnice se nepropadá).
+let mostyCasovac = null;
+let mostyPodpis = '';
+function nasadMosty3d() {
+  if (!mapa || !mapa.getSource('krajina')) return false;
+  try {
+    if (!mapa.getSource('mosty-3d')) {
+      mapa.addSource('mosty-3d', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    if (!mapa.getLayer('okolnik-mosty-3d')) {
+      const pred = mapa.getLayer('akvarel-dekorace') ? 'akvarel-dekorace' : undefined;
+      mapa.addLayer({ id: 'okolnik-mosty-3d', type: 'fill-extrusion', source: 'mosty-3d',
+        paint: { 'fill-extrusion-color': ['match', ['get', 'd'], 'zel', '#6B5F55', '#8C8F92'],
+                 'fill-extrusion-height': ['get', 'h'],
+                 'fill-extrusion-base': ['get', 'b'],
+                 'fill-extrusion-opacity': 1,
+                 'fill-extrusion-vertical-gradient': true } }, pred);
+    }
+  } catch (e) { console.warn('[mosty] vrstva', e); return false; }
+  return true;
+}
+function naplanujMosty3d(zaMs) {
+  if (mostyCasovac) return;                       // throttle (idle chodí každých ~500 ms)
+  mostyCasovac = setTimeout(() => { mostyCasovac = null; prepoctiMosty3d(); }, zaMs || 700);
+}
+function prepoctiMosty3d() {
+  if (!mapa || !nasadMosty3d()) return;
+  if (mapa.isMoving && mapa.isMoving()) { naplanujMosty3d(500); return; }
+  const zdroj = mapa.getSource('mosty-3d');
+  if (!zdroj) return;
+  const prazdne = { type: 'FeatureCollection', features: [] };
+  const teren = mapa.getTerrain && mapa.getTerrain();
+  const z = mapa.getZoom();
+  if (z < 13 || !teren || !mapa.queryTerrainElevation) {
+    if (mostyPodpis) { mostyPodpis = ''; zdroj.setData(prazdne); }
+    return;
+  }
+  const ex = +teren.exaggeration || 1;
+  let prvky = [];
+  try { prvky = mapa.querySourceFeatures('krajina', { sourceLayer: 'stavby', filter: ['==', ['get', 't'], 'most'] }); }
+  catch (e) { return; }
+  const mostovky = new Map();                      // fid → výška mostovky (relativní)
+  const features = [];
+  let podpis = 0;
+  for (const f of prvky) {
+    const p = f.properties || {};
+    if (p.fid == null || p.ax == null || p.bx == null) continue;
+    const g = f.geometry;
+    const kusy = g && g.type === 'Polygon' ? [g.coordinates] : (g && g.type === 'MultiPolygon' ? g.coordinates : null);
+    if (!kusy) continue;
+    let mostovka = mostovky.get(p.fid);
+    if (mostovka === undefined) {
+      let eA = null, eB = null;
+      try { eA = mapa.queryTerrainElevation([+p.ax, +p.ay]); eB = mapa.queryTerrainElevation([+p.bx, +p.by]); } catch (e) { /* mimo terén */ }
+      mostovka = (eA == null || eB == null) ? null : (eA + eB) / 2;
+      mostovky.set(p.fid, mostovka);
+    }
+    if (mostovka === null) continue;
+    for (const poly of kusy) {
+      const ring = poly[0];
+      if (!ring || ring.length < 4) continue;
+      let sx = 0, sy = 0;
+      for (let i = 0; i < ring.length - 1; i++) { sx += ring[i][0]; sy += ring[i][1]; }
+      const n = ring.length - 1;
+      let eC = null;
+      try { eC = mapa.queryTerrainElevation([sx / n, sy / n]); } catch (e) { eC = null; }
+      if (eC == null) continue;
+      let b = mostovka - eC;
+      if (p.v) b = Math.min(b, +p.v * ex * 1.3);   // strop ze ZABAGED (výška nad terénem)
+      if (b < 1.0) continue;                        // bez prohnutí nic
+      b = +b.toFixed(1);
+      podpis += b + p.fid * 0.001;
+      features.push({ type: 'Feature',
+        properties: { fid: p.fid, d: p.d || 'sil', b, h: +(b + 1.2).toFixed(1) },
+        geometry: { type: 'Polygon', coordinates: poly } });
+    }
+  }
+  const nov = features.length + '|' + podpis.toFixed(2) + '|' + Math.round(z * 10);
+  if (nov === mostyPodpis) return;
+  mostyPodpis = nov;
+  try { zdroj.setData(features.length ? { type: 'FeatureCollection', features } : prazdne); }
+  catch (e) { /* zdroj se zrovna mění */ }
+  try { window.__casy = window.__casy || {}; window.__casy.mostyN = features.length; } catch (e) { /* nic */ }
+}
+
 function prepoctiBudovyHerni() {
   if (!mapa || !mapa.getLayer('okolnik-budovy-herni-zdi')) return;
   // ⚠️ POŘADÍ (5. 9. večer): dekorace.js vkládá stromy PŘED první
@@ -2559,6 +2654,7 @@ function prepoctiBudovyHerni() {
   prepoctiZabagedHerni('okolnik-stavby-3d', 'stavby');
   prepoctiZabagedHerni('okolnik-vertikaly-3d', 'vertikaly');
   naplanujStinyDomu();
+  naplanujMosty3d(400);
   const prvky = budovyVPohledu();
   const ids = [];
   const videno = new Set();
@@ -6809,6 +6905,7 @@ function registrujKlikMista() {
   mapa.on('zoomend', poradiNazvuObci);
   mapa.on('idle', poradiNazvuObci);
   mapa.on('idle', () => naplanujStinyDomu(600));
+  mapa.on('idle', () => naplanujMosty3d(700));   // engine 224: mosty nad terénem
   poradiNazvuObci();
   for (const vrstva of ['okolnik-mista-kruh', 'okolnik-mista-ikona']) {
     mapa.on('click', vrstva, (e) => {

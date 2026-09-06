@@ -583,7 +583,7 @@ function stylHerni(ctx) {
       // v3 (6. 9. noc): + zelen/park/zricenina, čáry hradba, vrstvy `stavby`
       // (kůlny, skleníky, přístřešky, věžovité stavby, h, fid) a `vertikaly`
       // (komíny, věže, vodojemy, větrníky, těžní věže, sila – čtverce, h, fid)
-      krajina: { type: 'vector', url: r2('krajina4.pmtiles'),
+      krajina: { type: 'vector', url: r2('krajina5.pmtiles'),
                  attribution: '© ČÚZK ZABAGED®' },
     }),
     layers: [
