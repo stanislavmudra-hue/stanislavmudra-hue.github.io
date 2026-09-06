@@ -1959,6 +1959,34 @@ let budovyHerniZap = (() => {
 const budovyHerniStav = new Map();   // id → objeveno? (false se zkouší znovu)
 let budovyHerniCasovac = null;
 
+/// ⭐ engine 226: OKNA NA DOMECH – vzorek fasády pro `fill-extrusion-pattern`
+/// zdí (48×40 px @2 = 24×20 CSS px: patro s jedním oknem, opakuje se po
+/// stěně; okna tedy mají stálou velikost na obrazovce, ne podle domu – levné a
+/// pro herní mapu stačí). Den: šedomodré sklo, noc: teple svítící okna.
+function vzorekOken(noc) {
+  const c = document.createElement('canvas');
+  c.width = 48; c.height = 40;
+  const x = c.getContext('2d');
+  x.fillStyle = noc ? '#8F846D' : '#EAD9B6';          // fasáda (extrusion-color se s patternem ignoruje)
+  x.fillRect(0, 0, 48, 40);
+  x.fillStyle = noc ? '#9C917A' : '#F4E8CC';          // světlá linka patra
+  x.fillRect(0, 0, 48, 2);
+  x.fillStyle = noc ? '#3A3226' : '#4F5D6B';          // rám
+  x.fillRect(14, 10, 20, 22);
+  x.fillStyle = noc ? '#FFD37A' : '#8FA3B4';          // sklo / svítící okno
+  x.fillRect(16, 12, 7, 9); x.fillRect(25, 12, 7, 9);
+  x.fillRect(16, 23, 7, 7); x.fillRect(25, 23, 7, 7);
+  x.fillStyle = noc ? '#7E735E' : '#E4D2AE';          // parapet
+  x.fillRect(12, 32, 24, 2);
+  return x.getImageData(0, 0, 48, 40);
+}
+function zajistiVzorkyOken() {
+  try {
+    if (!mapa.hasImage('okna')) mapa.addImage('okna', vzorekOken(false), { pixelRatio: 2 });
+    if (!mapa.hasImage('okna-noc')) mapa.addImage('okna-noc', vzorekOken(true), { pixelRatio: 2 });
+  } catch (e) { /* atlas se zrovna mění */ }
+}
+
 function nasadBudovyHerni() {
   if (!mapa || !mapa.getStyle()) return;
   const cfg = STYLY[aktualniKod];
@@ -1992,9 +2020,11 @@ function nasadBudovyHerni() {
   const nastup = ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, 1];
   const pred = prvniSymbolovaVrstva();
   try {
+    zajistiVzorkyOken();
     mapa.addLayer({ id: 'okolnik-budovy-herni-zdi', type: 'fill-extrusion',
       source: 'omt', 'source-layer': 'building', minzoom: 14.5, filter: nic,
       paint: { 'fill-extrusion-color': '#EAD9B6',
+               'fill-extrusion-pattern': (typeof krokNoci === 'number' && krokNoci >= 2) ? 'okna-noc' : 'okna',
                'fill-extrusion-height': ['-', H, 0.6],
                'fill-extrusion-base': B,
                'fill-extrusion-opacity': nastup } }, pred);
@@ -2283,6 +2313,135 @@ function siluetaSpritu(ik) {
   if (vysl) stinySiluety.set(ik, vysl);   // bez spritu zkusit příště znovu
   return vysl;
 }
+/// ⭐ engine 226: STÍNY KOPCŮ. Výškopis z DemSource (`window.__okolnikDem`,
+/// dlaždice 256×256 Float32 metry), keš dlaždic tady. Mřížka 128×128 přes
+/// rozsah plátna, z každé buňky paprsek KE SLUNCI; když terén (× převýšení)
+/// paprsek převýší, buňka je ve stínu. Kreslí se jako měkký rastr (alfa 0,55)
+/// pod stíny domů/stromů, pak společné rozmazání a krytí.
+const DEM_KES = new Map();          // 'z/x/y' → Float32Array | null (chyba)
+const DEM_CEKAME = new Set();
+const DEM_KES_MAX = 48;             // 48 × 256 KB; VĚTŠÍ než blok (36), jinak věčné stahování
+const STINY_TERENU_MRIZKA = 128;
+let stinyTerenPlatno = null;
+let demMozaika = null;              // slepený blok dlaždic { klic, data, S, V, ... }
+function demDlazdice(z, x, y) {
+  const k = z + '/' + x + '/' + y;
+  if (DEM_KES.has(k)) return DEM_KES.get(k);
+  if (!DEM_CEKAME.has(k) && window.__okolnikDem && window.__okolnikDem.getDemTile) {
+    DEM_CEKAME.add(k);
+    const hotovo = (data) => {
+      DEM_KES.set(k, data);
+      while (DEM_KES.size > DEM_KES_MAX) DEM_KES.delete(DEM_KES.keys().next().value);
+      DEM_CEKAME.delete(k);
+      if (!DEM_CEKAME.size) { stinyPodpis = ''; naplanujStinyDomu(150); }   // až dojdou všechny
+    };
+    window.__okolnikDem.getDemTile(z, x, y)
+      .then((t) => hotovo((t && t.data && t.width === 256) ? t.data : null))
+      .catch(() => hotovo(null));
+  }
+  return undefined;                        // ještě není
+}
+/// Mozaika dlaždic [x0..x1]×[y0..y1] úrovně zD do jednoho Float32Array
+/// (chybějící dlaždice = −10000). null = některá ještě nedošla.
+function demMozaikaPro(zD, x0, y0, x1, y1) {
+  const klic = [zD, x0, y0, x1, y1].join('/');
+  if (demMozaika && demMozaika.klic === klic) return demMozaika;
+  const nx = x1 - x0 + 1, ny = y1 - y0 + 1;
+  const dl = [];
+  let chybi = false;
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      const d = demDlazdice(zD, tx, ty);
+      if (d === undefined) chybi = true;
+      dl.push(d || null);
+    }
+  }
+  if (chybi) return null;
+  const S = nx * 256, V = ny * 256;
+  const data = new Float32Array(S * V);
+  data.fill(-10000);
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const d = dl[j * nx + i];
+      if (!d) continue;
+      for (let row = 0; row < 256; row++) data.set(d.subarray(row * 256, row * 256 + 256), (j * 256 + row) * S + i * 256);
+    }
+  }
+  demMozaika = { klic, zD, x0, y0, nx, ny, data, S, V };
+  return demMozaika;
+}
+/// Stíny terénu do ctx (pomocné plátno W×H, rozsah r). Vrací true, když se
+/// kreslilo (nebo nebylo co), false, když chybí dlaždice DEM (přijde přepočet).
+function kresliStinyTerenu(ctx, r, W, H, mpu, stredLat, ex) {
+  if (!window.__okolnikDem || stinSvetlo.el > 55 || stinSvetlo.el < 2) return true;
+  const tg = Math.tan(stinSvetlo.el * Math.PI / 180);
+  const G = STINY_TERENU_MRIZKA;
+  const bunkaM = Math.max((r.x1 - r.x0) / mpu / G, (r.y1 - r.y0) / mpu / G);
+  const krokM = Math.max(bunkaM, 12);
+  const KROKU_BLIZKO = 30, KROKU_DALEKO = 40, HRUBOST = 4;
+  // dosah paprsku: převýšení do 700 m (Krkonoše víc, ale pak už je to jedno)
+  const dosahM = Math.min(4000, 700 / tg, krokM * (KROKU_BLIZKO + KROKU_DALEKO * HRUBOST));
+  const okrajMerc = dosahM * mpu;
+  const celkemM = ((r.x1 - r.x0) + 2 * okrajMerc) / mpu;
+  const zD = celkemM > 12000 ? 12 : (celkemM > 6000 ? 13 : 14);   // z12 = 25 m/px, pro kopce stačí
+  const n = Math.pow(2, zD);
+  const x0 = Math.floor((r.x0 - okrajMerc) * n), x1 = Math.floor((r.x1 + okrajMerc) * n);
+  const y0 = Math.floor((r.y0 - okrajMerc) * n), y1 = Math.floor((r.y1 + okrajMerc) * n);
+  if ((x1 - x0 + 1) * (y1 - y0 + 1) > 36) return true;     // moc dlaždic – přeskočit
+  const t0 = performance.now();
+  const moz = demMozaikaPro(zD, x0, y0, x1, y1);
+  if (!moz) return false;
+  const data = moz.data, S = moz.S, V = moz.V;
+  const kPx = n * 256;                             // Mercator → pixel mozaiky
+  const oX = x0 * 256, oY = y0 * 256;
+  const az = stinSvetlo.az * Math.PI / 180;
+  const dpx = Math.sin(az) * krokM * mpu * kPx, dpy = -Math.cos(az) * krokM * mpu * kPx;   // ke slunci (Mercator y roste k jihu)
+  const stoupani = krokM * tg;                     // výška paprsku na krok (m)
+  if (!stinyTerenPlatno) { stinyTerenPlatno = document.createElement('canvas'); stinyTerenPlatno.width = G; stinyTerenPlatno.height = G; }
+  const tctx = stinyTerenPlatno.getContext('2d');
+  const img = tctx.createImageData(G, G);
+  const px = img.data;
+  let veStinu = 0;
+  const cx0 = r.x0 * kPx - oX, cy0 = r.y0 * kPx - oY;
+  const cdx = (r.x1 - r.x0) * kPx / G, cdy = (r.y1 - r.y0) * kPx / G;
+  for (let gy = 0; gy < G; gy++) {
+    const fy0 = cy0 + (gy + 0.5) * cdy;
+    for (let gx = 0; gx < G; gx++) {
+      const fx0 = cx0 + (gx + 0.5) * cdx;
+      let ix = fx0 | 0, iy = fy0 | 0;
+      if (ix < 0 || iy < 0 || ix >= S || iy >= V) continue;
+      const h0 = data[iy * S + ix];
+      if (h0 < -9000) continue;
+      let fx = fx0, fy = fy0, ray = h0 * ex + 0.8;
+      let stin = 0, sx = dpx, sy = dpy, st = stoupani;
+      for (let k = 1; k <= KROKU_BLIZKO + KROKU_DALEKO; k++) {
+        if (k === KROKU_BLIZKO + 1) { sx *= HRUBOST; sy *= HRUBOST; st *= HRUBOST; }
+        fx += sx; fy += sy; ray += st;
+        ix = fx | 0; iy = fy | 0;
+        if (ix < 0 || iy < 0 || ix >= S || iy >= V) break;
+        const h = data[iy * S + ix];
+        if (h < -9000) break;
+        if (h * ex > ray) { stin = 1; break; }
+      }
+      if (stin) {
+        const i = (gy * G + gx) * 4;
+        px[i] = 42; px[i + 1] = 29; px[i + 2] = 16; px[i + 3] = 140;   // alfa 0,55
+        veStinu++;
+      }
+    }
+  }
+  tctx.putImageData(img, 0, 0);
+  if (veStinu) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(stinyTerenPlatno, 0, 0, W, H);
+  }
+  try {
+    window.__casy = window.__casy || {};
+    window.__casy.stinyTerenBunek = veStinu; window.__casy.stinyTerenMs = Math.round(performance.now() - t0);
+    window.__casy.stinyTerenDlazdic = moz.nx * moz.ny; window.__casy.stinyTerenZ = zD; window.__casy.stinyTerenKrokM = Math.round(krokM);
+  } catch (e) { /* nic */ }
+  return true;
+}
 function prepoctiStinyDomu() {
   if (!mapa || !zajistiVrstvuStinu()) return;
   // během gesta nepřepočítávat (50 ms v hustém městě = trhnutí) – až po něm
@@ -2422,6 +2581,11 @@ function prepoctiStinyDomu() {
   ctx.filter = 'none';
   ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, W, H);
+  // engine 226: stíny kopců pod vším (chybí-li DEM, přijde přepočet po dojití)
+  try {
+    const exT = (mapa.getTerrain && mapa.getTerrain() && +mapa.getTerrain().exaggeration) || 1;
+    kresliStinyTerenu(ctx, r, W, H, mpu, stred.lat, exT);
+  } catch (eT) { console.warn('[stíny] terén', eT); }
   ctx.fillStyle = '#2A1D10';
   const pudorysy = [];
   for (const q of prstence) {
@@ -2540,17 +2704,23 @@ function prepoctiStinyDomu() {
   } catch (e) { /* nic */ }
 }
 
-/// ⭐ engine 224: MOSTY NAD TERÉNEM. Silnice jsou drapované, most přes údolí se
-/// propadal do údolí. ZABAGED v5 dává pás mostu (stavby t=most) s koncovými
-/// body osy (ax, ay, bx, by); výška mostovky = průměr výšky terénu u konců
-/// (tam most sedí na zemi). MapLibre zvedá extruzi o terén ve STŘEDU prvku,
-/// a prvek z dlaždice je jen kus pásu – proto základna každého kusu = mostovka
-/// − terén pod středem toho kusu (kusy pak leží v jedné rovině). Výšky přes
-/// `queryTerrainElevation` (relativní ke středu mapy, s převýšením) – rozdíly
-/// jsou v jednotkách shaderu. ZABAGED výška nad terénem `v` slouží jako strop
-/// (× převýšení × 1,3). Bez terénu se nic nekreslí (silnice se nepropadá).
+/// ⭐ engine 224/225: MOSTY NAD TERÉNEM. Silnice jsou drapované, most přes
+/// údolí se propadal do údolí. ZABAGED v6 dává OSU mostu (cary t=most) s konci
+/// (ax, ay, bx, by), šířkou w, výškou nad terénem v a druhem d (sil/zel).
+/// Mostovka se INTERPOLUJE mezi výškou terénu u obou konců (tam most sedí na
+/// zemi – „ve Rtyni most nenavazuje na silnici" byla jedna rovina z průměru).
+/// Engine staví podél osy po úsecích ≤ 30 m: desku (0,8 m), nosník pod ní
+/// (1,0 m), pruh na desce (střední čára / dvě kolejnice) a pilíře (kde je
+/// světlá výška > 3 m). Každý díl je vlastní prvek se základnou = mostovka −
+/// terén ve svém středu (MapLibre zvedá extruzi o terén ve středu prvku).
+/// Výšky přes `queryTerrainElevation` (relativní ke středu mapy, s
+/// převýšením) – rozdíly odpovídají shaderu; ZABAGED `v` je strop
+/// (× převýšení × 1,3). Bez terénu se nic nekreslí.
 let mostyCasovac = null;
 let mostyPodpis = '';
+const MOST_USEK_M = 30;
+const MOST_BARVY = { sil: '#9C9C9C', zel: '#7A6E63', pruh: '#E6E6DE', kolej: '#C8BFB2',
+                     nosnik: '#67615B', pilir: '#8A847C' };
 function nasadMosty3d() {
   if (!mapa || !mapa.getSource('krajina')) return false;
   try {
@@ -2560,7 +2730,7 @@ function nasadMosty3d() {
     if (!mapa.getLayer('okolnik-mosty-3d')) {
       const pred = mapa.getLayer('akvarel-dekorace') ? 'akvarel-dekorace' : undefined;
       mapa.addLayer({ id: 'okolnik-mosty-3d', type: 'fill-extrusion', source: 'mosty-3d',
-        paint: { 'fill-extrusion-color': ['match', ['get', 'd'], 'zel', '#6B5F55', '#8C8F92'],
+        paint: { 'fill-extrusion-color': ['get', 'c'],
                  'fill-extrusion-height': ['get', 'h'],
                  'fill-extrusion-base': ['get', 'b'],
                  'fill-extrusion-opacity': 1,
@@ -2581,48 +2751,97 @@ function prepoctiMosty3d() {
   const prazdne = { type: 'FeatureCollection', features: [] };
   const teren = mapa.getTerrain && mapa.getTerrain();
   const z = mapa.getZoom();
-  if (z < 13 || !teren || !mapa.queryTerrainElevation) {
+  if (z < 13.5 || !teren || !mapa.queryTerrainElevation) {
     if (mostyPodpis) { mostyPodpis = ''; zdroj.setData(prazdne); }
     return;
   }
   const ex = +teren.exaggeration || 1;
   let prvky = [];
-  try { prvky = mapa.querySourceFeatures('krajina', { sourceLayer: 'stavby', filter: ['==', ['get', 't'], 'most'] }); }
+  try { prvky = mapa.querySourceFeatures('krajina', { sourceLayer: 'cary', filter: ['==', ['get', 't'], 'most'] }); }
   catch (e) { return; }
-  const mostovky = new Map();                      // fid → výška mostovky (relativní)
+  const vyska = (b) => { try { return mapa.queryTerrainElevation(b); } catch (e) { return null; } };
+  const konce = new Map();                         // fid → { A, B, eA, eB } nebo null
   const features = [];
   let podpis = 0;
+  const pridej = (ring, b, h, c) => {
+    features.push({ type: 'Feature', properties: { b: +b.toFixed(1), h: +h.toFixed(1), c },
+                    geometry: { type: 'Polygon', coordinates: [ring] } });
+  };
   for (const f of prvky) {
     const p = f.properties || {};
     if (p.fid == null || p.ax == null || p.bx == null) continue;
     const g = f.geometry;
-    const kusy = g && g.type === 'Polygon' ? [g.coordinates] : (g && g.type === 'MultiPolygon' ? g.coordinates : null);
-    if (!kusy) continue;
-    let mostovka = mostovky.get(p.fid);
-    if (mostovka === undefined) {
-      let eA = null, eB = null;
-      try { eA = mapa.queryTerrainElevation([+p.ax, +p.ay]); eB = mapa.queryTerrainElevation([+p.bx, +p.by]); } catch (e) { /* mimo terén */ }
-      mostovka = (eA == null || eB == null) ? null : (eA + eB) / 2;
-      mostovky.set(p.fid, mostovka);
+    const cary = g && g.type === 'LineString' ? [g.coordinates] : (g && g.type === 'MultiLineString' ? g.coordinates : null);
+    if (!cary) continue;
+    let k = konce.get(p.fid);
+    if (k === undefined) {
+      const A = [+p.ax, +p.ay], B = [+p.bx, +p.by];
+      const eA = vyska(A), eB = vyska(B);
+      k = (eA == null || eB == null) ? null : { A, B, eA, eB };
+      konce.set(p.fid, k);
     }
-    if (mostovka === null) continue;
-    for (const poly of kusy) {
-      const ring = poly[0];
-      if (!ring || ring.length < 4) continue;
-      let sx = 0, sy = 0;
-      for (let i = 0; i < ring.length - 1; i++) { sx += ring[i][0]; sy += ring[i][1]; }
-      const n = ring.length - 1;
-      let eC = null;
-      try { eC = mapa.queryTerrainElevation([sx / n, sy / n]); } catch (e) { eC = null; }
-      if (eC == null) continue;
-      let b = mostovka - eC;
-      if (p.v) b = Math.min(b, +p.v * ex * 1.3);   // strop ze ZABAGED (výška nad terénem)
-      if (b < 1.0) continue;                        // bez prohnutí nic
-      b = +b.toFixed(1);
-      podpis += b + p.fid * 0.001;
-      features.push({ type: 'Feature',
-        properties: { fid: p.fid, d: p.d || 'sil', b, h: +(b + 1.2).toFixed(1) },
-        geometry: { type: 'Polygon', coordinates: poly } });
+    if (!k) continue;
+    const zel = p.d === 'zel';
+    const w = Math.max(3, Math.min(+p.w || (zel ? 4.5 : 7), 40));
+    const strop = p.v ? +p.v * ex * 1.3 : Infinity;
+    for (const cara of cary) {
+      for (let i = 0; i + 1 < cara.length; i++) {
+        const P = cara[i], Q = cara[i + 1];
+        const kxM = 111320 * Math.cos(P[1] * Math.PI / 180), kyM = 110574;
+        const dx = (Q[0] - P[0]) * kxM, dy = (Q[1] - P[1]) * kyM;
+        const delka = Math.hypot(dx, dy);
+        if (delka < 1) continue;
+        const ux = dx / delka, uy = dy / delka;           // směr (m)
+        const nx = -uy, ny = ux;                          // kolmice (m)
+        const useku = Math.max(1, Math.ceil(delka / MOST_USEK_M));
+        // projekce na osu A→B (m) pro interpolaci mostovky
+        const abx = (k.B[0] - k.A[0]) * kxM, aby = (k.B[1] - k.A[1]) * kyM;
+        const ab2 = abx * abx + aby * aby || 1;
+        for (let u = 0; u < useku; u++) {
+          const t0 = u / useku, t1 = (u + 1) / useku;
+          const P0 = [P[0] + (Q[0] - P[0]) * t0, P[1] + (Q[1] - P[1]) * t0];
+          const P1 = [P[0] + (Q[0] - P[0]) * t1, P[1] + (Q[1] - P[1]) * t1];
+          const C = [(P0[0] + P1[0]) / 2, (P0[1] + P1[1]) / 2];
+          const tAB = Math.max(0, Math.min(1, ((C[0] - k.A[0]) * kxM * abx + (C[1] - k.A[1]) * kyM * aby) / ab2));
+          const mostovka = k.eA + tAB * (k.eB - k.eA);
+          const eC = vyska(C);
+          if (eC == null) continue;
+          let b = Math.min(mostovka - eC, strop);
+          if (b < 1.0) continue;                       // tady most sedí na zemi
+          b = +b.toFixed(1);
+          podpis += b + p.fid * 0.001 + u * 0.01;
+          // čtyřúhelník o šířce sirka (m) kolem osy P0→P1, posunutý o `posun` m napříč
+          const ctverec = (sirka, posun, od, doo) => {
+            const A0 = [P0[0] + (Q[0] - P[0]) * (od || 0) * 0, P0[1]];   // (od/doo nevyužito – celý úsek)
+            void A0; void doo;
+            const hw = sirka / 2;
+            const o = posun || 0;
+            const l1 = [(nx * (hw + o)) / kxM, (ny * (hw + o)) / kyM];
+            const l2 = [(nx * (-hw + o)) / kxM, (ny * (-hw + o)) / kyM];
+            return [[P0[0] + l1[0], P0[1] + l1[1]], [P1[0] + l1[0], P1[1] + l1[1]],
+                    [P1[0] + l2[0], P1[1] + l2[1]], [P0[0] + l2[0], P0[1] + l2[1]],
+                    [P0[0] + l1[0], P0[1] + l1[1]]];
+          };
+          pridej(ctverec(w, 0), b, b + 0.8, zel ? MOST_BARVY.zel : MOST_BARVY.sil);      // deska
+          pridej(ctverec(w * 0.9, 0), b - 1.0, b, MOST_BARVY.nosnik);                  // nosník
+          if (zel) {
+            pridej(ctverec(0.3, 0.72), b + 0.8, b + 0.95, MOST_BARVY.kolej);
+            pridej(ctverec(0.3, -0.72), b + 0.8, b + 0.95, MOST_BARVY.kolej);
+          } else {
+            pridej(ctverec(0.35, 0), b + 0.8, b + 0.92, MOST_BARVY.pruh);
+          }
+          if (b > 3) {                                  // pilíř uprostřed úseku
+            const s2 = 1.3;
+            const cx = C[0], cy = C[1];
+            const ring = [[cx + (ux * s2 + nx * s2) / kxM, cy + (uy * s2 + ny * s2) / kyM],
+                          [cx + (ux * s2 - nx * s2) / kxM, cy + (uy * s2 - ny * s2) / kyM],
+                          [cx + (-ux * s2 - nx * s2) / kxM, cy + (-uy * s2 - ny * s2) / kyM],
+                          [cx + (-ux * s2 + nx * s2) / kxM, cy + (-uy * s2 + ny * s2) / kyM]];
+            ring.push(ring[0]);
+            pridej(ring, 0, b - 1.0, MOST_BARVY.pilir);
+          }
+        }
+      }
     }
   }
   const nov = features.length + '|' + podpis.toFixed(2) + '|' + Math.round(z * 10);
@@ -3674,6 +3893,12 @@ function aplikujNoc() {
         mapa.setPaintProperty('mlha-rytina', v + '-transition', { duration: 0 });
       }
       mapa.setPaintProperty('mlha-rytina', 'raster-brightness-max', JAS_MLHY[krok]);
+      try {   // engine 226: v noci svítí okna
+        if (mapa.getLayer('okolnik-budovy-herni-zdi')) {
+          zajistiVzorkyOken();
+          mapa.setPaintProperty('okolnik-budovy-herni-zdi', 'fill-extrusion-pattern', krok >= 2 ? 'okna-noc' : 'okna');
+        }
+      } catch (eO) { /* nic */ }
       mapa.setPaintProperty('mlha-rytina', 'raster-opacity', KRYTI_MLHY[krok]);
       mapa.setPaintProperty('mlha-rytina', 'raster-saturation', SYTOST_MLHY[krok]);
     }
