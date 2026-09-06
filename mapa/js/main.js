@@ -4411,8 +4411,10 @@ function prepniStyl(kod) {
   krokNoci = -1;   // nový styl = noční vrstvy zmizely, nanést znovu
   puvodniKresba = null;   // …a denní barvy cest se přečtou z nového stylu
   podlozStyl(kod);
-  Mlha.zastav();
-  Ilustrace.zavri();
+  // engine 219: výjimka modulu nesmí shodit výměnu stylu (web přepíná
+  // i uprostřed inicializace herních modulů)
+  try { Mlha.zastav(); } catch (e) { console.warn('[styl] Mlha.zastav', e); }
+  try { Ilustrace.zavri(); } catch (e) { console.warn('[styl] Ilustrace.zavri', e); }
   aktualniKod = kod;
   // uložené stavy symbolů patří starému stylu — nový je dostane čerstvé
   // (aplikujDoplnky přes nastavTeren zjednoduší znovu, je-li terén)

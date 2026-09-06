@@ -244,7 +244,19 @@
 
   function nastavStyl(kod) {
     try {
-      if (typeof aktualniKod !== 'undefined' && aktualniKod !== kod) OkolnikMost.nastavStyl(kod);
+      if (typeof aktualniKod !== 'undefined' && aktualniKod !== kod) {
+        console.log('[web-ui] přepínám styl', aktualniKod, '→', kod);
+        OkolnikMost.nastavStyl(kod);
+        // engine 219: ověřit, že engine styl vyměnil; jinak jednou znovu
+        setTimeout(function () {
+          try {
+            if (typeof aktualniKod !== 'undefined' && aktualniKod !== kod) {
+              console.warn('[web-ui] styl nepřepnut (', aktualniKod, '), zkouším znovu', kod);
+              OkolnikMost.nastavStyl(kod);
+            }
+          } catch (e2) { console.warn('[web-ui] styl znovu', e2); }
+        }, 2500);
+      }
     } catch (e) { console.warn('[web-ui] styl', e); }
     var nazvy = { herni: 'Herní', turisticka: 'Turistická', zakladni: 'Základní', letecka: 'Letecká' };
     ui.pohled.innerHTML = '<span class="vel">Pohled</span>' + (nazvy[kod] || kod);
@@ -504,9 +516,13 @@
 
   function ikonaMista(m) {
     var ch = kat.chipy[m.chip] || {};
+    var em = kat.emoji[m.d] || ch.e || EMOJI_VYCHOZI;
+    // engine 219 (6. 9. 2026: „malované obrázky míst z Objevitele jsou i v
+    // Cestovateli, tam být nemají"): mimo hru stejné bubliny jako appka
+    // (`_ikona3d` mimo hru = emoji kategorie), kresby jen v Objevitelu
+    if (rezim !== 'objevitel') return 'emoji|' + em + '|#5B6B75';
     var asset = kat.ikony[m.d] || ch.a;
     if (asset) return '/assets/icons/' + asset + '.webp';
-    var em = kat.emoji[m.d] || ch.e || EMOJI_VYCHOZI;
     return 'emoji|' + em + '|#5B6B75';
   }
 
@@ -703,6 +719,9 @@
       try {
         ok = typeof mapa !== 'undefined' && mapa && typeof OkolnikMost !== 'undefined'
           && ((mapa.style && mapa.style._loaded) || (mapa.isStyleLoaded && mapa.isStyleLoaded()))
+          // engine 219: až po `load` enginu (doplňky, mlha, dekorace) – uložený
+          // režim Cestovatel přepínal styl uprostřed inicializace herních modulů
+          && window.__casy && window.__casy.load
           && window.OkolnikWeb && window.OkolnikWeb.kresby && window.OkolnikWeb.kresby.length;
       } catch (e) { ok = false; }
       if (ok) { cb(); return; }
