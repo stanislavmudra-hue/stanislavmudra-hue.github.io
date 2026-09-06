@@ -379,58 +379,23 @@ const Dekorace = (() => {
   // -------------------------------------------------------------------------
   // Vrstva a doplňování bodů
   // -------------------------------------------------------------------------
+  /// engine 217: stíny stromů a keřů kreslí main.js na plátno stínů spolu
+  /// s domy (koruna jako elipsa promítnutá podle slunce + kmen). Symbolová
+  /// elipsa `akvarel-dekorace-stin` (engine 213, krytí ≤ 0,3, měkký přechod)
+  /// nebyla vidět („u obrázků stromu stín nevidím") a stála za každý snímek.
+  /// API zůstává kvůli svetlo.js; směr světla bere main.js sám.
+  function nastavStin() { /* nic – viz main.js prepoctiStinyDomu */ }
+
   /// Zdroj se zakládá LÍNĚ až s prvními daty (7. 8.): zdroj založený
   /// prázdný během style.load zůstal STERILNÍ — setData pak plnil data
   /// i querySourceFeatures, ale dlaždice se nikdy nevykreslily (ověřeno
   /// pokusně; zdroj založený rovnou s daty kreslí okamžitě).
-  /// ⭐ engine 213: STÍN STROMU NA ZEMI – měkká elipsa (128×64 @2) zarovnaná
-  /// s mapou pod stromem, posunutá od slunce (`nastavStin`). Vertikální
-  /// billboard + ležící stín = hloubka („podpoř 3D efekt").
-  function stinSprite() {
-    const w = 128, h = 64;
-    const c = document.createElement('canvas');
-    c.width = w; c.height = h;
-    const ctx = c.getContext('2d');
-    ctx.save();
-    ctx.translate(w / 2, h / 2);
-    ctx.scale(1, 0.5);
-    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, w / 2);
-    g.addColorStop(0, 'rgba(24,16,8,0.9)');
-    g.addColorStop(0.55, 'rgba(24,16,8,0.55)');
-    g.addColorStop(1, 'rgba(24,16,8,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(0, 0, w / 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    return ctx.getImageData(0, 0, w, h);
-  }
-
-  /// Směr a síla stínů stromů podle světla (volá svetlo.js): az = azimut
-  /// zdroje od severu, el = výška; stín míří od zdroje, délka roste s nízkým
-  /// sluncem (12 CSS px × 1/tan(el), 0,4–2×), za tmy stín mizí.
-  function nastavStin(az, el, zdroj) {
-    if (!mapa || !mapa.getLayer('akvarel-dekorace-stin')) return;
-    try {
-      const d = ((az || 0) + 180) * Math.PI / 180;
-      const delka = 12 * Math.max(0.4, Math.min(2.0,
-        1 / Math.tan(Math.max(8, el || 8) * Math.PI / 180)));
-      mapa.setLayoutProperty('akvarel-dekorace-stin', 'icon-offset',
-          [+(Math.sin(d) * delka).toFixed(1), +(-Math.cos(d) * delka).toFixed(1)]);
-      const sila = zdroj === 'slunce' ? 0.32 : (zdroj === 'mesic' ? 0.18 : 0);
-      mapa.setPaintProperty('akvarel-dekorace-stin', 'icon-opacity',
-          ['interpolate', ['linear'], ['zoom']].concat(
-            RAMPA.flatMap((z, i) => [z, ['*', ['get', 'o' + (i + 1)], sila]])));
-    } catch (e) { /* styl se zrovna mění */ }
-  }
-
   function pridejVrstvu(data) {
     if (!mapa || mapa.getSource('dekorace')) return;
     // buffer 0: s allow-overlap netřeba přesah — levnější přeskládání
     mapa.addSource('dekorace',
         { type: 'geojson', data, buffer: 0, maxzoom: 14 });
-    try { if (!mapa.hasImage('deko-stin')) mapa.addImage('deko-stin', stinSprite(), { pixelRatio: 2 }); }
-    catch (e) { /* obrázek už je */ }
+    // (engine 217: sprite `deko-stin` zrušen – stíny stromů kreslí main.js)
     // POD MLHU: dekorace patří do barevného světa a odkrývají se
     // objevováním — nad šedou rytinou zelené stromky svítily (chyba
     // z prvního nasazení). Zdroj vzniká LÍNĚ až po mlze, takže kotvit
@@ -465,30 +430,8 @@ const Dekorace = (() => {
       kotva = vrstvy.find((v) => v.id === 'mlha-rytina')
         || vrstvy.find((v) => v.id.startsWith('ink-'));
     }
-    // engine 213: stín pod stromem (stromy, keře, aleje: k ≥ 0,4) – vloží se
-    // PŘED vrstvu stromů, tedy pod ni; šířka elipsy ≈ šířka stromu (64 CSS px
-    // základ proti 94 px stromu → ×1,47)
-    mapa.addLayer({
-      id: 'akvarel-dekorace-stin', type: 'symbol', source: 'dekorace',
-      minzoom: 14.5,
-      filter: ['all', ['!', ['has', 'sv']], ['>=', ['coalesce', ['get', 'k'], 0], 0.4]],
-      layout: {
-        'icon-image': 'deko-stin',
-        'icon-anchor': 'center',
-        'icon-pitch-alignment': 'map',
-        'icon-rotation-alignment': 'map',
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-        'icon-offset': [0, 0],
-        'icon-size': ['interpolate', ['exponential', 2], ['zoom'],
-          13.25, ['*', ['get', 'k'], ['coalesce', ['get', 'ev'], 1], 0.0676],
-          22, ['*', ['get', 'k'], ['coalesce', ['get', 'ev'], 1], 28.9]],
-      },
-      paint: {
-        'icon-opacity': ['interpolate', ['linear'], ['zoom']].concat(
-          RAMPA.flatMap((z, i) => [z, ['*', ['get', 'o' + (i + 1)], 0.3]])),
-      },
-    }, kotva ? kotva.id : undefined);
+    // (engine 217: vrstva `akvarel-dekorace-stin` zrušena – stíny stromů
+    //  kreslí main.js na plátno stínů spolu s domy)
     mapa.addLayer({
       id: 'akvarel-dekorace', type: 'symbol', source: 'dekorace',
       // stromy nastupují od z13,25 (54 % ukazatele), vrstva musí být dřív

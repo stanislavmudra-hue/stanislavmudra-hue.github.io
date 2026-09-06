@@ -2091,14 +2091,17 @@ function naplanujBudovyHerni() {
 /// domy. Stíny mají i odkryté stavby a vertikály ZABAGED (komíny, věže).
 /// Od z15 (nástup do z15,6); pod z16,5 plátno 1024, výš 2048. Kreslí se PO
 /// DOMECH – jedna obří Path2D je kvadratická (viz níže u kresby).
+/// engine 217: i stromy a keře z dekorace.js (koruna elipsa + kmen, od z15,5).
 const stinSvetlo = { az: 335, el: 45, sila: 0 };
 let stinyCasovac = null;
 let stinyPodpis = '';
 let stinyPlatno = null;          // HTMLCanvasElement (mimo DOM)
 let stinyRozsah = null;          // { x0, y0, x1, y1, z } v Mercatoru 0..1
 const STINY_ROZ = 2048;          // delší strana plátna (px)
-const STINY_KRYTI_MAX = 0.6;
+const STINY_KRYTI_MAX = 0.5;   // engine 217: „malinko utlumit" (0,6 → 0,5)
 const STINY_MAX_PRSTENCU = 4000;
+const STINY_MAX_STROMU = 3000;
+const STROM_VYSKA_M = 22.9;      // sprite 98 CSS px × icon-size 19,7 na z22 = 22,9 m × k × ev
 let budovyKes = { cas: 0, prvky: [] };
 
 /// Budovy v načtených dlaždicích – sdílená keš pro 3D domy i stíny (oba
@@ -2130,9 +2133,13 @@ function nastavKrytiStinu() {
     }
   } catch (e) { /* styl se mění */ }
 }
+/// ⛔ NE debounce (clearTimeout + nový časovač): `idle` chodí i na STOJÍCÍ
+/// mapě každých ~500 ms (animace včel, mraků…), takže odklad 600 ms se pořád
+/// posouval a překreslení NIKDY nepřišlo (změna světla se neprojevila,
+/// 6. 9. odpoledne). Proto throttle: když už časovač čeká, nechat ho.
 function naplanujStinyDomu(zaMs) {
-  clearTimeout(stinyCasovac);
-  stinyCasovac = setTimeout(prepoctiStinyDomu, zaMs || 300);
+  if (stinyCasovac) return;
+  stinyCasovac = setTimeout(() => { stinyCasovac = null; prepoctiStinyDomu(); }, zaMs || 300);
 }
 function mercX(lng) { return (180 + lng) / 360; }
 function mercY(lat) {
@@ -2194,6 +2201,8 @@ function obnovZdrojStinu() {
 }
 function prepoctiStinyDomu() {
   if (!mapa || !zajistiVrstvuStinu()) return;
+  // během gesta nepřepočítávat (50 ms v hustém městě = trhnutí) – až po něm
+  if (mapa.isMoving && mapa.isMoving()) { naplanujStinyDomu(400); return; }
   const z = mapa.getZoom();
   if (z < 14.9 || stinSvetlo.sila <= 0) { stinyPodpis = ''; return; }
   const t0 = performance.now();
@@ -2273,11 +2282,42 @@ function prepoctiStinyDomu() {
   }
   prstence.sort((a, b) => a.d - b.d);
   if (prstence.length > STINY_MAX_PRSTENCU) prstence.length = STINY_MAX_PRSTENCU;
+  // --- stromy a keře (dekorace.js): koruna = koule ve výšce 0,55 H o poloměru
+  // 0,33 H → na zemi elipsa se středem v B + směr·0,55 H·tg, poloosy r/sin(el)
+  // (po směru) a r (napříč); kmen = čára od paty. Jen od z15,5 a jen
+  // viditelné v aktuálním kroku LOD (o7/o8 ≥ 0,5).
+  const stromy = [];
+  if (z >= 15.5) {
+    let dek = [];
+    try { dek = mapa.querySourceFeatures('dekorace'); } catch (e) { dek = []; }
+    const oKlic = z >= 15.65 ? 'o8' : 'o7';
+    for (const f of dek) {
+      const p = f.properties || {};
+      if (p.sv) continue;
+      const ik = p.ik || '';
+      if (!(ik.startsWith('deko-strom') || ik.startsWith('deko-ker'))) continue;
+      const k = +p.k || 0;
+      if (k < 0.3) continue;
+      if ((p[oKlic] == null ? 1 : +p[oKlic]) < 0.5) continue;
+      const c = f.geometry && f.geometry.coordinates;
+      if (!c) continue;
+      const bx = (mercX(c[0]) - r.x0) * kx, by = (mercY(c[1]) - r.y0) * ky;
+      const Hm = STROM_VYSKA_M * k * (+p.ev || 1);
+      const rp = 0.33 * Hm * mpu * kx;                      // poloměr koruny (px)
+      const okraj = Hm * tg * Math.max(Math.abs(sxM), Math.abs(syM)) + rp * 2 + 2;
+      if (bx < -okraj || bx > W + okraj || by < -okraj || by > H + okraj) continue;
+      const dx = bx - stredPx[0], dy = by - stredPx[1];
+      stromy.push({ bx, by, Hm, rp, d: dx * dx + dy * dy });
+    }
+    stromy.sort((a, b) => a.d - b.d);
+    if (stromy.length > STINY_MAX_STROMU) stromy.length = STINY_MAX_STROMU;
+  }
   // --- podpis: nic nového → nekreslit
   let kontrola = 0;
   for (const q of prstence) kontrola += q.pts[0][0] + q.pts[0][1] * 0.37 + q.L;
+  for (const t of stromy) kontrola += t.bx * 0.11 + t.by * 0.07 + t.Hm;
   const podpis = [Math.round(stinSvetlo.az), Math.round(stinSvetlo.el), r.x0.toFixed(7),
-                  r.y0.toFixed(7), W, H, prstence.length, kontrola.toFixed(1)].join('|');
+                  r.y0.toFixed(7), W, H, prstence.length, stromy.length, kontrola.toFixed(1)].join('|');
   if (podpis === stinyPodpis && r === stinyRozsah) return;
   // --- kresba PO DOMECH. ⛔ Jedna Path2D s tisíci podcestami je KVADRATICKÁ
   // (Ústí z15,6: 1 560 prstenců = 1,2 s; po domech 11 ms + rasterizace ~30–70
@@ -2331,20 +2371,41 @@ function prepoctiStinyDomu() {
     ctx.fill(cesta, 'nonzero');
     pudorysy.push(pudorys);
   }
+  if (stromy.length) {
+    const uhel = Math.atan2(syM, sxM);                      // směr stínu v px plátna
+    const protazeni = Math.sqrt(1 + tg * tg);               // r / sin(el)
+    ctx.strokeStyle = '#2A1D10';
+    ctx.lineCap = 'round';
+    for (const t of stromy) {
+      const hc = 0.55 * t.Hm * tg;                          // posun středu koruny (m na zemi)
+      const cx2 = t.bx + hc * sxM, cy2 = t.by + hc * syM;
+      ctx.beginPath();
+      ctx.ellipse(cx2, cy2, t.rp * protazeni, t.rp, uhel, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = Math.max(1.2, 0.05 * t.Hm * mpu * kx);
+      ctx.beginPath();
+      ctx.moveTo(t.bx, t.by);
+      ctx.lineTo(t.bx + hc * 0.7 * sxM, t.by + hc * 0.7 * syM);
+      ctx.stroke();
+    }
+  }
   ctx.globalCompositeOperation = 'destination-out';
   for (const pd of pudorysy) ctx.fill(pd, 'nonzero');
   ctx.globalCompositeOperation = 'source-over';
   stinyPodpis = podpis;
-  if (r !== stinyRozsah) {
-    stinyRozsah = r;
-    try { mapa.getSource('stiny-domu').setCoordinates(rohyRozsahu(r)); }
-    catch (e) { /* zdroj se zrovna mění */ }
-  }
+  stinyRozsah = r;
+  // ⛔⛔ setCoordinates VŽDY, i při stejném rozsahu: terénní RTT keš (drapované
+  // vrstvy předkreslené do textur dlaždic) se uvolní jen událostí „data"
+  // zdroje – play()/pause() ji nevyvolá, a obrazovka pak držela STARÝ stín,
+  // i když plátno i textura už byly nové (6. 9. odpoledne, změna světla).
+  try { mapa.getSource('stiny-domu').setCoordinates(rohyRozsahu(r)); }
+  catch (e) { /* zdroj se zrovna mění */ }
   obnovZdrojStinu();
   try {
     window.__casy = window.__casy || {};
     window.__casy.stinyMs = Math.round(performance.now() - t0);
     window.__casy.stinyN = prstence.length;
+    window.__casy.stinyStromu = stromy.length;
     window.__casy.stinyPlatno = W + 'x' + H;
   } catch (e) { /* nic */ }
 }
