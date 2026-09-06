@@ -514,16 +514,53 @@
     return out;
   }
 
+  // engine 223: monogram řetězce jako v appce (lib/brands.dart) – vzor jako
+  // celé slovo v názvu (malá písmena), pravidla nese kategorie.json `znacky`
+  function jeZnak(c) {
+    if (!c) return false;
+    var k = c.charCodeAt(0);
+    if (k >= 97 && k <= 122) return true;
+    if (k >= 48 && k <= 57) return true;
+    return 'áčďéěíňóřšťúůýžäöü'.indexOf(c) >= 0;
+  }
+  function slovo(s, vzor) {
+    var i = s.indexOf(vzor);
+    while (i >= 0) {
+      var pred = i === 0 || !jeZnak(s[i - 1]);
+      var konec = i + vzor.length;
+      var za = konec >= s.length || !jeZnak(s[konec]);
+      if (pred && za) return true;
+      i = s.indexOf(vzor, i + 1);
+    }
+    return false;
+  }
+  function monogram(m) {
+    if (!kat.znacky || !m.n) return null;
+    if ((kat.bezZnacky || []).indexOf(m.d) >= 0 || (kat.bezZnacky || []).indexOf(m.chip) >= 0) return null;
+    var s = String(m.n).toLowerCase();
+    for (var i = 0; i < kat.znacky.length; i++) {
+      var z = kat.znacky[i];
+      if (slovo(s, z.v)) return 'brand|' + z.l + '|' + z.b + '|' + z.f;
+    }
+    return null;
+  }
   function ikonaMista(m) {
     var ch = kat.chipy[m.chip] || {};
-    var em = kat.emoji[m.d] || ch.e || EMOJI_VYCHOZI;
-    // engine 219 (6. 9. 2026: „malované obrázky míst z Objevitele jsou i v
-    // Cestovateli, tam být nemají"): mimo hru stejné bubliny jako appka
-    // (`_ikona3d` mimo hru = emoji kategorie), kresby jen v Objevitelu
-    if (rezim !== 'objevitel') return 'emoji|' + em + '|#5B6B75';
+    // engine 219/223 („proč nemá web v Cestovateli stejné značky jako appka"):
+    // mimo Objevitele stejné bubliny jako appka `_ikona3d` mimo hru – monogram
+    // řetězce, jinak emoji kategorie v její barvě (kategorie.json emoji/barvy
+    // z PlaceCategory); kresby kategorií jen v Objevitelu
+    if (rezim !== 'objevitel') {
+      var mono = monogram(m);
+      if (mono) return mono;
+      var e2 = (kat.emoji || {})[m.d] || (kat.emoji || {})[m.chip] || ch.e || EMOJI_VYCHOZI;
+      var barva = (kat.barvy || {})[m.d] || (kat.barvy || {})[m.chip] || '#5B6B75';
+      return 'emoji|' + e2 + '|' + barva;
+    }
+    var em = (kat.emoji || {})[m.d] || ch.e || EMOJI_VYCHOZI;
     var asset = kat.ikony[m.d] || ch.a;
     if (asset) return '/assets/icons/' + asset + '.webp';
-    return 'emoji|' + em + '|#5B6B75';
+    return 'emoji|' + em + '|' + ((kat.barvy || {})[m.d] || '#5B6B75');
   }
 
   // 6. 9.: verze enginu vidět v rohu – kvůli keši GitHub Pages (index.html
