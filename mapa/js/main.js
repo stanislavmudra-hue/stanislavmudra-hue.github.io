@@ -2749,6 +2749,7 @@ function prepoctiStinyDomu() {
 /// (≥ 3 domy), posun nejvýš 220 m; jinak uzel. `ink-obce` má maxzoom 15,5.
 let sidlaCasovac = null;
 let sidlaPodpis = '';
+let sidlaOrez = false;             // engine 229: ink-obce oříznuto na 15,5 až po prvním výsledku
 const SIDLA_DOSAH_M = 300, SIDLA_POSUN_MAX_M = 220;
 function nasadSidlaPopisky() {
   if (!mapa || !mapa.getLayer('ink-obce')) return false;
@@ -2757,6 +2758,7 @@ function nasadSidlaPopisky() {
       mapa.addSource('sidla-popisky', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     }
     if (!mapa.getLayer('okolnik-sidla-popisky')) {
+      sidlaOrez = false;                         // nový styl → ink-obce zase celé
       const vrstvy = mapa.getStyle().layers;
       const vzor = vrstvy.find((l) => l.id === 'ink-obce');
       if (!vzor) return false;
@@ -2832,6 +2834,12 @@ function prepoctiSidlaPopisky() {
   if (podpis === sidlaPodpis) return;
   sidlaPodpis = podpis;
   try { zdroj.setData({ type: 'FeatureCollection', features }); } catch (e) { /* zdroj se zrovna mění */ }
+  // engine 229: OSM popisky hamletů schovat až když máme vlastní (pojistka
+  // pro web/MapLibre v6, kde querySourceFeatures na `place` vracel 0)
+  if (features.length && !sidlaOrez) {
+    sidlaOrez = true;
+    try { mapa.setLayerZoomRange('ink-obce', 12, 15.5); } catch (e) { /* nic */ }
+  }
   try { window.__casy = window.__casy || {}; window.__casy.sidlaN = features.length; } catch (e) { /* nic */ }
 }
 

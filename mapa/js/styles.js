@@ -1079,9 +1079,11 @@ function stylHerni(ctx) {
         layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 13, 15, 11.5, 17, 14, 19, 15.5], false),
         paint: obcePaint(KRONIKA.ink) },
       { id: 'ink-obce', type: 'symbol', source: 'omt', 'source-layer': 'place',
-        // engine 228: od z15,5 kreslí názvy hamletů `okolnik-sidla-popisky`
-        // (main.js) u domů – uzel OSM/RÚIAN bývá na kraji sídla
-        minzoom: 12, maxzoom: 15.5,
+        // engine 228/229: od z15,5 kreslí názvy hamletů `okolnik-sidla-popisky`
+        // (main.js) u domů – uzel OSM/RÚIAN bývá na kraji sídla; maxzoom 15,5
+        // nastaví engine až po PRVNÍM úspěšném výpočtu (pojistka: kdyby
+        // querySourceFeatures nic nevrátil, zůstanou popisky OSM)
+        minzoom: 12,
         filter: ['==', ['get', 'class'], 'hamlet'],
         // engine 228: od z15 zase roste – při chůzi (z17+) bylo 9,5 px nečitelné
         layout: obceLayout(FONT, ['interpolate', ['linear'], ['zoom'], 11, 11, 15, 10, 17, 12.5, 19, 14], false),
