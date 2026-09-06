@@ -567,6 +567,8 @@ function stylHerni(ctx) {
     },
     sources: zdroje(ctx, {
       sousedi: { type: 'geojson', data: SOUSEDI },
+      // engine 215: vržené stíny domů (geometrii počítá main.js prepoctiStinyDomu)
+      'stiny-domu': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
       // ⭐ 5. 9. 2026 večer: DRUH LESA ze ZABAGED (ČÚZK, CC BY 4.0) –
       // vlastní dlaždice `lesy.pmtiles` na R2 (tools/lesy_zabaged_export.py
       // + tools/lesy_schema.yml → planetiler). Vrstva `lesy`, vlastnost
@@ -885,7 +887,12 @@ function stylHerni(ctx) {
       { id: 'budovy-vypln', type: 'fill', source: 'omt',
         'source-layer': 'building', minzoom: 14,
         paint: { 'fill-color': '#DCC9A5', 'fill-opacity': 0.8 } },
-      ...stinyDomu(),
+      // ⭐ engine 215: JEDEN vržený stín místo 12 posunutých kopií („stíny
+      // vypadají špatně" – schody kopií). Geometrie = obal půdorysu a jeho
+      // posunu podle slunce (main.js `prepoctiStinyDomu`), síla ze světla.
+      { id: 'stin-domu', type: 'fill', source: 'stiny-domu', minzoom: 14.5,
+        paint: { 'fill-color': '#2A1D10', 'fill-antialias': false,
+                 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, 0.4] } },
 
       // ===== INKOUSTOVÉ PATRO (nad mlhou — kronika viditelná vždy) =====
       // Vrstevnice: nad pergamenem dají neobjevenému terénu „mapovou" strukturu

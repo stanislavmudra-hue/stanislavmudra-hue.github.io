@@ -39,7 +39,7 @@ const Svetlo = (() => {
   // na z12 1/64; mezi tím základ 2 = drží se krajiny. Slabší při nízkém
   // slunci a pod mraky, v noci od měsíce, bez světla nic.
   function nastavStinyDomu(az, el, zdroj, st) {
-    if (!mapa.getLayer('stin-domu-nizke-1')) return;
+    if (!mapa.getLayer('stin-domu') && !mapa.getLayer('stin-domu-nizke-1')) return;
     const elR = Math.max(8, el) * Math.PI / 180;
     const smer = (az + 180) * Math.PI / 180;
     // celková tma u zdi (~0,30 za plného slunce); každá z N kopií dostane
@@ -51,6 +51,10 @@ const Svetlo = (() => {
     let celk = zdroj === 'slunce' ? 0.65 * Math.min(1, Math.max(0, el) / 20)
       : (zdroj === 'mesic' ? 0.35 * (st.mesicOsvit || 0.5) : 0);
     celk *= 1 - 0.3 * Math.min(1, st.oblacnost || 0);
+    // engine 215: jeden geometrický stín (main.js) – síla a směr světla
+    try { if (window.nastavStinyDomuSvetlo) window.nastavStinyDomuSvetlo(az, el, celk); }
+    catch (eG) { /* nic */ }
+    if (!mapa.getLayer('stin-domu-nizke-1')) return;
     const T = (typeof STINY_DOMU_T !== 'undefined') ? STINY_DOMU_T : [1 / 3, 2 / 3, 1];
     const sila = celk > 0 ? 1 - Math.pow(1 - celk, 1 / T.length) : 0;
     for (const [trida, vyska] of [['nizke', 6], ['vysoke', 14]]) {

@@ -2075,6 +2075,97 @@ function naplanujBudovyHerni() {
   budovyHerniCasovac = setTimeout(prepoctiBudovyHerni, 450);
 }
 
+/// ⭐ engine 215: VRŽENÉ STÍNY DOMŮ jako geometrie. Pro každý dům: obal
+/// (konvexní hull) půdorysu a téhož půdorysu posunutého o H / tan(el) metrů
+/// ve směru od slunce – jeden hladký stín místo schodů posunutých kopií.
+/// Světlo (az, el, síla) dodává svetlo.js; síla 0 = žádné stíny (tma).
+/// Jen odkryté domy (se zapnutými 3D domy – týž stav jako u extruzí).
+const stinSvetlo = { az: 335, el: 45, sila: 0 };
+let stinyCasovac = null;
+let stinyPodpis = '';
+window.nastavStinyDomuSvetlo = function (az, el, sila) {
+  stinSvetlo.az = az; stinSvetlo.el = el; stinSvetlo.sila = sila;
+  try {
+    if (mapa && mapa.getLayer('stin-domu')) {
+      mapa.setPaintProperty('stin-domu', 'fill-opacity',
+        ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, +Math.min(0.6, sila).toFixed(3)]);
+    }
+  } catch (e) { /* styl se mění */ }
+  naplanujStinyDomu();
+};
+function naplanujStinyDomu() {
+  clearTimeout(stinyCasovac);
+  stinyCasovac = setTimeout(prepoctiStinyDomu, 300);
+}
+function konvexniObal(body) {
+  // monotone chain; body = [[x,y],…]
+  const p = body.slice().sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+  if (p.length < 3) return p;
+  const kr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const dolni = [];
+  for (const q of p) {
+    while (dolni.length >= 2 && kr(dolni[dolni.length - 2], dolni[dolni.length - 1], q) <= 0) dolni.pop();
+    dolni.push(q);
+  }
+  const horni = [];
+  for (let i = p.length - 1; i >= 0; i--) {
+    const q = p[i];
+    while (horni.length >= 2 && kr(horni[horni.length - 2], horni[horni.length - 1], q) <= 0) horni.pop();
+    horni.push(q);
+  }
+  dolni.pop(); horni.pop();
+  return dolni.concat(horni);
+}
+function prepoctiStinyDomu() {
+  if (!mapa || !mapa.getLayer('stin-domu')) return;
+  const zdroj = mapa.getSource('stiny-domu');
+  if (!zdroj) return;
+  const z = mapa.getZoom();
+  const prazdne = { type: 'FeatureCollection', features: [] };
+  if (z < 14.4 || stinSvetlo.sila <= 0) {
+    if (stinyPodpis !== '') { stinyPodpis = ''; zdroj.setData(prazdne); }
+    return;
+  }
+  let prvky = [];
+  try { prvky = mapa.querySourceFeatures('omt', { sourceLayer: 'building' }); }
+  catch (e) { return; }
+  const elR = Math.max(8, stinSvetlo.el) * Math.PI / 180;
+  const smer = (stinSvetlo.az + 180) * Math.PI / 180;
+  const sinS = Math.sin(smer), cosS = Math.cos(smer);
+  const features = [];
+  const videno = new Set();
+  let podpis = Math.round(stinSvetlo.az) + '|' + Math.round(stinSvetlo.el) + '|';
+  for (const f of prvky) {
+    const id = f.id;
+    if (id == null || videno.has(id)) continue;
+    videno.add(id);
+    if (budovyHerniZap && budovyHerniStav.get(id) !== true) continue;   // jen odkryté
+    const g = f.geometry;
+    const kusy = g && g.type === 'Polygon' ? [g.coordinates] : (g && g.type === 'MultiPolygon' ? g.coordinates : null);
+    if (!kusy) continue;
+    const H = Math.max(2.5, +((f.properties || {}).render_height) || 6);
+    const L = Math.min(80, H / Math.tan(elR));               // délka stínu (m)
+    for (const prstence of kusy) {
+      const ring = prstence[0];
+      if (!ring || ring.length < 4) continue;
+      const kx = 111320 * Math.cos(ring[0][1] * Math.PI / 180);
+      const dLon = L * sinS / kx, dLat = L * cosS / 110574;
+      const body = [];
+      for (const q of ring) { body.push([q[0], q[1]]); body.push([q[0] + dLon, q[1] + dLat]); }
+      const obal = konvexniObal(body);
+      if (obal.length < 3) continue;
+      obal.push(obal[0]);
+      features.push({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [obal] } });
+    }
+    if (features.length > 2500) break;
+  }
+  podpis += features.length + '|' + (features.length ? features[0].geometry.coordinates[0][0].join(',') : '');
+  if (podpis === stinyPodpis) return;
+  stinyPodpis = podpis;
+  try { zdroj.setData(features.length ? { type: 'FeatureCollection', features } : prazdne); }
+  catch (e) { /* zdroj se zrovna mění */ }
+}
+
 function prepoctiBudovyHerni() {
   if (!mapa || !mapa.getLayer('okolnik-budovy-herni-zdi')) return;
   // ⚠️ POŘADÍ (5. 9. večer): dekorace.js vkládá stromy PŘED první
@@ -2095,6 +2186,7 @@ function prepoctiBudovyHerni() {
   if (mapa.getZoom() < 14) return;
   prepoctiZabagedHerni('okolnik-stavby-3d', 'stavby');
   prepoctiZabagedHerni('okolnik-vertikaly-3d', 'vertikaly');
+  naplanujStinyDomu();
   let prvky = [];
   try { prvky = mapa.querySourceFeatures('omt', { sourceLayer: 'building' }); }
   catch (e) { return; }
@@ -6344,6 +6436,7 @@ function registrujKlikMista() {
   hookKlikuMist = true;
   mapa.on('zoomend', poradiNazvuObci);
   mapa.on('idle', poradiNazvuObci);
+  mapa.on('idle', naplanujStinyDomu);
   poradiNazvuObci();
   for (const vrstva of ['okolnik-mista-kruh', 'okolnik-mista-ikona']) {
     mapa.on('click', vrstva, (e) => {
