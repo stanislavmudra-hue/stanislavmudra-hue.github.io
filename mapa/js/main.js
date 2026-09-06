@@ -2075,95 +2075,278 @@ function naplanujBudovyHerni() {
   budovyHerniCasovac = setTimeout(prepoctiBudovyHerni, 450);
 }
 
-/// ⭐ engine 215: VRŽENÉ STÍNY DOMŮ jako geometrie. Pro každý dům: obal
-/// (konvexní hull) půdorysu a téhož půdorysu posunutého o H / tan(el) metrů
-/// ve směru od slunce – jeden hladký stín místo schodů posunutých kopií.
-/// Světlo (az, el, síla) dodává svetlo.js; síla 0 = žádné stíny (tma).
-/// Jen odkryté domy (se zapnutými 3D domy – týž stav jako u extruzí).
+/// ⭐ engine 216: VRŽENÉ STÍNY DOMŮ NA PLÁTNĚ. Engine 215 je dělal jako
+/// výplňové mnohoúhelníky (obal půdorysu + posunu) a měl dvě pasti:
+/// (1) dlaždice budov jsou na z17 (~190 m) – velká hala je rozřezaná na kusy
+///     s TÝMŽ id a bral se jen první kus → stín chyběl (Bukov, snímek 145);
+/// (2) překryvy výplní v jedné vrstvě se sčítají → tmavší fleky.
+/// Plátno řeší obojí: všechny kusy + přesný „tah" každé zdi (čtyřúhelník
+/// zeď → zeď posunutá o H/tan(el)) v JEDNÉ cestě s pravidlem nonzero =
+/// sjednocení zadarmo; půdorysy se vygumují (destination-out), aby stín
+/// nezatemnil plochý dům. Zdroj `canvas` je drapovaný na terén jako rytina
+/// mlhy (fog.js), obnova textury play()/pause() po 5 snímcích (týž recept).
+/// Světlo (az, el, síla) dodává svetlo.js; síla 0 = nic. Plátno kryje pohled
+/// (+30 % okraj, strop 3× pohled); přepočet na idle, když pohled vyjede
+/// z rozsahu, zoom se změní o > 0,3, otočí se světlo nebo přibudou odkryté
+/// domy. Stíny mají i odkryté stavby a vertikály ZABAGED (komíny, věže).
+/// Od z15 (nástup do z15,6); pod z16,5 plátno 1024, výš 2048. Kreslí se PO
+/// DOMECH – jedna obří Path2D je kvadratická (viz níže u kresby).
 const stinSvetlo = { az: 335, el: 45, sila: 0 };
 let stinyCasovac = null;
 let stinyPodpis = '';
-window.nastavStinyDomuSvetlo = function (az, el, sila) {
-  stinSvetlo.az = az; stinSvetlo.el = el; stinSvetlo.sila = sila;
-  try {
-    if (mapa && mapa.getLayer('stin-domu')) {
-      mapa.setPaintProperty('stin-domu', 'fill-opacity',
-        ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, +Math.min(0.6, sila).toFixed(3)]);
-    }
-  } catch (e) { /* styl se mění */ }
-  naplanujStinyDomu();
-};
-function naplanujStinyDomu() {
-  clearTimeout(stinyCasovac);
-  stinyCasovac = setTimeout(prepoctiStinyDomu, 300);
-}
-function konvexniObal(body) {
-  // monotone chain; body = [[x,y],…]
-  const p = body.slice().sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
-  if (p.length < 3) return p;
-  const kr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-  const dolni = [];
-  for (const q of p) {
-    while (dolni.length >= 2 && kr(dolni[dolni.length - 2], dolni[dolni.length - 1], q) <= 0) dolni.pop();
-    dolni.push(q);
-  }
-  const horni = [];
-  for (let i = p.length - 1; i >= 0; i--) {
-    const q = p[i];
-    while (horni.length >= 2 && kr(horni[horni.length - 2], horni[horni.length - 1], q) <= 0) horni.pop();
-    horni.push(q);
-  }
-  dolni.pop(); horni.pop();
-  return dolni.concat(horni);
-}
-function prepoctiStinyDomu() {
-  if (!mapa || !mapa.getLayer('stin-domu')) return;
-  const zdroj = mapa.getSource('stiny-domu');
-  if (!zdroj) return;
-  const z = mapa.getZoom();
-  const prazdne = { type: 'FeatureCollection', features: [] };
-  if (z < 14.4 || stinSvetlo.sila <= 0) {
-    if (stinyPodpis !== '') { stinyPodpis = ''; zdroj.setData(prazdne); }
-    return;
-  }
+let stinyPlatno = null;          // HTMLCanvasElement (mimo DOM)
+let stinyRozsah = null;          // { x0, y0, x1, y1, z } v Mercatoru 0..1
+const STINY_ROZ = 2048;          // delší strana plátna (px)
+const STINY_KRYTI_MAX = 0.6;
+const STINY_MAX_PRSTENCU = 4000;
+let budovyKes = { cas: 0, prvky: [] };
+
+/// Budovy v načtených dlaždicích – sdílená keš pro 3D domy i stíny (oba
+/// běží na idle a dotaz do dlaždic není zadarmo).
+function budovyVPohledu() {
+  const ted = performance.now();
+  if (ted - budovyKes.cas < 400) return budovyKes.prvky;
   let prvky = [];
   try { prvky = mapa.querySourceFeatures('omt', { sourceLayer: 'building' }); }
-  catch (e) { return; }
+  catch (e) { prvky = []; }
+  budovyKes = { cas: ted, prvky };
+  return prvky;
+}
+
+window.nastavStinyDomuSvetlo = function (az, el, sila) {
+  const zmenaSmeru = Math.round(az) !== Math.round(stinSvetlo.az)
+    || Math.round(el) !== Math.round(stinSvetlo.el);
+  const bylaSila = stinSvetlo.sila;
+  stinSvetlo.az = az; stinSvetlo.el = el; stinSvetlo.sila = sila;
+  nastavKrytiStinu();
+  if (zmenaSmeru || (sila > 0 && bylaSila <= 0)) naplanujStinyDomu();
+};
+function nastavKrytiStinu() {
+  try {
+    if (mapa && mapa.getLayer('stin-domu')) {
+      const k = +Math.min(STINY_KRYTI_MAX, Math.max(0, stinSvetlo.sila)).toFixed(3);
+      mapa.setPaintProperty('stin-domu', 'raster-opacity',
+        ['interpolate', ['linear'], ['zoom'], 15, 0, 15.6, k]);
+    }
+  } catch (e) { /* styl se mění */ }
+}
+function naplanujStinyDomu(zaMs) {
+  clearTimeout(stinyCasovac);
+  stinyCasovac = setTimeout(prepoctiStinyDomu, zaMs || 300);
+}
+function mercX(lng) { return (180 + lng) / 360; }
+function mercY(lat) {
+  return (180 - 180 / Math.PI * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))) / 360;
+}
+function mercLng(x) { return x * 360 - 180; }
+function mercLat(y) {
+  return 360 / Math.PI * Math.atan(Math.exp((180 - y * 360) * Math.PI / 180)) - 90;
+}
+function rohyRozsahu(r) {
+  return [[mercLng(r.x0), mercLat(r.y0)], [mercLng(r.x1), mercLat(r.y0)],
+          [mercLng(r.x1), mercLat(r.y1)], [mercLng(r.x0), mercLat(r.y1)]];
+}
+/// Zdroj + vrstva vznikají líně (potřebují živý <canvas>); vrstva jde hned
+/// za `budovy-vypln` (drapované patro), jen ve stylech, které ji mají.
+function zajistiVrstvuStinu() {
+  if (!mapa || !mapa.getLayer('budovy-vypln')) return false;
+  if (mapa.getLayer('stin-domu') && mapa.getSource('stiny-domu')) return true;
+  if (!stinyPlatno) {
+    stinyPlatno = document.createElement('canvas');
+    stinyPlatno.width = 64; stinyPlatno.height = 64;
+  }
+  const r = stinyRozsah || { x0: 0.5, y0: 0.5, x1: 0.50001, y1: 0.50001 };
+  try {
+    if (!mapa.getSource('stiny-domu')) {
+      mapa.addSource('stiny-domu', { type: 'canvas', canvas: stinyPlatno, animate: false,
+                                     coordinates: rohyRozsahu(r) });
+    }
+    if (!mapa.getLayer('stin-domu')) {
+      const ls = mapa.getStyle().layers.map((l) => l.id);
+      const za = ls[ls.indexOf('budovy-vypln') + 1];
+      mapa.addLayer({ id: 'stin-domu', type: 'raster', source: 'stiny-domu', minzoom: 15,
+                      paint: { 'raster-fade-duration': 0, 'raster-opacity': 0,
+                               'raster-resampling': 'linear' } }, za);
+      nastavKrytiStinu();
+    }
+  } catch (e) { console.warn('[stíny domů] vrstva', e); return false; }
+  stinyPodpis = '';                 // nová vrstva/zdroj → překreslit
+  return true;
+}
+/// „Šťouchnutí" canvas zdroje – recept z fog.js obnovZdroj (nikdy nečekat
+/// na idle: hrající zdroj idle nikdy nedá; jeden render nestačí).
+function obnovZdrojStinu() {
+  const z = mapa && mapa.getSource('stiny-domu');
+  if (!z || !z.play) return;
+  z.play();
+  mapa.triggerRepaint();
+  obnovZdrojStinu._tik = (obnovZdrojStinu._tik || 0) + 1;
+  const muj = obnovZdrojStinu._tik;
+  let zbyva = 5;
+  const krok = () => {
+    if (obnovZdrojStinu._tik !== muj || !mapa) return;
+    const ted = mapa.getSource('stiny-domu');
+    if (!ted || !ted.pause) return;
+    if (--zbyva > 0) { mapa.once('render', krok); return; }
+    ted.pause();
+  };
+  mapa.once('render', krok);
+}
+function prepoctiStinyDomu() {
+  if (!mapa || !zajistiVrstvuStinu()) return;
+  const z = mapa.getZoom();
+  if (z < 14.9 || stinSvetlo.sila <= 0) { stinyPodpis = ''; return; }
+  const t0 = performance.now();
+  // --- rozsah plátna: pohled v Mercatoru, strop 3× rozměr pohledu, okraj 30 %
+  const stred = mapa.getCenter();
+  const cx = mercX(stred.lng), cy = mercY(stred.lat);
+  const kont = mapa.getContainer();
+  const pohledPx = Math.max(kont.clientWidth || 800, kont.clientHeight || 800);
+  const strop = pohledPx / (512 * Math.pow(2, z)) * 3;
+  let x0, x1, y0, y1;
+  try {
+    const b = mapa.getBounds();
+    x0 = mercX(b.getWest()); x1 = mercX(b.getEast());
+    y0 = mercY(b.getNorth()); y1 = mercY(b.getSouth());
+  } catch (e) { x0 = cx - strop / 3; x1 = cx + strop / 3; y0 = cy - strop / 3; y1 = cy + strop / 3; }
+  x0 = Math.max(x0, cx - strop); x1 = Math.min(x1, cx + strop);
+  y0 = Math.max(y0, cy - strop); y1 = Math.min(y1, cy + strop);
+  let r = stinyRozsah;
+  if (!r || x0 < r.x0 || x1 > r.x1 || y0 < r.y0 || y1 > r.y1 || Math.abs(r.z - z) > 0.3) {
+    const okX = (x1 - x0) * 0.3, okY = (y1 - y0) * 0.3;
+    r = { x0: x0 - okX, x1: x1 + okX, y0: y0 - okY, y1: y1 + okY, z };
+  }
+  const pomer = (r.x1 - r.x0) / (r.y1 - r.y0);
+  const ROZ = z >= 16.5 ? STINY_ROZ : STINY_ROZ / 2;   // pod z16,5 stačí polovina (~2 m/px)
+  const W = pomer >= 1 ? ROZ : Math.max(64, Math.round(ROZ * pomer));
+  const H = pomer >= 1 ? Math.max(64, Math.round(ROZ / pomer)) : ROZ;
+  const kx = W / (r.x1 - r.x0), ky = H / (r.y1 - r.y0);
+  // --- světlo: posun stínu v px plátna na 1 m výšky
   const elR = Math.max(8, stinSvetlo.el) * Math.PI / 180;
   const smer = (stinSvetlo.az + 180) * Math.PI / 180;
-  const sinS = Math.sin(smer), cosS = Math.cos(smer);
-  const features = [];
-  const videno = new Set();
-  let podpis = Math.round(stinSvetlo.az) + '|' + Math.round(stinSvetlo.el) + '|';
-  for (const f of prvky) {
-    const id = f.id;
-    if (id == null || videno.has(id)) continue;
-    videno.add(id);
-    if (budovyHerniZap && budovyHerniStav.get(id) !== true) continue;   // jen odkryté
-    const g = f.geometry;
-    const kusy = g && g.type === 'Polygon' ? [g.coordinates] : (g && g.type === 'MultiPolygon' ? g.coordinates : null);
-    if (!kusy) continue;
-    const H = Math.max(2.5, +((f.properties || {}).render_height) || 6);
-    const L = Math.min(80, H / Math.tan(elR));               // délka stínu (m)
-    for (const prstence of kusy) {
-      const ring = prstence[0];
-      if (!ring || ring.length < 4) continue;
-      const kx = 111320 * Math.cos(ring[0][1] * Math.PI / 180);
-      const dLon = L * sinS / kx, dLat = L * cosS / 110574;
-      const body = [];
-      for (const q of ring) { body.push([q[0], q[1]]); body.push([q[0] + dLon, q[1] + dLat]); }
-      const obal = konvexniObal(body);
-      if (obal.length < 3) continue;
-      obal.push(obal[0]);
-      features.push({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [obal] } });
+  const mpu = 1 / (40075016.686 * Math.cos(stred.lat * Math.PI / 180));   // Mercator na metr
+  const tg = 1 / Math.tan(elR);
+  const sxM = Math.sin(smer) * mpu * kx, syM = -Math.cos(smer) * mpu * ky;   // px/m (sever = −y)
+  // --- sběr prstenců: domy (OMT) + odkryté stavby a vertikály ZABAGED
+  const prstence = [];
+  const stredPx = [(cx - r.x0) * kx, (cy - r.y0) * ky];
+  const posbirej = (prvky, vyska, Lmax, odkryto) => {
+    for (const f of prvky) {
+      if (!odkryto(f)) continue;
+      const g = f.geometry;
+      const kusy = g && g.type === 'Polygon' ? [g.coordinates]
+        : (g && g.type === 'MultiPolygon' ? g.coordinates : null);
+      if (!kusy) continue;
+      const L = Math.min(Lmax, Math.max(2.5, vyska(f)) * tg);
+      const okraj = L * Math.max(Math.abs(sxM), Math.abs(syM)) + 2;
+      for (const poly of kusy) {
+        const ring = poly[0];
+        if (!ring || ring.length < 4) continue;
+        const pts = [];
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (let i = 0; i < ring.length - 1; i++) {
+          const x = (mercX(ring[i][0]) - r.x0) * kx, y = (mercY(ring[i][1]) - r.y0) * ky;
+          pts.push([x, y]);
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+        if (maxX < -okraj || minX > W + okraj || maxY < -okraj || minY > H + okraj) continue;
+        const dx = (minX + maxX) / 2 - stredPx[0], dy = (minY + maxY) / 2 - stredPx[1];
+        prstence.push({ pts, L, d: dx * dx + dy * dy });
+      }
     }
-    if (features.length > 2500) break;
+  };
+  const jen3D = budovyHerniZap && !!mapa.getLayer('okolnik-budovy-herni-zdi');
+  posbirej(budovyVPohledu(),
+    (f) => +((f.properties || {}).render_height) || 6, 80,
+    (f) => !jen3D || (f.id != null && budovyHerniStav.get(f.id) === true));
+  if (mapa.getLayer('okolnik-stavby-3d')) {
+    for (const [vrstva, vych, Lmax] of [['stavby', 3, 40], ['vertikaly', 20, 120]]) {
+      let prvky = [];
+      try { prvky = mapa.querySourceFeatures('krajina', { sourceLayer: vrstva }); }
+      catch (e) { prvky = []; }
+      posbirej(prvky, (f) => +((f.properties || {}).h) || vych, Lmax,
+        (f) => budovyHerniStav.get(vrstva + ':' + (f.properties || {}).fid) === true);
+    }
   }
-  podpis += features.length + '|' + (features.length ? features[0].geometry.coordinates[0][0].join(',') : '');
-  if (podpis === stinyPodpis) return;
+  prstence.sort((a, b) => a.d - b.d);
+  if (prstence.length > STINY_MAX_PRSTENCU) prstence.length = STINY_MAX_PRSTENCU;
+  // --- podpis: nic nového → nekreslit
+  let kontrola = 0;
+  for (const q of prstence) kontrola += q.pts[0][0] + q.pts[0][1] * 0.37 + q.L;
+  const podpis = [Math.round(stinSvetlo.az), Math.round(stinSvetlo.el), r.x0.toFixed(7),
+                  r.y0.toFixed(7), W, H, prstence.length, kontrola.toFixed(1)].join('|');
+  if (podpis === stinyPodpis && r === stinyRozsah) return;
+  // --- kresba PO DOMECH. ⛔ Jedna Path2D s tisíci podcestami je KVADRATICKÁ
+  // (Ústí z15,6: 1 560 prstenců = 1,2 s; po domech 11 ms + rasterizace ~30–70
+  // ms). Výplň je neprůhledná, průhlednost dává raster-opacity vrstvy, takže
+  // se překryvy nesčítají ani bez sjednocení; nonzero drží jen tah zdí domu.
+  if (stinyPlatno.width !== W || stinyPlatno.height !== H) {
+    stinyPlatno.width = W; stinyPlatno.height = H;
+  }
+  const ctx = stinyPlatno.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#2A1D10';
+  const pudorysy = [];
+  for (const q of prstence) {
+    const pts = q.pts;
+    const n = pts.length;
+    let plocha = 0;
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], b = pts[(i + 1) % n];
+      plocha += a[0] * b[1] - b[0] * a[1];
+    }
+    if (Math.abs(plocha) < 0.05) continue;
+    if (plocha < 0) pts.reverse();
+    const sx = q.L * sxM, sy = q.L * syM;
+    const cesta = new Path2D();
+    const pudorys = new Path2D();
+    cesta.moveTo(pts[0][0], pts[0][1]);
+    pudorys.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < n; i++) {
+      cesta.lineTo(pts[i][0], pts[i][1]);
+      pudorys.lineTo(pts[i][0], pts[i][1]);
+    }
+    cesta.closePath(); pudorys.closePath();
+    cesta.moveTo(pts[0][0] + sx, pts[0][1] + sy);
+    for (let i = 1; i < n; i++) cesta.lineTo(pts[i][0] + sx, pts[i][1] + sy);
+    cesta.closePath();
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], b = pts[(i + 1) % n];
+      const kriz = (b[0] - a[0]) * sy - (b[1] - a[1]) * sx;   // orientace jako půdorys
+      if (Math.abs(kriz) < 0.05) continue;
+      if (kriz > 0) {
+        cesta.moveTo(a[0], a[1]); cesta.lineTo(b[0], b[1]);
+        cesta.lineTo(b[0] + sx, b[1] + sy); cesta.lineTo(a[0] + sx, a[1] + sy);
+      } else {
+        cesta.moveTo(a[0], a[1]); cesta.lineTo(a[0] + sx, a[1] + sy);
+        cesta.lineTo(b[0] + sx, b[1] + sy); cesta.lineTo(b[0], b[1]);
+      }
+      cesta.closePath();
+    }
+    ctx.fill(cesta, 'nonzero');
+    pudorysy.push(pudorys);
+  }
+  ctx.globalCompositeOperation = 'destination-out';
+  for (const pd of pudorysy) ctx.fill(pd, 'nonzero');
+  ctx.globalCompositeOperation = 'source-over';
   stinyPodpis = podpis;
-  try { zdroj.setData(features.length ? { type: 'FeatureCollection', features } : prazdne); }
-  catch (e) { /* zdroj se zrovna mění */ }
+  if (r !== stinyRozsah) {
+    stinyRozsah = r;
+    try { mapa.getSource('stiny-domu').setCoordinates(rohyRozsahu(r)); }
+    catch (e) { /* zdroj se zrovna mění */ }
+  }
+  obnovZdrojStinu();
+  try {
+    window.__casy = window.__casy || {};
+    window.__casy.stinyMs = Math.round(performance.now() - t0);
+    window.__casy.stinyN = prstence.length;
+    window.__casy.stinyPlatno = W + 'x' + H;
+  } catch (e) { /* nic */ }
 }
 
 function prepoctiBudovyHerni() {
@@ -2187,9 +2370,7 @@ function prepoctiBudovyHerni() {
   prepoctiZabagedHerni('okolnik-stavby-3d', 'stavby');
   prepoctiZabagedHerni('okolnik-vertikaly-3d', 'vertikaly');
   naplanujStinyDomu();
-  let prvky = [];
-  try { prvky = mapa.querySourceFeatures('omt', { sourceLayer: 'building' }); }
-  catch (e) { return; }
+  const prvky = budovyVPohledu();
   const ids = [];
   const videno = new Set();
   for (const f of prvky) {
@@ -6436,7 +6617,7 @@ function registrujKlikMista() {
   hookKlikuMist = true;
   mapa.on('zoomend', poradiNazvuObci);
   mapa.on('idle', poradiNazvuObci);
-  mapa.on('idle', naplanujStinyDomu);
+  mapa.on('idle', () => naplanujStinyDomu(600));
   poradiNazvuObci();
   for (const vrstva of ['okolnik-mista-kruh', 'okolnik-mista-ikona']) {
     mapa.on('click', vrstva, (e) => {

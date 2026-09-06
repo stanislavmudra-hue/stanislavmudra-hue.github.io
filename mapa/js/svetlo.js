@@ -39,7 +39,8 @@ const Svetlo = (() => {
   // na z12 1/64; mezi tím základ 2 = drží se krajiny. Slabší při nízkém
   // slunci a pod mraky, v noci od měsíce, bez světla nic.
   function nastavStinyDomu(az, el, zdroj, st) {
-    if (!mapa.getLayer('stin-domu') && !mapa.getLayer('stin-domu-nizke-1')) return;
+    // engine 216: vrstva stínů vzniká líně (plátno), světlo se předává vždy
+    if (!window.nastavStinyDomuSvetlo && !mapa.getLayer('stin-domu-nizke-1')) return;
     const elR = Math.max(8, el) * Math.PI / 180;
     const smer = (az + 180) * Math.PI / 180;
     // celková tma u zdi (~0,30 za plného slunce); každá z N kopií dostane
