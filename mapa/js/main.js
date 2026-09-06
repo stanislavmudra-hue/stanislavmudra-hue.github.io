@@ -1964,6 +1964,21 @@ let budovyHerniCasovac = null;
 /// zoom přepínaný step výrazem) přesto při zoomu/náklonu žil; zdi jsou zase
 /// jednobarevné (#EAD9B6) se svislým přechodem.
 
+/// ⭐ engine 232: PŘEPOČTY JEN PŘI ZMĚNĚ POHLEDU. `idle` chodí na stojící mapě
+/// ~3×/s (animace), takže se domy, okna, mosty i sídla přepočítávaly pořád
+/// a čtyři `setFilter` nutily MapLibre k plnému update stylu (~30
+/// překreslení/s v klidu, 270 % CPU). Podpis = kamera + verze odkrytí (+ počet
+/// prvků v pohledu, aby dojezd dlaždic přepočet vyvolal).
+let odkrytiVerze = 0;
+let pohledPodpisBudovy = '', pohledPodpisOkna = '', pohledPodpisMosty = '', pohledPodpisSidla = '';
+let budovyFiltrKlic = '';
+const zabagedFiltrKlice = new Map();
+function podpisPohledu() {
+  const c = mapa.getCenter();
+  return c.lng.toFixed(5) + '|' + c.lat.toFixed(5) + '|' + mapa.getZoom().toFixed(2) + '|'
+    + Math.round(mapa.getBearing()) + '|' + Math.round(mapa.getPitch()) + '|' + odkrytiVerze;
+}
+
 function nasadBudovyHerni() {
   if (!mapa || !mapa.getStyle()) return;
   const cfg = STYLY[aktualniKod];
@@ -1983,9 +1998,10 @@ function nasadBudovyHerni() {
   if (!nasadBudovyHerni._hooked) {
     nasadBudovyHerni._hooked = true;
     mapa.on('idle', naplanujBudovyHerni);
+    mapa.on('moveend', naplanujBudovyHerni);   // engine 232: domy hned po gestu, ne až po idle
     try {
       if (typeof Mlha !== 'undefined' && Mlha.priObjeveni) {
-        Mlha.priObjeveni(() => naplanujBudovyHerni());
+        Mlha.priObjeveni(() => { odkrytiVerze++; naplanujBudovyHerni(); });
       }
     } catch (e) { /* nic */ }
   }
@@ -1996,6 +2012,7 @@ function nasadBudovyHerni() {
   const nic = ['==', ['id'], -1];
   const nastup = ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, 1];
   const pred = prvniSymbolovaVrstva();
+  budovyFiltrKlic = ''; zabagedFiltrKlice.clear(); pohledPodpisBudovy = ''; pohledPodpisOkna = '';   // nový styl → filtry znovu
   try {
     mapa.addLayer({ id: 'okolnik-budovy-herni-zdi', type: 'fill-extrusion',
       source: 'omt', 'source-layer': 'building', minzoom: 14.5, filter: nic,
@@ -2073,6 +2090,9 @@ function prepoctiZabagedHerni(vrstvaId, sourceLayer) {
     }
     if (o) fids.push(fid);
   }
+  const klicF = fids.length + ':' + fids.join(',');
+  if (zabagedFiltrKlice.get(vrstvaId) === klicF) return;        // engine 232: beze změny nic
+  zabagedFiltrKlice.set(vrstvaId, klicF);
   try {
     mapa.setFilter(vrstvaId, fids.length ? ['match', ['get', 'fid'], fids, true, false]
                                          : ['==', ['get', 'fid'], -1]);
@@ -2732,8 +2752,11 @@ function prepoctiSidlaPopisky() {
   let sidla = [], domy = [];
   try {
     sidla = mapa.querySourceFeatures('omt', { sourceLayer: 'place', filter: ['==', ['get', 'class'], 'hamlet'] });
-    if (sidla.length) domy = mapa.querySourceFeatures('omt', { sourceLayer: 'building' });
   } catch (e) { return; }
+  const ppS = podpisPohledu() + '|' + sidla.length;
+  if (ppS === pohledPodpisSidla) return;          // engine 232: v klidu nic
+  pohledPodpisSidla = ppS;
+  try { if (sidla.length) domy = mapa.querySourceFeatures('omt', { sourceLayer: 'building' }); } catch (e) { return; }
   const body = [];                                 // těžiště kusů domů
   for (const d of domy) {
     const g = d.geometry;
@@ -2802,7 +2825,8 @@ function prepoctiSidlaPopisky() {
 /// a uniform na dlaždici – proto nejdřív geometrie.
 let oknaCasovac = null;
 let oknaPodpis = '';
-const OKNA_OD_Z = 16.8, OKNA_MAX = 4000, OKNA_ROZESTUP_M = 3.2, OKNA_PATRO_M = 3.0, OKNA_DOSAH_M = 420;
+const OKNA_OD_Z = 16.8, OKNA_MAX = 3000, OKNA_ROZESTUP_M = 3.2, OKNA_PATRO_M = 3.0, OKNA_DOSAH_M = 420;
+const oknaKes = new Map();          // engine 232: klíč domu → hotová okna (b/h i s opravou terénu)
 const OKNA_BARVA = { den: '#4F5D6B', noc: '#FFD37A' };
 const OKNA_PRAZDNE = { type: 'FeatureCollection', features: [] };
 function nasadOkna3d() {
@@ -2835,9 +2859,13 @@ function prepoctiOkna3d() {
   if (!zdroj) return;
   const z = mapa.getZoom();
   if (z < OKNA_OD_Z - 0.3) {
-    if (oknaPodpis) { oknaPodpis = ''; try { zdroj.setData(OKNA_PRAZDNE); } catch (e) { /* nic */ } }
+    if (oknaPodpis) { oknaPodpis = ''; pohledPodpisOkna = ''; try { zdroj.setData(OKNA_PRAZDNE); } catch (e) { /* nic */ } }
     return;
   }
+  const prvky = budovyVPohledu();
+  const pp = podpisPohledu() + '|' + prvky.length + '|' + budovyHerniStav.size;
+  if (pp === pohledPodpisOkna) return;             // engine 232: v klidu nic
+  pohledPodpisOkna = pp;
   const t0 = performance.now();
   const teren = mapa.getTerrain && mapa.getTerrain();
   const vyska = (b) => {
@@ -2850,7 +2878,6 @@ function prepoctiOkna3d() {
   try { hr = mapa.getBounds(); } catch (e) { return; }
   const okX = (hr.getEast() - hr.getWest()) * 0.25, okY = (hr.getNorth() - hr.getSouth()) * 0.25;
   const W = hr.getWest() - okX, Ee = hr.getEast() + okX, S = hr.getSouth() - okY, N = hr.getNorth() + okY;
-  const prvky = budovyVPohledu();
   const domy = [];
   for (const f of prvky) {
     const id = f.id;
@@ -2869,72 +2896,113 @@ function prepoctiOkna3d() {
       const dx = (cx - stred.lng) * kxM, dy = (cy - stred.lat) * kyM;
       const d = dx * dx + dy * dy;
       if (d > OKNA_DOSAH_M * OKNA_DOSAH_M) continue;   // dál od středu okna nejsou vidět (3 px na z17)
-      domy.push({ ring, cx, cy, p: f.properties || {}, d });
+      const klic = id + '|' + ring.length + '|' + ring[0][0].toFixed(6) + '|' + ring[0][1].toFixed(6);
+      domy.push({ klic, ring, cx, cy, p: f.properties || {}, d });
     }
   }
   domy.sort((a, b) => a.d - b.d);
   const features = [];
-  let podpis = 0, budov = 0;
-  const pridej = (ring, b, h) => {
-    features.push({ type: 'Feature', properties: { b: +b.toFixed(2), h: +h.toFixed(2) },
-                    geometry: { type: 'Polygon', coordinates: [ring] } });
-  };
+  const klice = [];
+  let budov = 0, spocitano = 0;
   for (const dm of domy) {
     if (features.length >= OKNA_MAX) break;
-    const H = +dm.p.render_height || 6, B = +dm.p.render_min_height || 0;
-    const pater = Math.min(12, Math.floor((H - B - 1.3) / OKNA_PATRO_M) + 1);   // okno 1,0–2,4 m nad patrem, strop 0,3 m pod střechou
-    if (pater < 1) continue;
-    const eDum = vyska([dm.cx, dm.cy]);
-    if (eDum === null) continue;
-    const ring = dm.ring;
-    const n = ring.length - 1;
-    let plocha = 0;
-    for (let i = 0; i < n; i++) { const a = ring[i], c = ring[i + 1]; plocha += a[0] * c[1] - c[0] * a[1]; }
-    const ven = plocha > 0 ? 1 : -1;                // CCW: vnějšek vpravo od směru hrany
-    budov++;
-    for (let i = 0; i < n; i++) {
-      const P = ring[i], Q = ring[i + 1];
-      const ex = (Q[0] - P[0]) * kxM, ey = (Q[1] - P[1]) * kyM;
-      const L = Math.hypot(ex, ey);
-      if (L < 2.6) continue;
-      if (L > 12 && (Math.abs(Q[0] - P[0]) < 1e-7 || Math.abs(Q[1] - P[1]) < 1e-7)) continue;   // řez dlaždice
-      const ux = ex / L, uy = ey / L;
-      const nx = ven * uy, ny = -ven * ux;          // vnější normála (m)
-      // terén zdi jen u dlouhých stěn (u domku stačí střed domu) – šetří queryTerrainElevation
-      const eZed = L > 15 ? vyska([(P[0] + Q[0]) / 2, (P[1] + Q[1]) / 2]) : eDum;
-      const oprava = eZed === null ? 0 : Math.max(-12, Math.min(12, eDum - eZed));
-      const pocet = Math.max(1, Math.floor(L / OKNA_ROZESTUP_M));
-      const sirka = L < 4 ? 0.9 : 1.2;
-      for (let k = 0; k < pocet; k++) {
-        const t = (k + 0.5) / pocet;
-        const cxo = P[0] + (Q[0] - P[0]) * t, cyo = P[1] + (Q[1] - P[1]) * t;
-        const r = [];
-        for (const [a, d] of [[-0.5, 0.15], [0.5, 0.15], [0.5, 0.27], [-0.5, 0.27]]) {
-          r.push([cxo + (ux * a * sirka + nx * d) / kxM, cyo + (uy * a * sirka + ny * d) / kyM]);
-        }
-        r.push(r[0]);
-        for (let f = 0; f < pater; f++) {
-          const zb = B + 1.0 + f * OKNA_PATRO_M;
-          if (zb + 1.4 > H - 0.3) break;
-          pridej(r, zb + oprava, zb + 1.4 + oprava);
-          if (features.length >= OKNA_MAX) break;
-        }
-        if (features.length >= OKNA_MAX) break;
-      }
-      if (features.length >= OKNA_MAX) break;
+    let okna = oknaKes.get(dm.klic);
+    if (!okna) {
+      okna = spocitejOknaDomu(dm, vyska, kxM, kyM);
+      if (okna === null) continue;                   // terén u domu ještě není – příště
+      if (oknaKes.size > 4000) oknaKes.clear();
+      oknaKes.set(dm.klic, okna);
+      spocitano++;
     }
-    podpis += dm.cx * 7 + dm.cy * 3 + H;
+    if (!okna.length) continue;
+    budov++;
+    klice.push(dm.klic);
+    for (const o of okna) { features.push(o); if (features.length >= OKNA_MAX) break; }
   }
-  const nov = features.length + '|' + podpis.toFixed(4) + '|' + Math.round(z * 4);
+  const nov = features.length + '|' + klice.join(';');
   if (nov === oknaPodpis) return;
   oknaPodpis = nov;
   try { zdroj.setData(features.length ? { type: 'FeatureCollection', features } : OKNA_PRAZDNE); }
   catch (e) { /* zdroj se zrovna mění */ }
   try {
     window.__casy = window.__casy || {};
-    window.__casy.oknaN = features.length; window.__casy.oknaBudov = budov;
+    window.__casy.oknaN = features.length; window.__casy.oknaBudov = budov; window.__casy.oknaSpocitano = spocitano;
     window.__casy.oknaMs = Math.round(performance.now() - t0);
   } catch (e) { /* nic */ }
+}
+/// Okna jednoho domu (kusu půdorysu): pole prvků {b, h, polygon}; null = terén
+/// pod domem ještě není (nepamatovat). Terén zdi jen u dlouhých stěn.
+function spocitejOknaDomu(dm, vyska, kxM, kyM) {
+  const H = +dm.p.render_height || 6, B = +dm.p.render_min_height || 0;
+  const pater = Math.min(12, Math.floor((H - B - 1.3) / OKNA_PATRO_M) + 1);   // okno 1,0–2,4 m nad patrem, strop 0,3 m pod střechou
+  if (pater < 1) return [];
+  const eDum = vyska([dm.cx, dm.cy]);
+  if (eDum === null) return null;
+  const out = [];
+  const ring = dm.ring;
+  const n = ring.length - 1;
+  let plocha = 0;
+  for (let i = 0; i < n; i++) { const a = ring[i], c = ring[i + 1]; plocha += a[0] * c[1] - c[0] * a[1]; }
+  const ven = plocha > 0 ? 1 : -1;                  // CCW: vnějšek vpravo od směru hrany
+  for (let i = 0; i < n; i++) {
+    const P = ring[i], Q = ring[i + 1];
+    const ex = (Q[0] - P[0]) * kxM, ey = (Q[1] - P[1]) * kyM;
+    const L = Math.hypot(ex, ey);
+    if (L < 2.6) continue;
+    if (L > 12 && (Math.abs(Q[0] - P[0]) < 1e-7 || Math.abs(Q[1] - P[1]) < 1e-7)) continue;   // řez dlaždice
+    const ux = ex / L, uy = ey / L;
+    const nx = ven * uy, ny = -ven * ux;            // vnější normála (m)
+    const eZed = L > 15 ? vyska([(P[0] + Q[0]) / 2, (P[1] + Q[1]) / 2]) : eDum;
+    const oprava = eZed === null ? 0 : Math.max(-12, Math.min(12, eDum - eZed));
+    const pocet = Math.max(1, Math.floor(L / OKNA_ROZESTUP_M));
+    const sirka = L < 4 ? 0.9 : 1.2;
+    for (let k = 0; k < pocet; k++) {
+      const t = (k + 0.5) / pocet;
+      const cxo = P[0] + (Q[0] - P[0]) * t, cyo = P[1] + (Q[1] - P[1]) * t;
+      const r = [];
+      for (const [a, d] of [[-0.5, 0.15], [0.5, 0.15], [0.5, 0.27], [-0.5, 0.27]]) {
+        r.push([cxo + (ux * a * sirka + nx * d) / kxM, cyo + (uy * a * sirka + ny * d) / kyM]);
+      }
+      r.push(r[0]);
+      for (let f = 0; f < pater; f++) {
+        const zb = B + 1.0 + f * OKNA_PATRO_M;
+        if (zb + 1.4 > H - 0.3) break;
+        out.push({ type: 'Feature', properties: { b: +(zb + oprava).toFixed(2), h: +(zb + 1.4 + oprava).toFixed(2) },
+                   geometry: { type: 'Polygon', coordinates: [r] } });
+      }
+    }
+  }
+  return out;
+}
+
+/// ⭐ engine 232: KEŠ MAPOVÁNÍ DLAŽDIC NA TERÉN (runtime záplata MapLibre v6).
+/// `_getTerrainCoordsForRegularTile` počítá pro každou drapovanou dlaždici
+/// každý snímek matice ke všem terénním dlaždicím (nové Float32Array +
+/// clone) – v profilu gest 4 s ze 42 s. Výsledek závisí jen na klíči
+/// dlaždice a množině vykreslitelných terénních dlaždic, ne na kameře →
+/// keš (hit 99 %). Snímky nad 33 ms to neměnilo (GPU), šetří CPU a GC.
+let terenKesNasazena = false;
+function nasadTerenKes() {
+  if (terenKesNasazena || !mapa || !mapa.terrain || !mapa.terrain.tileManager) return;
+  terenKesNasazena = true;
+  try {
+    const TM = Object.getPrototypeOf(mapa.terrain.tileManager);
+    if (typeof TM._getTerrainCoordsForRegularTile !== 'function' || TM._getTerrainCoordsForRegularTile.__kes) return;
+    const orig = TM._getTerrainCoordsForRegularTile;
+    const w = function (e) {
+      const rk = this._renderableTilesKeys;
+      const ver = rk.length + ':' + rk.join(',');
+      if (this.__tcVer !== ver) { this.__tcVer = ver; this.__tc = new Map(); }
+      const k = e.key;
+      let t = this.__tc.get(k);
+      if (t) return t;
+      t = orig.call(this, e);
+      this.__tc.set(k, t);
+      return t;
+    };
+    w.__kes = orig;
+    TM._getTerrainCoordsForRegularTile = w;
+  } catch (e) { console.warn('[výkon] keš terénu', e); }
 }
 
 /// ⭐ engine 224/225: MOSTY NAD TERÉNEM. Silnice jsou drapované, most přes
@@ -2992,6 +3060,9 @@ function prepoctiMosty3d() {
   let prvky = [];
   try { prvky = mapa.querySourceFeatures('krajina', { sourceLayer: 'cary', filter: ['==', ['get', 't'], 'most'] }); }
   catch (e) { return; }
+  const ppM = podpisPohledu() + '|' + prvky.length;
+  if (ppM === pohledPodpisMosty) return;          // engine 232: v klidu nic
+  pohledPodpisMosty = ppM;
   const vyska = (b) => { try { return mapa.queryTerrainElevation(b); } catch (e) { return null; } };
   const konce = new Map();                         // fid → { A, B, eA, eB } nebo null
   const features = [];
@@ -3103,12 +3174,15 @@ function prepoctiBudovyHerni() {
     }
   } catch (e) { /* styl se zrovna mění */ }
   if (mapa.getZoom() < 14) return;
+  const prvky = budovyVPohledu();
+  const pp = podpisPohledu() + '|' + prvky.length;
+  if (pp === pohledPodpisBudovy) return;          // engine 232: v klidu nic
+  pohledPodpisBudovy = pp;
   prepoctiZabagedHerni('okolnik-stavby-3d', 'stavby');
   prepoctiZabagedHerni('okolnik-vertikaly-3d', 'vertikaly');
   naplanujStinyDomu();
   naplanujMosty3d(400);
-  naplanujOkna3d(500);            // engine 231: okna po přepočtu domů
-  const prvky = budovyVPohledu();
+  naplanujOkna3d(150);            // engine 231/232: okna hned po domech
   const ids = [];
   const videno = new Set();
   for (const f of prvky) {
@@ -3132,6 +3206,9 @@ function prepoctiBudovyHerni() {
     if (o) ids.push(id);
   }
   const filtr = ids.length ? ['match', ['id'], ids, true, false] : ['==', ['id'], -1];
+  const klicF = ids.length + ':' + ids.join(',');
+  if (klicF === budovyFiltrKlic) return;           // engine 232: filtr beze změny → žádný update stylu
+  budovyFiltrKlic = klicF;
   try {
     mapa.setFilter('okolnik-budovy-herni-zdi', filtr);
     mapa.setFilter('okolnik-budovy-herni-strecha', filtr);
@@ -7363,6 +7440,7 @@ function registrujKlikMista() {
   mapa.on('idle', () => naplanujStinyDomu(600));
   mapa.on('idle', () => naplanujMosty3d(700));   // engine 224: mosty nad terénem
   mapa.on('idle', () => naplanujOkna3d(800));    // engine 231: okna jako geometrie
+  mapa.on('idle', nasadTerenKes);                 // engine 232: keš mapování dlaždic na terén
   mapa.on('idle', () => naplanujSidlaPopisky(900));   // engine 228: názvy částí obcí u domů
   poradiNazvuObci();
   for (const vrstva of ['okolnik-mista-kruh', 'okolnik-mista-ikona']) {
