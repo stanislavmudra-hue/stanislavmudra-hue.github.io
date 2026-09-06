@@ -2134,9 +2134,17 @@ function prepoctiZabagedHerni(vrstvaId, sourceLayer) {
   } catch (e) { /* styl se mění */ }
 }
 
+/// engine 228: THROTTLE místo debounce. `idle` chodí na stojící mapě i každých
+/// ~500 ms (animace světla, počasí, kolébání zoomu) – debounce 450 ms se
+/// pak nikdy nedočkal a domy po posunu mapy zůstaly ploché („přestaly se
+/// ukazovat baráky", web). Během gesta jen přeplánovat.
 function naplanujBudovyHerni() {
-  clearTimeout(budovyHerniCasovac);
-  budovyHerniCasovac = setTimeout(prepoctiBudovyHerni, 450);
+  if (budovyHerniCasovac) return;
+  budovyHerniCasovac = setTimeout(() => {
+    budovyHerniCasovac = null;
+    if (mapa && mapa.isMoving && mapa.isMoving()) { naplanujBudovyHerni(); return; }
+    prepoctiBudovyHerni();
+  }, 450);
 }
 
 /// ⭐ engine 216: VRŽENÉ STÍNY DOMŮ NA PLÁTNĚ. Engine 215 je dělal jako
@@ -2732,6 +2740,99 @@ function prepoctiStinyDomu() {
     window.__casy.stinyStromu = stromy.length;
     window.__casy.stinyPlatno = W + 'x' + H;
   } catch (e) { /* nic */ }
+}
+
+/// ⭐ engine 228: NÁZVY ČÁSTÍ OBCÍ U DOMŮ. Uzel OSM (= definiční bod RÚIAN,
+/// ZABAGED má totéž) leží u malých sídel často na kraji (Nechvalice: 156 m
+/// severně od domů, u D8) – při chůzi je název „mimo". Od z15,5 se hamlety
+/// kreslí z vlastního zdroje: poloha = těžiště kusů domů do 300 m od uzlu
+/// (≥ 3 domy), posun nejvýš 220 m; jinak uzel. `ink-obce` má maxzoom 15,5.
+let sidlaCasovac = null;
+let sidlaPodpis = '';
+const SIDLA_DOSAH_M = 300, SIDLA_POSUN_MAX_M = 220;
+function nasadSidlaPopisky() {
+  if (!mapa || !mapa.getLayer('ink-obce')) return false;
+  try {
+    if (!mapa.getSource('sidla-popisky')) {
+      mapa.addSource('sidla-popisky', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    if (!mapa.getLayer('okolnik-sidla-popisky')) {
+      const vrstvy = mapa.getStyle().layers;
+      const vzor = vrstvy.find((l) => l.id === 'ink-obce');
+      if (!vzor) return false;
+      const layout = Object.assign({}, vzor.layout || {});
+      delete layout.visibility;
+      const paint = Object.assign({}, vzor.paint || {});
+      const ls = vrstvy.map((l) => l.id);
+      const za = ls[ls.indexOf('ink-obce') + 1];
+      mapa.addLayer({ id: 'okolnik-sidla-popisky', type: 'symbol', source: 'sidla-popisky',
+                      minzoom: 15.5, layout, paint }, za);
+    }
+  } catch (e) { console.warn('[sídla] vrstva', e); return false; }
+  return true;
+}
+function naplanujSidlaPopisky(zaMs) {
+  if (sidlaCasovac) return;                       // throttle (idle chodí každých ~500 ms)
+  sidlaCasovac = setTimeout(() => { sidlaCasovac = null; prepoctiSidlaPopisky(); }, zaMs || 900);
+}
+function prepoctiSidlaPopisky() {
+  if (!mapa || !mapa.getLayer('ink-obce')) return;
+  if (mapa.getZoom() < 15.2) { sidlaPodpis = ''; return; }   // vrstva má minzoom 15,5, data nechat
+  if (mapa.isMoving && mapa.isMoving()) { naplanujSidlaPopisky(600); return; }
+  if (!nasadSidlaPopisky()) return;
+  const zdroj = mapa.getSource('sidla-popisky');
+  if (!zdroj) return;
+  let sidla = [], domy = [];
+  try {
+    sidla = mapa.querySourceFeatures('omt', { sourceLayer: 'place', filter: ['==', ['get', 'class'], 'hamlet'] });
+    if (sidla.length) domy = mapa.querySourceFeatures('omt', { sourceLayer: 'building' });
+  } catch (e) { return; }
+  const body = [];                                 // těžiště kusů domů
+  for (const d of domy) {
+    const g = d.geometry;
+    if (!g) continue;
+    const polys = g.type === 'Polygon' ? [g.coordinates] : (g.type === 'MultiPolygon' ? g.coordinates : []);
+    for (const poly of polys) {
+      const ring = poly[0];
+      if (!ring || ring.length < 4) continue;
+      let sx = 0, sy = 0;
+      const n = ring.length - 1;
+      for (let i = 0; i < n; i++) { sx += ring[i][0]; sy += ring[i][1]; }
+      body.push([sx / n, sy / n]);
+    }
+  }
+  const videno = new Set();
+  const features = [];
+  let podpis = '';
+  for (const s of sidla) {
+    const p = s.properties || {};
+    const c = s.geometry && s.geometry.type === 'Point' ? s.geometry.coordinates : null;
+    if (!c) continue;
+    const klic = (p.name || '') + '|' + c[0].toFixed(5) + '|' + c[1].toFixed(5);
+    if (videno.has(klic)) continue;
+    videno.add(klic);
+    const kx = 111320 * Math.cos(c[1] * Math.PI / 180), ky = 110574;
+    let sx = 0, sy = 0, n = 0;
+    for (const b of body) {
+      const dx = (b[0] - c[0]) * kx, dy = (b[1] - c[1]) * ky;
+      if (dx * dx + dy * dy <= SIDLA_DOSAH_M * SIDLA_DOSAH_M) { sx += b[0]; sy += b[1]; n++; }
+    }
+    let pos = c;
+    if (n >= 3) {
+      let mx = sx / n, my = sy / n;
+      const dx = (mx - c[0]) * kx, dy = (my - c[1]) * ky;
+      const d = Math.hypot(dx, dy);
+      if (d > SIDLA_POSUN_MAX_M) { mx = c[0] + dx / d * SIDLA_POSUN_MAX_M / kx; my = c[1] + dy / d * SIDLA_POSUN_MAX_M / ky; }
+      pos = [mx, my];
+    }
+    podpis += klic + ':' + n + ';';
+    features.push({ type: 'Feature', properties: Object.assign({}, p),
+                    geometry: { type: 'Point', coordinates: pos } });
+  }
+  if (podpis === sidlaPodpis) return;
+  sidlaPodpis = podpis;
+  try { zdroj.setData({ type: 'FeatureCollection', features }); } catch (e) { /* zdroj se zrovna mění */ }
+  try { window.__casy = window.__casy || {}; window.__casy.sidlaN = features.length; } catch (e) { /* nic */ }
 }
 
 /// ⭐ engine 224/225: MOSTY NAD TERÉNEM. Silnice jsou drapované, most přes
@@ -7161,6 +7262,7 @@ function registrujKlikMista() {
   mapa.on('idle', poradiNazvuObci);
   mapa.on('idle', () => naplanujStinyDomu(600));
   mapa.on('idle', () => naplanujMosty3d(700));   // engine 224: mosty nad terénem
+  mapa.on('idle', () => naplanujSidlaPopisky(900));   // engine 228: názvy částí obcí u domů
   poradiNazvuObci();
   for (const vrstva of ['okolnik-mista-kruh', 'okolnik-mista-ikona']) {
     mapa.on('click', vrstva, (e) => {

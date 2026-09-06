@@ -1071,17 +1071,20 @@ function stylHerni(ctx) {
       { id: 'ink-mestyse', type: 'symbol', source: 'omt', 'source-layer': 'place',
         filter: ['==', ['get', 'class'], 'town'],
         // ⭐ 12. 8.: tučně 14 — viz poznámka u `mestyse` v turistické
-        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 15, 16, 14], false),
+        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 15, 15, 14, 17, 15.5], false),
         paint: obcePaint(KRONIKA.inkTmava) },
       { id: 'ink-vesnice', type: 'symbol', source: 'omt', 'source-layer': 'place',
         minzoom: 10,
         filter: ['==', ['get', 'class'], 'village'],
-        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 13, 16, 11.5], false),
+        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 13, 15, 11.5, 17, 14, 19, 15.5], false),
         paint: obcePaint(KRONIKA.ink) },
       { id: 'ink-obce', type: 'symbol', source: 'omt', 'source-layer': 'place',
-        minzoom: 12,
+        // engine 228: od z15,5 kreslí názvy hamletů `okolnik-sidla-popisky`
+        // (main.js) u domů – uzel OSM/RÚIAN bývá na kraji sídla
+        minzoom: 12, maxzoom: 15.5,
         filter: ['==', ['get', 'class'], 'hamlet'],
-        layout: obceLayout(FONT, ['interpolate', ['linear'], ['zoom'], 11, 11, 16, 9.5], false),
+        // engine 228: od z15 zase roste – při chůzi (z17+) bylo 9,5 px nečitelné
+        layout: obceLayout(FONT, ['interpolate', ['linear'], ['zoom'], 11, 11, 15, 10, 17, 12.5, 19, 14], false),
         paint: obcePaint(KRONIKA.inkSvetla) },
       // engine 218 (ZABAGED v4, „stačilo by to na mapě pojmenovat"): náměstí
       // jako popisek (2 645) a brody na tocích (5 089) – bez míst v DB a filtrů
