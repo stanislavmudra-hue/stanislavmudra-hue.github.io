@@ -622,6 +622,8 @@ const Mlha = (() => {
     const m = mapa.getSource('mlha-maska');
     if (m) m.setData(maska(true));
     obnovZdroj();
+    // engine 214: rytina přišla po noci → ztlumení a barva podle kroku znovu
+    try { if (window.obnovNoc) setTimeout(window.obnovNoc, 0); } catch (e) { /* nic */ }
     // ⏱ chvíle, kdy mlha přestane být plná deska a ukáže objevený svět
     try {
       window.__casy = window.__casy || {};
@@ -649,6 +651,8 @@ const Mlha = (() => {
       data: maska(!!map.getSource('mlha-kronika')) });
     map.addLayer({ id: 'mlha-pergamen', type: 'fill', source: 'mlha-maska',
       paint: { 'fill-color': PERGAMEN_BARVA, 'fill-opacity': 1 } }, pred);
+    // engine 214: mlha vznikla až po noci → noc nanést znovu (pergamen, rytina)
+    try { if (window.obnovNoc) setTimeout(window.obnovNoc, 0); } catch (e) { /* nic */ }
 
     // Rytina ČR (canvas) — čeká na načtení assetů
     pridejVrstvuRytiny();

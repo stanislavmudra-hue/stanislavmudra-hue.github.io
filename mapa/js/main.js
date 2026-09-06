@@ -1968,6 +1968,9 @@ function nasadBudovyHerni() {
       try {
         mapa.removeLayer('okolnik-budovy-herni-zdi');
         mapa.removeLayer('okolnik-budovy-herni-strecha');
+        for (const id of ['okolnik-stavby-3d', 'okolnik-vertikaly-3d']) {
+          if (mapa.getLayer(id)) mapa.removeLayer(id);
+        }
       } catch (e) { /* nic */ }
     }
     return;
@@ -2004,8 +2007,67 @@ function nasadBudovyHerni() {
                'fill-extrusion-base': ['-', H, 0.6],
                'fill-extrusion-opacity': nastup,
                'fill-extrusion-vertical-gradient': false } }, pred);
+    // ⭐ engine 214: ZABAGED v3 – kůlny, skleníky, přístřešky a věžovité
+    // stavby (vrstva `stavby`, výška h) + VERTIKÁLY (komíny, věže kostelů,
+    // vysílače, rozhledny, vodojemy, větrné elektrárny, těžní věže, sila –
+    // body převedené na čtverce, výška h ze ZABAGED nebo výchozí podle
+    // druhu). Filtr podle `fid` odkrytých (viz prepoctiBudovyHerni), stejně
+    // jako domy jen v odkryté mapě – extruze se mlhou nezakryje.
+    const nicFid = ['==', ['get', 'fid'], -1];
+    mapa.addLayer({ id: 'okolnik-stavby-3d', type: 'fill-extrusion',
+      source: 'krajina', 'source-layer': 'stavby', minzoom: 14.5, filter: nicFid,
+      paint: { 'fill-extrusion-color': ['match', ['get', 't'],
+                 'kulna', '#A78F6B', 'sklenik', '#D6E8EC', 'vezstavba', '#A89C8C', '#B9A98F'],
+               'fill-extrusion-height': ['coalesce', ['get', 'h'], 3],
+               'fill-extrusion-base': 0,
+               'fill-extrusion-opacity': nastup } }, pred);
+    mapa.addLayer({ id: 'okolnik-vertikaly-3d', type: 'fill-extrusion',
+      source: 'krajina', 'source-layer': 'vertikaly', minzoom: 14, filter: nicFid,
+      paint: { 'fill-extrusion-color': ['match', ['get', 't'],
+                 'komin', '#8B5A46', 'vez_kostel', '#E2D2B2', 'vez_kaple', '#E6D8BC',
+                 'vysilac', '#C9CCCF', 'rozhledna', '#9E7B55', 'vodojem', '#8C9AA0',
+                 'vetrnik', '#EFEFEF', 'tezni', '#5B5B5B', 'silo', '#B8B0A0', '#A09890'],
+               'fill-extrusion-height': ['coalesce', ['get', 'h'], 20],
+               'fill-extrusion-base': 0,
+               'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.6, 1] } }, pred);
   } catch (e) { console.warn('[budovy herní]', e); return; }
   naplanujBudovyHerni();
+}
+
+/// Odkryté `fid` vrstvy zdroje `krajina` (stavby / vertikaly) podle středu
+/// půdorysu – týž princip jako domy (Mlha.jeObjeveno), keš v budovyHerniStav
+/// pod klíčem 'vrstva:fid'.
+function prepoctiZabagedHerni(vrstvaId, sourceLayer) {
+  if (!mapa || !mapa.getLayer(vrstvaId)) return;
+  let prvky = [];
+  try { prvky = mapa.querySourceFeatures('krajina', { sourceLayer }); }
+  catch (e) { return; }
+  const fids = [];
+  const videno = new Set();
+  for (const f of prvky) {
+    const fid = f.properties && f.properties.fid;
+    if (fid == null || videno.has(fid)) continue;
+    videno.add(fid);
+    const klic = sourceLayer + ':' + fid;
+    let o = budovyHerniStav.get(klic);
+    if (o !== true) {
+      const g = f.geometry;
+      let ring = null;
+      if (g && g.type === 'Polygon') ring = g.coordinates[0];
+      else if (g && g.type === 'MultiPolygon') ring = g.coordinates[0] && g.coordinates[0][0];
+      if (!ring || !ring.length) continue;
+      let sx = 0, sy = 0;
+      for (const q of ring) { sx += q[0]; sy += q[1]; }
+      try { o = !!Mlha.jeObjeveno(sx / ring.length, sy / ring.length); }
+      catch (e) { o = true; }
+      budovyHerniStav.set(klic, o);
+    }
+    if (o) fids.push(fid);
+  }
+  try {
+    mapa.setFilter(vrstvaId, fids.length ? ['match', ['get', 'fid'], fids, true, false]
+                                         : ['==', ['get', 'fid'], -1]);
+  } catch (e) { /* styl se mění */ }
 }
 
 function naplanujBudovyHerni() {
@@ -2025,9 +2087,14 @@ function prepoctiBudovyHerni() {
     if (iS >= 0 && iD > iS) {
       mapa.moveLayer('okolnik-budovy-herni-zdi', 'akvarel-dekorace');
       mapa.moveLayer('okolnik-budovy-herni-strecha', 'akvarel-dekorace');
+      for (const id of ['okolnik-stavby-3d', 'okolnik-vertikaly-3d']) {
+        if (mapa.getLayer(id)) mapa.moveLayer(id, 'akvarel-dekorace');
+      }
     }
   } catch (e) { /* styl se zrovna mění */ }
   if (mapa.getZoom() < 14) return;
+  prepoctiZabagedHerni('okolnik-stavby-3d', 'stavby');
+  prepoctiZabagedHerni('okolnik-vertikaly-3d', 'vertikaly');
   let prvky = [];
   try { prvky = mapa.querySourceFeatures('omt', { sourceLayer: 'building' }); }
   catch (e) { return; }
@@ -2872,6 +2939,15 @@ function nastavNocniKresbu(krok) {
 /// Test: `window.__vynutKrokNoci = 0..3` (další tik do minuty, nebo
 /// zavolat aplikujNoc() ručně).
 let krokNoci = -1;
+
+/// ⭐ engine 214 („nejdřív je tmavá a pak zesvětlá"): mlha (fog.js) vzniká až
+/// po `load`, tedy PO prvním nanesení noci – její rytina zůstala bez nočního
+/// ztlumení a další `aplikujNoc` se při stejném kroku ukončilo předčasně.
+/// Volá fog.js po založení vrstev mlhy: noc se nanese znovu celá.
+window.obnovNoc = function () {
+  krokNoci = -1;
+  try { aplikujNoc(); } catch (e) { /* pojistka: interval */ }
+};
 
 /// ⭐ engine 209 („na noční mapě je špatně vidět odkrytá oblast"): noční
 /// překryv ležel NAD mlhou, takže ztmavil i pergamen (změřeno: mlha i

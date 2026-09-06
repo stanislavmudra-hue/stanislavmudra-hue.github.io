@@ -578,7 +578,10 @@ function stylHerni(ctx) {
       // voda / skaly / hrbitov; vrstva `body` (t strom/balvan/komin) a `cary`
       // (t stromoradi/zivyplot/zed) – v2 5. 9. noc. ⚠️ Nové jméno souboru:
       // proxy appky i prohlížeč kešují rozsahy podle jména.
-      krajina: { type: 'vector', url: r2('krajina2.pmtiles'),
+      // v3 (6. 9. noc): + zelen/park/zricenina, čáry hradba, vrstvy `stavby`
+      // (kůlny, skleníky, přístřešky, věžovité stavby, h, fid) a `vertikaly`
+      // (komíny, věže, vodojemy, větrníky, těžní věže, sila – čtverce, h, fid)
+      krajina: { type: 'vector', url: r2('krajina3.pmtiles'),
                  attribution: '© ČÚZK ZABAGED®' },
     }),
     layers: [
@@ -701,6 +704,25 @@ function stylHerni(ctx) {
       { id: 'hrbitov-zab', type: 'fill', source: 'krajina', 'source-layer': 'krajina',
         minzoom: 12, filter: ['==', ['get', 't'], 'hrbitov'],
         paint: { 'fill-color': '#B7C4A6', 'fill-opacity': 0.55 } },
+      // ZABAGED v3: udržovaná zeleň a parky (nad zástavbou), zříceniny, hradby
+      { id: 'zelen', type: 'fill', source: 'krajina', 'source-layer': 'krajina',
+        minzoom: 13, filter: ['==', ['get', 't'], 'zelen'],
+        paint: { 'fill-color': '#A9CF8F', 'fill-opacity': 0.45 } },
+      { id: 'park', type: 'fill', source: 'krajina', 'source-layer': 'krajina',
+        minzoom: 12, filter: ['==', ['get', 't'], 'park'],
+        paint: { 'fill-color': '#8FC47A', 'fill-opacity': 0.55 } },
+      { id: 'zricenina', type: 'fill', source: 'krajina', 'source-layer': 'krajina',
+        minzoom: 13, filter: ['==', ['get', 't'], 'zricenina'],
+        paint: { 'fill-color': ['match', ['get', 'z'], 'ZH', '#8A7F72', 'ZZ', '#8A7F72', '#A39A8E'],
+                 'fill-opacity': 0.8 } },
+      { id: 'zricenina-obrys', type: 'line', source: 'krajina', 'source-layer': 'krajina',
+        minzoom: 14, filter: ['==', ['get', 't'], 'zricenina'],
+        paint: { 'line-color': '#5E554B', 'line-opacity': 0.7,
+                 'line-width': sirkaMetry(0.6, 0.7, 14), 'line-dasharray': [2, 1.2] } },
+      { id: 'hradba', type: 'line', source: 'krajina', 'source-layer': 'cary',
+        minzoom: 14, filter: ['==', ['get', 't'], 'hradba'],
+        paint: { 'line-color': '#6E655A', 'line-opacity': 0.85,
+                 'line-width': sirkaMetry(1.2, 2.2, 14) } },
       { id: 'hriste', type: 'fill', source: 'omt', 'source-layer': 'landuse',
         minzoom: 13,
         filter: ['in', ['get', 'class'], ['literal', ['pitch', 'playground', 'track', 'stadium']]],
