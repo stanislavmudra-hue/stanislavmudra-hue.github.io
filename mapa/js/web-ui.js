@@ -490,6 +490,9 @@
             // (kat.popisy podle kategorie, pak chip.p), ne skupinový/anglický klíč
             lat: lat, lng: lng, n: pole[i][2] || (kat.popisy || {})[c2] || (kat.chipy[chip] || {}).p
               || (kat.chipy[chip] || {}).l || '',
+            // 6. 9.: text stuhy jako v appce (`_jmenoProStuhu` – bez obce v názvu,
+            // druh + jméno, strop 40) – počítá export do 4. prvku
+            s: pole[i][3] || null,
             vzd: vzdalenostM(c.lat, c.lng, lat, lng) });
         }
       }
@@ -507,13 +510,26 @@
     return 'emoji|' + em + '|#5B6B75';
   }
 
+  // 6. 9.: verze enginu vidět v rohu – kvůli keši GitHub Pages (index.html
+  // se drží 10 min) se těžko poznalo, co prohlížeč zrovna běží
+  (function ukazVerzi() {
+    try {
+      var v = ((document.querySelector('script[src*="main.js"]') || {}).src || '').split('?v=')[1];
+      if (!v) return;
+      var el = document.createElement('div');
+      el.textContent = 'engine ' + v;
+      el.style.cssText = 'position:fixed;left:6px;bottom:4px;font:10px/1 sans-serif;color:#6b6257;opacity:.75;z-index:30;pointer-events:none';
+      document.body.appendChild(el);
+    } catch (e) { }
+  })();
+
   function posliMista() {
     if (typeof OkolnikMost === 'undefined' || !kat) return;
     vVyrezu = spocitejVyrez();
     var pole = kresby.slice();
     for (var i = 0; i < vVyrezu.length; i++) {
       var m = vVyrezu[i];
-      pole.push({ id: m.id, lat: m.lat, lng: m.lng, b: '#5B6B75', ik: ikonaMista(m), t: m.n });
+      pole.push({ id: m.id, lat: m.lat, lng: m.lng, b: '#5B6B75', ik: ikonaMista(m), t: m.s || m.n });
     }
     pole = pole.concat(mojeBody());
     try {

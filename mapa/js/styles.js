@@ -47,14 +47,22 @@ const FONT_B = ['Noto Sans Bold'];
 const FONT_I = ['Noto Sans Italic'];
 
 // Obloha (MapLibre v5 style.sky)
-function obloha(horizont) {
+// ⭐ engine 213 („podpoř 3D efekt"): obloha a OPAR podle kroku noci.
+// `fog-ground-blend` = od jaké normované hloubky začíná opar na zemi
+// (shader: v_fog_depth > blend) – 0,6 → 0,4 = dálky blednou dřív, vzdušná
+// perspektiva dělá hloubku. Krok 0 den, 1 soumrak, 2 šero, 3 noc.
+function obloha(horizont, krok) {
+  const k = krok || 0;
+  const SKY = ['#88bfe0', '#5b6f9e', '#233257', '#0a1228'];
+  const HORIZONT = ['#eef4f8', '#f0b27a', '#6a7391', '#1a2442'];
+  const OPAR = ['#e3eaee', '#d8c3ae', '#7c8496', '#1d2637'];
   return {
-    'sky-color': '#88bfe0',
-    'horizon-color': horizont || '#eef4f8',
-    'fog-color': '#f5f2ea',
+    'sky-color': SKY[k],
+    'horizon-color': (k === 0 && horizont) || HORIZONT[k],
+    'fog-color': OPAR[k],
     'sky-horizon-blend': 0.6,
-    'horizon-fog-blend': 0.7,
-    'fog-ground-blend': 0.6,
+    'horizon-fog-blend': 0.75,
+    'fog-ground-blend': k === 3 ? 0.45 : 0.4,
   };
 }
 
@@ -741,9 +749,10 @@ function stylHerni(ctx) {
                     7, 0.85, 11, 1.0, 14, 1.0, 16, 0.9],
                  'hillshade-illumination-anchor': 'map',
                  'hillshade-illumination-direction': 335,
-                 'hillshade-shadow-color': '#24483A',
-                 'hillshade-highlight-color': '#FFFDF0',
-                 'hillshade-accent-color': '#2E7D5B' } },
+                 // engine 213: tmavší údolí, světlejší hřebeny – víc plastiky
+                 'hillshade-shadow-color': '#1B3A2E',
+                 'hillshade-highlight-color': '#FFFFF6',
+                 'hillshade-accent-color': '#276E50' } },
       // ③ DRUHÁ VRSTVA STEJNÉHO RELIÉFU Z PROTISMĚRU (v1.530).
       //
       // `hillshade-exaggeration` má strop 1,0 — víc plastiky už z jedné

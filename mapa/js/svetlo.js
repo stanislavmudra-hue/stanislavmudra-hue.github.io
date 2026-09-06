@@ -138,6 +138,9 @@ const Svetlo = (() => {
       } catch (e2) { /* kresby ještě nejsou */ }
       try {
         if (window.nastavStinyMist) window.nastavStinyMist(window.__svetlo, st);
+        // engine 213: stíny stromů na zemi (dekorace.js)
+        try { if (typeof Dekorace !== 'undefined' && Dekorace.nastavStin) Dekorace.nastavStin(az, el, zdroj); }
+        catch (eS) { /* vrstva ještě není */ }
       } catch (e3) { /* vrstva míst ještě není */ }
     } catch (e) { console.warn('[svetlo]', e); }
   }

@@ -3074,6 +3074,10 @@ function aplikujNoc() {
       window.__ztlumDekorace([1, 0.92, 0.84, 0.72][krok]);
     }
     nastavNocniKresbu(krok);   // ⭐ v1.511: cesty a budovy čitelné i v noci
+    // engine 213: obloha a opar podle kroku noci (den světle modrá, soumrak
+    // oranžový horizont, noc tmavě modrá) – světlý horizont v noci svítil
+    try { if (mapa.setSky && typeof obloha === 'function') mapa.setSky(obloha(null, krok)); }
+    catch (eSky) { /* starší maplibre */ }
     prestavNocniDiry();
     // ⚠️ opacity stromů NEsahat — nese náběhovou rampu z `nastup()`
     // (setPaintProperty by ji přepsal konstantou a rozbil rození)
@@ -6744,23 +6748,16 @@ function vykresliMista() {
       try { vykresliMista(); } catch (e) { /* příští tik */ }
     }, 180);
   }
-  // ⭐ engine 212 („na webu je Rtyně nad Bílinou, Sezemice, v telefonu vidím
-  // názvy lépe"): názvy zastávek IDOS nesou obec před čárkou („Rtyně n.
-  // Bílinou, Sezemice"); obec už na mapě je, na stuze zůstane jen část za
-  // poslední čárkou s velkým písmenem („Sezemice", „Kostel"). Jen zastávky.
-  const zkratNazevZastavky = (t, ik) => {
-    if (!/autobusova_zastavka|vlakova_zastavka|zastavka/.test(String(ik || ''))) return t;
-    const i = t.lastIndexOf(', ');
-    if (i < 0 || i > t.length - 3) return t;
-    const kus = t.slice(i + 2).trim();
-    return kus.charAt(0).toUpperCase() + kus.slice(1);
-  };
+  // engine 213: text stuhy připravuje ODESÍLATEL – appka `_jmenoProStuhu`
+  // (bez obce v názvu, druh + jméno, strop 40 znaků), web totéž ve
+  // web-ui.js `jmenoProStuhu`; engine nic nezkracuje (212 zkracoval jen
+  // zastávky a rozcházel se s appkou).
   const naFeature = (m) => {
       const bublina = typeof m.ik === 'string'
           && (m.ik.startsWith('emoji|') || m.ik.startsWith('brand|'));
       // popisek pod značkou posílá aplikace (datum záznamu). Kreslí ho
       // jen nezhlukovaná vrstva `okolnik-moje-ikona`; u POI `t` nechodí.
-      const stitek = (typeof m.t === 'string' && m.t) ? { t: zkratNazevZastavky(m.t, m.ik) } : {};
+      const stitek = (typeof m.t === 'string' && m.t) ? { t: m.t } : {};
       return {
         type: 'Feature',
         properties: m.ik
