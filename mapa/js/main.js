@@ -1959,63 +1959,10 @@ let budovyHerniZap = (() => {
 const budovyHerniStav = new Map();   // id → objeveno? (false se zkouší znovu)
 let budovyHerniCasovac = null;
 
-/// ⭐ engine 226/227: OKNA NA DOMECH – vzorek fasády pro `fill-extrusion-pattern`
-/// zdí. ⛔ Vzorek MapLibre je kotvený v pixelech dlaždice CELOČÍSELNÉHO zoomu:
-/// mezi z17 a z18 na obrazovce roste 1×→2×, na z18 skočí zpět a přes
-/// fadeDuration se prolíná; zoom se při náklonu kolébe ±0,2 → okna „žila"
-/// pořád (engine 226). Engine 227: vzorek pro KAŽDÝ zoom z16–z22 s dvojnásobnou
-/// velikostí (buňka 8×6 CSS px na z17 ≈ 3 m rozestup × 3 m patro; svisle
-/// 1 m = 2 px na z17 dle u_height_factor), přepínaný `step` výrazem – from
-/// (z−1 při scale 2) i to (z při scale 1) mají touž velikost ve světě, takže
-/// prolínání není vidět. Pod z16 jednobarevná fasáda. Den: šedomodré sklo,
-/// noc: teple svítící okna. Vzorek nese barvu fasády (extrusion-color se s
-/// patternem ignoruje); střechy jsou vlastní vrstva bez vzorku.
-const OKNA_ZOOMY = [16, 17, 18, 19, 20, 21, 22];
-function vzorekOken(z, noc) {
-  const k = Math.pow(2, z - 17);
-  const W = Math.round(16 * k), H = Math.round(12 * k);          // @2 (pixelRatio 2)
-  const c = document.createElement('canvas');
-  c.width = W; c.height = H;
-  const x = c.getContext('2d');
-  x.fillStyle = noc ? '#8F846D' : '#EAD9B6'; x.fillRect(0, 0, W, H);   // fasáda
-  const ow = Math.max(1, Math.round(W * 0.38)), oh = Math.max(1, Math.round(H * 0.5));
-  const ox = Math.round((W - ow) / 2), oy = Math.round(H * 0.28);
-  if (W >= 32) {                                                 // z18+: rám, čtyři tabulky, parapet
-    const r = Math.max(1, Math.round(W / 32));
-    x.fillStyle = noc ? '#3A3226' : '#4F5D6B'; x.fillRect(ox, oy, ow, oh);
-    x.fillStyle = noc ? '#FFD37A' : '#8FA3B4';
-    const pw = Math.floor((ow - 3 * r) / 2), ph = Math.floor((oh - 3 * r) / 2);
-    x.fillRect(ox + r, oy + r, pw, ph); x.fillRect(ox + 2 * r + pw, oy + r, pw, ph);
-    x.fillRect(ox + r, oy + 2 * r + ph, pw, ph); x.fillRect(ox + 2 * r + pw, oy + 2 * r + ph, pw, ph);
-    x.fillStyle = noc ? '#7E735E' : '#D9C6A0'; x.fillRect(ox - r, oy + oh, ow + 2 * r, r);
-  } else {                                                       // z16–17: jen sklo
-    x.fillStyle = noc ? '#FFD37A' : '#6E7F8E'; x.fillRect(ox, oy, ow, oh);
-  }
-  if (H >= 12) { x.fillStyle = noc ? '#9C917A' : '#F4E8CC'; x.fillRect(0, 0, W, Math.max(1, Math.round(H / 12))); }
-  return x.getImageData(0, 0, W, H);
-}
-function zajistiVzorkyOken() {
-  try {
-    const plocha = (jm, barva) => {
-      if (mapa.hasImage(jm)) return;
-      const c = document.createElement('canvas'); c.width = 4; c.height = 4;
-      const x = c.getContext('2d'); x.fillStyle = barva; x.fillRect(0, 0, 4, 4);
-      mapa.addImage(jm, x.getImageData(0, 0, 4, 4), { pixelRatio: 2 });
-    };
-    plocha('fasada', '#EAD9B6'); plocha('fasada-noc', '#8F846D');
-    for (const z of OKNA_ZOOMY) {
-      if (!mapa.hasImage('okna-' + z)) mapa.addImage('okna-' + z, vzorekOken(z, false), { pixelRatio: 2 });
-      if (!mapa.hasImage('okna-noc-' + z)) mapa.addImage('okna-noc-' + z, vzorekOken(z, true), { pixelRatio: 2 });
-    }
-  } catch (e) { /* atlas se zrovna mění */ }
-}
-/// `step` podle zoomu (cross-faded vlastnost smí mít jen step) – viz výše.
-function vyrazOken(noc) {
-  const p = noc ? 'okna-noc-' : 'okna-';
-  const v = ['step', ['zoom'], noc ? 'fasada-noc' : 'fasada'];
-  for (const z of OKNA_ZOOMY) v.push(z, p + z);
-  return v;
-}
+/// engine 230: OKNA NA DOMECH ZRUŠENA („ty okna se stále mění, dej je klidně
+/// pryč“). Vzorek `fill-extrusion-pattern` (engine 226–229: obrázek pro každý
+/// zoom přepínaný step výrazem) přesto při zoomu/náklonu žil; zdi jsou zase
+/// jednobarevné (#EAD9B6) se svislým přechodem.
 
 function nasadBudovyHerni() {
   if (!mapa || !mapa.getStyle()) return;
@@ -2050,11 +1997,9 @@ function nasadBudovyHerni() {
   const nastup = ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, 1];
   const pred = prvniSymbolovaVrstva();
   try {
-    zajistiVzorkyOken();
     mapa.addLayer({ id: 'okolnik-budovy-herni-zdi', type: 'fill-extrusion',
       source: 'omt', 'source-layer': 'building', minzoom: 14.5, filter: nic,
       paint: { 'fill-extrusion-color': '#EAD9B6',
-               'fill-extrusion-pattern': vyrazOken(typeof krokNoci === 'number' && krokNoci >= 2),
                'fill-extrusion-height': ['-', H, 0.6],
                'fill-extrusion-base': B,
                'fill-extrusion-opacity': nastup } }, pred);
@@ -4032,12 +3977,6 @@ function aplikujNoc() {
         mapa.setPaintProperty('mlha-rytina', v + '-transition', { duration: 0 });
       }
       mapa.setPaintProperty('mlha-rytina', 'raster-brightness-max', JAS_MLHY[krok]);
-      try {   // engine 226: v noci svítí okna
-        if (mapa.getLayer('okolnik-budovy-herni-zdi')) {
-          zajistiVzorkyOken();
-          mapa.setPaintProperty('okolnik-budovy-herni-zdi', 'fill-extrusion-pattern', vyrazOken(krok >= 2));
-        }
-      } catch (eO) { /* nic */ }
       mapa.setPaintProperty('mlha-rytina', 'raster-opacity', KRYTI_MLHY[krok]);
       mapa.setPaintProperty('mlha-rytina', 'raster-saturation', SYTOST_MLHY[krok]);
     }
