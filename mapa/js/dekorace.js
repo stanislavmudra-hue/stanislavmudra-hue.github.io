@@ -56,11 +56,18 @@ const Dekorace = (() => {
       // kdyby to bolelo, tohle je první číslo, které jde zpět nahoru.
       // 29. 8.: „dlouho trvalo, než se objevily stromy" → dřív
       z0: 12.8,
-      // 10 stromů ze sezónních listů (dvě řady po pěti)
+      // 10 stromů ze sezónních listů (dvě řady po pěti) + engine 218
+      // (6. 9. 2026 odpoledne, list od uživatele, tools/dekorace_stromy_rez.py):
+      // 11 dub, 12 javor, 13 bříza, 14 modřín, 15 borovice, 16 vrba,
+      // 17 javor červený, 19 topol, 20 borovice vysoká, 22 jedle, 25 jeřáb
+      // (18 jabloň, 21 třešeň, 23 hloh, 24 túje jsou ovocné/zahradní)
       ikony: ['deko-strom-1', 'deko-strom-2', 'deko-strom-3',
               'deko-strom-4', 'deko-strom-5', 'deko-strom-6',
               'deko-strom-7', 'deko-strom-8', 'deko-strom-9',
-              'deko-strom-10'],
+              'deko-strom-10', 'deko-strom-11', 'deko-strom-12',
+              'deko-strom-13', 'deko-strom-14', 'deko-strom-15',
+              'deko-strom-16', 'deko-strom-17', 'deko-strom-19',
+              'deko-strom-20', 'deko-strom-22', 'deko-strom-25'],
       k: 1.15,                    // 5. 9. večer: k = podíl výšky stromu (~25 m)
       hustota: 0.56,              // v1.425: „stromů uber o 20 %“ (0,70→0,56)
     },
@@ -72,8 +79,10 @@ const Dekorace = (() => {
       zjemnit: true,
       vrstvy: ['sad', 'zahrada'],
       z0: 15.4,                   // engine 202: 14,6 → 15,4 (kandidátů 40 m bylo moc)
+      // engine 218: + jabloň 18, třešeň 21 (na jaře kvete), hloh 23, túje 24
       ikony: ['deko-strom-1', 'deko-strom-2', 'deko-strom-3',
-              'deko-strom-4', 'deko-strom-5'],
+              'deko-strom-4', 'deko-strom-5', 'deko-strom-18',
+              'deko-strom-21', 'deko-strom-23', 'deko-strom-24'],
       k: 0.55,                    // ~12 m
       hustota: 0.5,
     },
@@ -1480,10 +1489,15 @@ const Dekorace = (() => {
   // `les-listnaty` v herním stylu) – jsou v indexu ploch, aby strom věděl,
   // v jakém lese stojí. Smíšený a neurčený les = plná směs jako dřív.
   const PLOCHY_DRUHU_LESA = ['les-jehlicnaty', 'les-listnaty'];
+  // engine 218: + nové druhy (modřín 14, borovice 15 a 20, jedle 22;
+  // dub 11, javor 12, bříza 13, vrba 16, javor červený 17, topol 19, jeřáb 25)
   const STROMY_JEHLICNATE = ['deko-strom-6', 'deko-strom-7', 'deko-strom-8',
-                             'deko-strom-9', 'deko-strom-10'];
+                             'deko-strom-9', 'deko-strom-10', 'deko-strom-14',
+                             'deko-strom-15', 'deko-strom-20', 'deko-strom-22'];
   const STROMY_LISTNATE = ['deko-strom-1', 'deko-strom-2', 'deko-strom-3',
-                           'deko-strom-4', 'deko-strom-5'];
+                           'deko-strom-4', 'deko-strom-5', 'deko-strom-11',
+                           'deko-strom-12', 'deko-strom-13', 'deko-strom-16',
+                           'deko-strom-17', 'deko-strom-19', 'deko-strom-25'];
   const NOSNE = (() => {
     const s = {};
     for (const cfg of Object.values(DRUHY)) {

@@ -583,7 +583,7 @@ function stylHerni(ctx) {
       // v3 (6. 9. noc): + zelen/park/zricenina, čáry hradba, vrstvy `stavby`
       // (kůlny, skleníky, přístřešky, věžovité stavby, h, fid) a `vertikaly`
       // (komíny, věže, vodojemy, větrníky, těžní věže, sila – čtverce, h, fid)
-      krajina: { type: 'vector', url: r2('krajina3.pmtiles'),
+      krajina: { type: 'vector', url: r2('krajina4.pmtiles'),
                  attribution: '© ČÚZK ZABAGED®' },
     }),
     layers: [
@@ -1083,6 +1083,22 @@ function stylHerni(ctx) {
         filter: ['==', ['get', 'class'], 'hamlet'],
         layout: obceLayout(FONT, ['interpolate', ['linear'], ['zoom'], 11, 11, 16, 9.5], false),
         paint: obcePaint(KRONIKA.inkSvetla) },
+      // engine 218 (ZABAGED v4, „stačilo by to na mapě pojmenovat"): náměstí
+      // jako popisek (2 645) a brody na tocích (5 089) – bez míst v DB a filtrů
+      { id: 'zab-namesti', type: 'symbol', source: 'krajina', 'source-layer': 'body',
+        minzoom: 14.5, filter: ['==', ['get', 't'], 'namesti'],
+        // do z16 ustoupí kolizím (název města sedí často na náměstí), od z16
+        // (chůze) se kreslí vždy – jinak ho v centru zakryly sochy a názvy
+        layout: Object.assign(obceLayout(FONT, ['interpolate', ['linear'], ['zoom'], 14.5, 9.5, 17, 12], false),
+                              { 'text-field': ['get', 'n'], 'text-anchor': 'center', 'text-offset': [0, 0],
+                                'text-allow-overlap': ['step', ['zoom'], false, 16, true],
+                                'text-ignore-placement': ['step', ['zoom'], false, 16, true] }),
+        paint: obcePaint(KRONIKA.inkSvetla) },
+      { id: 'zab-brod', type: 'symbol', source: 'krajina', 'source-layer': 'body',
+        minzoom: 16, filter: ['==', ['get', 't'], 'brod'],
+        layout: Object.assign(obceLayout(FONT, 9.5, false),
+                              { 'text-field': 'brod', 'text-anchor': 'center', 'text-offset': [0, 0] }),
+        paint: obcePaint('#3F6E80') },
       // Popisky sousedních států při oddálení (2D protějšek: `_neighborArrows`).
       // ⚠️ MUSÍ ZŮSTAT ÚPLNĚ POSLEDNÍ: mlha se vkládá PŘED první vrstvu
       // `ink-` (fog.js → `kotva()`), takže všechno za ní se kreslí NAD

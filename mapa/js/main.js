@@ -2017,7 +2017,9 @@ function nasadBudovyHerni() {
     mapa.addLayer({ id: 'okolnik-stavby-3d', type: 'fill-extrusion',
       source: 'krajina', 'source-layer': 'stavby', minzoom: 14.5, filter: nicFid,
       paint: { 'fill-extrusion-color': ['match', ['get', 't'],
-                 'kulna', '#A78F6B', 'sklenik', '#D6E8EC', 'vezstavba', '#A89C8C', '#B9A98F'],
+                 'kulna', '#A78F6B', 'sklenik', '#D6E8EC', 'vezstavba', '#A89C8C',
+                 // engine 218 (ZABAGED v4): lávky (dřevo), jezy (beton s pěnou), hráze
+                 'lavka', '#C9B38A', 'jez', '#B9C4C6', 'hraz', '#9A9A94', '#B9A98F'],
                'fill-extrusion-height': ['coalesce', ['get', 'h'], 3],
                'fill-extrusion-base': 0,
                'fill-extrusion-opacity': nastup } }, pred);
@@ -2097,7 +2099,8 @@ let stinyCasovac = null;
 let stinyPodpis = '';
 let stinyPlatno = null;          // HTMLCanvasElement (mimo DOM)
 let stinyRozsah = null;          // { x0, y0, x1, y1, z } v Mercatoru 0..1
-const STINY_ROZ = 2048;          // delší strana plátna (px)
+const STINY_ROZ = 1024;          // delší strana plátna (px); engine 218: 2048 → 1024 (měkčí, levnější)
+let stinyPlatnoTmp = null;       // pomocné plátno – tvary ostře, výsledek přes blur
 const STINY_KRYTI_MAX = 0.5;   // engine 217: „malinko utlumit" (0,6 → 0,5)
 const STINY_MAX_PRSTENCU = 4000;
 const STINY_MAX_STROMU = 3000;
@@ -2226,7 +2229,7 @@ function prepoctiStinyDomu() {
     r = { x0: x0 - okX, x1: x1 + okX, y0: y0 - okY, y1: y1 + okY, z };
   }
   const pomer = (r.x1 - r.x0) / (r.y1 - r.y0);
-  const ROZ = z >= 16.5 ? STINY_ROZ : STINY_ROZ / 2;   // pod z16,5 stačí polovina (~2 m/px)
+  const ROZ = z >= 16.5 ? STINY_ROZ : STINY_ROZ / 2;   // 1024 / 512 px (engine 218)
   const W = pomer >= 1 ? ROZ : Math.max(64, Math.round(ROZ * pomer));
   const H = pomer >= 1 ? Math.max(64, Math.round(ROZ / pomer)) : ROZ;
   const kx = W / (r.x1 - r.x0), ky = H / (r.y1 - r.y0);
@@ -2303,7 +2306,7 @@ function prepoctiStinyDomu() {
       if (!c) continue;
       const bx = (mercX(c[0]) - r.x0) * kx, by = (mercY(c[1]) - r.y0) * ky;
       const Hm = STROM_VYSKA_M * k * (+p.ev || 1);
-      const rp = 0.33 * Hm * mpu * kx;                      // poloměr koruny (px)
+      const rp = 0.36 * Hm * mpu * kx;                      // poloměr koruny (px), engine 218: 0,33 → 0,36
       const okraj = Hm * tg * Math.max(Math.abs(sxM), Math.abs(syM)) + rp * 2 + 2;
       if (bx < -okraj || bx > W + okraj || by < -okraj || by > H + okraj) continue;
       const dx = bx - stredPx[0], dy = by - stredPx[1];
@@ -2326,8 +2329,15 @@ function prepoctiStinyDomu() {
   if (stinyPlatno.width !== W || stinyPlatno.height !== H) {
     stinyPlatno.width = W; stinyPlatno.height = H;
   }
-  const ctx = stinyPlatno.getContext('2d');
+  if (!stinyPlatnoTmp) stinyPlatnoTmp = document.createElement('canvas');
+  if (stinyPlatnoTmp.width !== W || stinyPlatnoTmp.height !== H) {
+    stinyPlatnoTmp.width = W; stinyPlatnoTmp.height = H;
+  }
+  // engine 218: tvary ostře do pomocného plátna, výsledek jedním drawImage
+  // s blur (penumbra) – „stíny příliš ostré"
+  const ctx = stinyPlatnoTmp.getContext('2d');
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.filter = 'none';
   ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#2A1D10';
@@ -2374,24 +2384,40 @@ function prepoctiStinyDomu() {
   if (stromy.length) {
     const uhel = Math.atan2(syM, sxM);                      // směr stínu v px plátna
     const protazeni = Math.sqrt(1 + tg * tg);               // r / sin(el)
-    ctx.strokeStyle = '#2A1D10';
+    // engine 218: koruna střed 0,5 H, poloměr 0,36 H (blíž kmeni, žádný
+    // odtržený flek), listí propouští světlo → alfa 0,8; kmen až k okraji koruny
+    ctx.fillStyle = 'rgba(42,29,16,0.8)';
+    ctx.strokeStyle = 'rgba(42,29,16,0.8)';
     ctx.lineCap = 'round';
     for (const t of stromy) {
-      const hc = 0.55 * t.Hm * tg;                          // posun středu koruny (m na zemi)
+      const hc = 0.5 * t.Hm * tg;                           // posun středu koruny (m na zemi)
       const cx2 = t.bx + hc * sxM, cy2 = t.by + hc * syM;
       ctx.beginPath();
       ctx.ellipse(cx2, cy2, t.rp * protazeni, t.rp, uhel, 0, Math.PI * 2);
       ctx.fill();
-      ctx.lineWidth = Math.max(1.2, 0.05 * t.Hm * mpu * kx);
-      ctx.beginPath();
-      ctx.moveTo(t.bx, t.by);
-      ctx.lineTo(t.bx + hc * 0.7 * sxM, t.by + hc * 0.7 * syM);
-      ctx.stroke();
+      const konec = hc - 0.36 * t.Hm * protazeni;           // m na zemi k bližšímu okraji koruny
+      if (konec > 0.3) {
+        ctx.lineWidth = Math.max(1.5, 0.06 * t.Hm * mpu * kx);
+        ctx.beginPath();
+        ctx.moveTo(t.bx, t.by);
+        ctx.lineTo(t.bx + konec * sxM, t.by + konec * syM);
+        ctx.stroke();
+      }
     }
+    ctx.fillStyle = '#2A1D10';
   }
   ctx.globalCompositeOperation = 'destination-out';
   for (const pd of pudorysy) ctx.fill(pd, 'nonzero');
   ctx.globalCompositeOperation = 'source-over';
+  // engine 218: měkký okraj – jeden průchod blur (Chrome/WebView GPU; kde
+  // filter chybí, zůstane ostré)
+  const vctx = stinyPlatno.getContext('2d');
+  vctx.setTransform(1, 0, 0, 1, 0, 0);
+  vctx.globalCompositeOperation = 'source-over';
+  vctx.clearRect(0, 0, W, H);
+  try { vctx.filter = 'blur(' + (ROZ >= 1024 ? 1.6 : 1.2) + 'px)'; } catch (e) { /* bez filtru */ }
+  vctx.drawImage(stinyPlatnoTmp, 0, 0);
+  try { vctx.filter = 'none'; } catch (e) { /* nic */ }
   stinyPodpis = podpis;
   stinyRozsah = r;
   // ⛔⛔ setCoordinates VŽDY, i při stejném rozsahu: terénní RTT keš (drapované
