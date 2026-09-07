@@ -3116,26 +3116,36 @@ function nasadTerenKes() {
   } catch (e) { console.warn('[výkon] keš terénu', e); }
 }
 
-/// ⭐ engine 224/225: MOSTY NAD TERÉNEM. Silnice jsou drapované, most přes
-/// údolí se propadal do údolí. ZABAGED v6 dává OSU mostu (cary t=most) s konci
-/// (ax, ay, bx, by), šířkou w, výškou nad terénem v a druhem d (sil/zel).
-/// Mostovka se INTERPOLUJE mezi výškou terénu u obou konců (tam most sedí na
-/// zemi – „ve Rtyni most nenavazuje na silnici" byla jedna rovina z průměru).
-/// Engine staví podél osy po úsecích ≤ 30 m: desku (0,8 m), nosník pod ní
-/// (1,0 m), pruh na desce (střední čára / dvě kolejnice) a pilíře (kde je
-/// světlá výška > 3 m). Každý díl je vlastní prvek se základnou = mostovka −
-/// terén ve svém středu (MapLibre zvedá extruzi o terén ve středu prvku).
-/// Výšky přes `queryTerrainElevation` (relativní ke středu mapy, s
-/// převýšením) – rozdíly odpovídají shaderu; ZABAGED `v` je strop
-/// (× převýšení × 1,3). Bez terénu se nic nekreslí.
+/// ⭐⭐ engine 237: MOSTY Z ČÁRY MOSTU V MAPĚ. Silnice jsou drapované na terén,
+/// takže most přes údolí se propadal; engine 224–236 stavěl desku na OSE ZE
+/// ZABAGED, jenže silnice se kreslí z OSM – osy se lišily o metry a u
+/// rozestavěných cest silnice v mapě vůbec nebyla („most nenavazuje na
+/// silnici", „v poli leží šedý pás"). Teď je podkladem `transportation`
+/// s `brunnel = bridge`, tedy TÁŽ data jako pod silnicí: deska leží přesně
+/// na ní, šířka podle třídy, železnice má kolejnice.
+/// Výška: terén na obou koncích (tam most dosedá) → ROVNÁ deska ve výšce
+/// vyššího konce (nižší konec bývá propadlý DEM: síť ~19 m nevidí náspy).
+/// Pod 1,2 m světlé výšky se nekreslí nic (propustek). Na koncích OPĚRY,
+/// uvnitř pilíře po ~30 m. Kusy z dlaždic se slepí podle id.
 let mostyCasovac = null;
 let mostyPodpis = '';
-const mostyOsy = new Map();   // engine 236: fid|kusů → slepená osa (z dlaždic, na kameře nezávislá)
 const MOST_USEK_M = 30;
-const MOST_BARVY = { sil: '#9C9C9C', zel: '#7A6E63', pruh: '#E6E6DE', kolej: '#C8BFB2',
-                     nosnik: '#67615B', pilir: '#8A847C' };
+/// ⚠️ Barvy vozovky se musí SHODOVAT se `silnice-asfalt` ve stylu, jinak most
+/// vypadá jako cizí těleso; zábradlí a nosník jsou o odstín tmavší.
+const MOST_BARVY = { zel: '#7A6E63', pruh: '#F3EFE4', kolej: '#C8BFB2',
+                     nosnik: '#67615B', pilir: '#8A847C', opera: '#7F7A72',
+                     zabradli: '#8A857D' };
+const MOST_ASFALT = { motorway: '#87827C', trunk: '#87827C', primary: '#928C84',
+                      secondary: '#9B958C' };
+/// ⛔ Šířka desky v METRECH, ale silnice se kreslí na 55 % skutečné šířky
+/// (`SILNICE_MERITKO`) – deska v plné šířce proto vypadala 2–3× širší než
+/// silnice pod ní („most nevypadá dobře"). Tady je tedy kreslená šířka
+/// silnice × 1,35 (most bývá o krajnice širší než vozovka).
+const MOST_SIRKY = { motorway: 8.5, trunk: 7.8, primary: 6.7, secondary: 5.6,
+                     tertiary: 4.8, minor: 4.1, service: 3.2, track: 2.8,
+                     path: 2.0, rail: 4.0, transit: 4.0 };
 function nasadMosty3d() {
-  if (!mapa || !mapa.getSource('krajina')) return false;
+  if (!mapa || !mapa.getSource('omt')) return false;
   try {
     if (!mapa.getSource('mosty-3d')) {
       mapa.addSource('mosty-3d', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -3164,33 +3174,20 @@ function prepoctiMosty3d() {
   const prazdne = { type: 'FeatureCollection', features: [] };
   const teren = mapa.getTerrain && mapa.getTerrain();
   const z = mapa.getZoom();
-  if (z < 13.5 || !teren || !mapa.queryTerrainElevation) {
+  if (z < 14 || !teren || !mapa.queryTerrainElevation) {
     if (mostyPodpis) { mostyPodpis = ''; zdroj.setData(prazdne); }
     return;
   }
-  const ex = +teren.exaggeration || 1;
   let prvky = [];
-  try { prvky = mapa.querySourceFeatures('krajina', { sourceLayer: 'cary', filter: ['==', ['get', 't'], 'most'] }); }
-  catch (e) { return; }
+  try {
+    prvky = mapa.querySourceFeatures('omt', { sourceLayer: 'transportation',
+                                              filter: ['==', ['get', 'brunnel'], 'bridge'] });
+  } catch (e) { return; }
   const ppM = podpisPohledu() + '|' + prvky.length;
   if (ppM === pohledPodpisMosty) return;          // engine 232: v klidu nic
   pohledPodpisMosty = ppM;
   const vyska = (b) => { try { return mapa.queryTerrainElevation(b); } catch (e) { return null; } };
-  // engine 233: kusy z dlaždic sloučit podle fid do jedné lomené čáry
-  const mosty = new Map();
-  for (const f of prvky) {
-    const p = f.properties || {};
-    if (p.fid == null || p.ax == null || p.bx == null) continue;
-    const g = f.geometry;
-    const cary = g && g.type === 'LineString' ? [g.coordinates] : (g && g.type === 'MultiLineString' ? g.coordinates : null);
-    if (!cary) continue;
-    let m = mosty.get(p.fid);
-    if (!m) { m = { p, cary: [] }; mosty.set(p.fid, m); }
-    for (const c of cary) if (c && c.length >= 2) m.cary.push(c);
-  }
-  const features = [];
-  let podpis = 0;
-  // engine 236: výřez + 25 % okraj – mosty mimo pohled se nepočítají
+  // výřez + 25 % okraj – mosty mimo pohled se nepočítají
   let hr = null;
   try { hr = mapa.getBounds(); } catch (e) { hr = null; }
   let vzW = -180, vzE = 180, vzS = -90, vzN = 90;
@@ -3200,84 +3197,89 @@ function prepoctiMosty3d() {
     vzW = hr.getWest() - okX; vzE = hr.getEast() + okX;
     vzS = hr.getSouth() - okY; vzN = hr.getNorth() + okY;
   }
+  // ⛔ engine 237: KAŽDÝ ÚSEK ZVLÁŠŤ, jen bez duplicit. Slepování podle `id`
+  // spojilo tentýž most z několika dlaždic (a dva mosty téže silnice) do
+  // jednoho pásu přes celou obrazovku – klíčem je proto GEOMETRIE úseku
+  // (první a poslední bod), ne id cesty.
+  const mosty = new Map();
+  for (const f of prvky) {
+    const p = f.properties || {};
+    const g = f.geometry;
+    if (!g) continue;
+    const cary = g.type === 'LineString' ? [g.coordinates]
+               : (g.type === 'MultiLineString' ? g.coordinates : null);
+    if (!cary) continue;
+    for (const c of cary) {
+      if (!c || c.length < 2) continue;
+      const a = c[0], b = c[c.length - 1];
+      const klic = a[0].toFixed(6) + ',' + a[1].toFixed(6) + '|'
+                 + b[0].toFixed(6) + ',' + b[1].toFixed(6) + '|' + c.length;
+      if (mosty.has(klic)) continue;
+      mosty.set(klic, { cls: p['class'] || 'minor', body: c.slice() });
+    }
+  }
+  const features = [];
+  let podpis = 0, vPohledu = 0;
   const pridej = (ring, b, h, c) => {
     features.push({ type: 'Feature', properties: { b: +b.toFixed(1), h: +h.toFixed(1), c },
                     geometry: { type: 'Polygon', coordinates: [ring] } });
   };
-  let vPohledu = 0;
-  for (const [fid, m] of mosty) {
-    const p = m.p;
-    const A = [+p.ax, +p.ay], B = [+p.bx, +p.by];
+  for (const [klic, m] of mosty) {
+    const body = m.body;
+    if (body.length < 2) continue;
+    // krajní body = nejvzdálenější dvojice (kusy z dlaždic chodí v jakémkoli pořadí)
+    let A = body[0], B = body[0], nej = -1;
+    const kxM0 = 111320 * Math.cos(body[0][1] * Math.PI / 180);
+    for (let i = 0; i < body.length; i++) {
+      for (let j = i + 1; j < body.length; j++) {
+        const dx = (body[i][0] - body[j][0]) * kxM0, dy = (body[i][1] - body[j][1]) * 110574;
+        const d = dx * dx + dy * dy;
+        if (d > nej) { nej = d; A = body[i]; B = body[j]; }
+      }
+    }
+    if (nej < 25) continue;                       // kratší než 5 m = není most
     if (Math.max(A[0], B[0]) < vzW || Math.min(A[0], B[0]) > vzE
         || Math.max(A[1], B[1]) < vzS || Math.min(A[1], B[1]) > vzN) continue;
     vPohledu++;
-    const eA = vyska(A), eB = vyska(B);
-    if (eA == null || eB == null) continue;
-    const zel = p.d === 'zel';
-    const w = Math.max(3, Math.min(+p.w || (zel ? 4.5 : 7), 40));
-    const strop = p.v ? +p.v * ex * 1.3 : Infinity;
     const kxM = 111320 * Math.cos(A[1] * Math.PI / 180), kyM = 110574;
     const abx = (B[0] - A[0]) * kxM, aby = (B[1] - A[1]) * kyM;
     const ab2 = abx * abx + aby * aby || 1;
     const tNaOse = (P) => Math.max(0, Math.min(1, ((P[0] - A[0]) * kxM * abx + (P[1] - A[1]) * kyM * aby) / ab2));
-    // ⛔⛔ engine 236: KUSY Z DLAŽDIC SE PŘEKRÝVAJÍ. Týž most vrací
-    // `querySourceFeatures` z několika dlaždic a u okraje se kusy opakují;
-    // prosté zřetězení (engine 233) udělalo z lomené čáry cik-cak (dopředu,
-    // zpět, dopředu) a pás z ní vyšel jako KLÍN (deformované mosty, Rtyně).
-    // Body se proto promítnou na osu A→B, seřadí podle polohy na ose a
-    // nechají se jen ty, které postupují dopředu a drží se u osy.
-    const klicOsy = fid + '|' + m.cary.length + '|' + m.cary.reduce((a, c) => a + c.length, 0);
-    let cara = mostyOsy.get(klicOsy);
-    if (!cara) {
-      const body = [];
-      const kolmoM = (P) => {
-        const dx = (P[0] - A[0]) * kxM, dy = (P[1] - A[1]) * kyM;
-        const t = tNaOse(P);
-        return Math.hypot(dx - abx * t, dy - aby * t);
-      };
-      for (const c of m.cary) {
-        for (const q of c) {
-          if (kolmoM(q) > 60) continue;          // výběžek mimo most
-          body.push({ q, t: tNaOse(q) });
-        }
-      }
-      body.sort((x, y) => x.t - y.t);
-      cara = [];
-      let posledniT = -1;
-      for (const b of body) {
-        if (b.t <= posledniT + 1e-4) continue;   // duplicita nebo krok zpět
-        posledniT = b.t;
-        cara.push(b.q);
-      }
-      if (cara.length >= 2) {
-        if (mostyOsy.size > 400) mostyOsy.clear();
-        mostyOsy.set(klicOsy, cara);
-      }
+    // body seřadit podél osy a nechat jen ty, co postupují dopředu (duplicity z dlaždic)
+    const setr = body.map((q) => ({ q, t: tNaOse(q) })).sort((x, y) => x.t - y.t);
+    const cara = [];
+    let posledniT = -1;
+    for (const b of setr) {
+      if (b.t <= posledniT + 1e-4) continue;
+      posledniT = b.t;
+      cara.push(b.q);
     }
-    if (!cara || cara.length < 2) continue;
-    // délka po čáře
+    if (cara.length < 2) continue;
+    const zel = m.cls === 'rail' || m.cls === 'transit';
+    const w = MOST_SIRKY[m.cls] || 6;
+    // délka po čáře + pomůcky
     const useky = [];
     let delka = 0;
     for (let i = 0; i + 1 < cara.length; i++) {
       const dx = (cara[i + 1][0] - cara[i][0]) * kxM, dy = (cara[i + 1][1] - cara[i][1]) * kyM;
       const L = Math.hypot(dx, dy) || 1e-6;
-      useky.push([dx / L, dy / L, L]); delka += L;
+      useky.push([dx / L, dy / L, L]);
+      delka += L;
     }
-    if (delka < 2) continue;
-    // bod (a směr) ve vzdálenosti s po čáře
+    if (delka < 5) continue;
     const bodNa = (sM) => {
       let akum = 0;
       for (let i = 0; i < useky.length; i++) {
         const L = useky[i][2];
         if (akum + L >= sM || i === useky.length - 1) {
           const t = Math.max(0, Math.min(1, (sM - akum) / L));
-          return { P: [cara[i][0] + (cara[i + 1][0] - cara[i][0]) * t, cara[i][1] + (cara[i + 1][1] - cara[i][1]) * t], u: useky[i] };
+          return { P: [cara[i][0] + (cara[i + 1][0] - cara[i][0]) * t,
+                       cara[i][1] + (cara[i + 1][1] - cara[i][1]) * t], u: useky[i] };
         }
         akum += L;
       }
       return { P: cara[cara.length - 1], u: useky[useky.length - 1] };
     };
-    // podčára mezi vzdálenostmi s0..s1 (vloží krajní body)
     const podcara = (s0, s1) => {
       const out = [bodNa(s0).P];
       let akum = 0;
@@ -3288,12 +3290,11 @@ function prepoctiMosty3d() {
       out.push(bodNa(s1).P);
       return out;
     };
-    // pás podél lomené čáry (miter v lomech, omezený)
-    const pas = (body, sirka, posun) => {
-      const n = body.length;
+    const pas = (bd, sirka, posun) => {
+      const n = bd.length;
       const sm = [];
       for (let i = 0; i + 1 < n; i++) {
-        const dx = (body[i + 1][0] - body[i][0]) * kxM, dy = (body[i + 1][1] - body[i][1]) * kyM;
+        const dx = (bd[i + 1][0] - bd[i][0]) * kxM, dy = (bd[i + 1][1] - bd[i][1]) * kyM;
         const L = Math.hypot(dx, dy) || 1e-6;
         sm.push([dx / L, dy / L]);
       }
@@ -3306,71 +3307,89 @@ function prepoctiMosty3d() {
         const cosHalf = Math.max(0.5, ux * s1[0] + uy * s1[1]);
         const hw = sirka / 2 / cosHalf;
         const o = posun || 0;
-        lev.push([body[i][0] + nx * (hw + o) / kxM, body[i][1] + ny * (hw + o) / kyM]);
-        prav.push([body[i][0] + nx * (-hw + o) / kxM, body[i][1] + ny * (-hw + o) / kyM]);
+        lev.push([bd[i][0] + nx * (hw + o) / kxM, bd[i][1] + ny * (hw + o) / kyM]);
+        prav.push([bd[i][0] + nx * (-hw + o) / kxM, bd[i][1] + ny * (-hw + o) / kyM]);
       }
       const ring = lev.concat(prav.reverse());
       ring.push(ring[0]);
       return ring;
     };
-    // rovné díly: 1 (schod uprostřed je horší než konce o pár m vedle),
-    // jen u hodně sklonitých mostů (|eA−eB| > 6 m) dva
-    const dilu = Math.abs(eA - eB) > 6 ? 2 : 1;
-    let mostovkaStred = null;
-    for (let d = 0; d < dilu; d++) {
-      const s0 = delka * d / dilu, s1 = delka * (d + 1) / dilu;
-      const body = podcara(s0, s1);
-      if (body.length < 2) continue;
-      let sx = 0, sy = 0;
-      for (const q of body) { sx += q[0]; sy += q[1]; }
-      const C = [sx / body.length, sy / body.length];
-      const eC = vyska(C);
-      if (eC == null) continue;
-      const mostovka = eA + tNaOse(C) * (eB - eA);
-      // ⛔ engine 236: KRÁTKÝ MOST SE NESMÍ ZTRATIT. Terén je z DEM se sítí
-      // ~19 m, takže u mostu dlouhého 25 m padnou oba konce do téže buňky a
-      // rozdíl výšek je šum – „světlá výška" pak vyjde pod prahem a most
-      // zmizel úplně (Rtyně). Kreslí se proto vždy, nejmíň 0,6 m nad terénem;
-      // strop drží ZABAGED (`v`), takže se nevznese.
-      let b = Math.max(0.6, Math.min(mostovka - eC, strop));
-      if (strop < 1.0) continue;                    // ZABAGED: leží na zemi
-      b = +b.toFixed(1);
-      if (mostovkaStred === null) mostovkaStred = mostovka;
-      podpis += b + fid * 0.001 + delka + d;
-      // pilíře tohoto dílu po ~30 m, každý vůči SVÉMU terénu, po spodek nosníku
-      // (deska je rovná ve výšce `mostovka` dílu, ne interpolovaná)
-      const pocetP = Math.max(1, Math.round((s1 - s0) / MOST_USEK_M));
-      for (let u = 0; u < pocetP; u++) {
-        const { P, u: sm } = bodNa(s0 + (u + 0.5) / pocetP * (s1 - s0));
-        const eP = vyska(P);
-        if (eP == null) continue;
-        const hP = Math.min(mostovka, eP + strop) - 1.0 - eP;
-        if (hP < 2.0) continue;                     // pilíř až od 2 m světlé výšky
-        const s2 = 1.3, ux = sm[0], uy = sm[1], nx = -uy, ny = ux;
-        const ring = [[P[0] + (ux * s2 + nx * s2) / kxM, P[1] + (uy * s2 + ny * s2) / kyM],
-                      [P[0] + (ux * s2 - nx * s2) / kxM, P[1] + (uy * s2 - ny * s2) / kyM],
-                      [P[0] + (-ux * s2 - nx * s2) / kxM, P[1] + (-uy * s2 - ny * s2) / kyM],
-                      [P[0] + (-ux * s2 + nx * s2) / kxM, P[1] + (-uy * s2 + ny * s2) / kyM]];
-        ring.push(ring[0]);
-        pridej(ring, 0, hP, MOST_BARVY.pilir);
-      }
-      pridej(pas(body, w, 0), b, b + 0.8, zel ? MOST_BARVY.zel : MOST_BARVY.sil);   // deska
-      pridej(pas(body, w * 0.9, 0), b - 1.0, b, MOST_BARVY.nosnik);               // nosník
-      if (zel) {
-        pridej(pas(body, 0.3, 0.72), b + 0.8, b + 0.95, MOST_BARVY.kolej);
-        pridej(pas(body, 0.3, -0.72), b + 0.8, b + 0.95, MOST_BARVY.kolej);
-      } else {
-        pridej(pas(body, 0.35, 0), b + 0.8, b + 0.92, MOST_BARVY.pruh);
-      }
+    // výšky: konce mostu (tam dosedá) a nejnižší terén pod ním
+    const eA = vyska(cara[0]), eB = vyska(cara[cara.length - 1]);
+    if (eA == null || eB == null) continue;
+    let tMin = Infinity;
+    for (let i = 0; i <= 8; i++) {
+      const e = vyska(bodNa(delka * i / 8).P);
+      if (e != null && e < tMin) tMin = e;
     }
-    if (mostovkaStred === null) continue;
+    if (!isFinite(tMin)) tMin = Math.min(eA, eB);
+    const mostovka = Math.max(eA, eB);
+    if (mostovka - tMin < 1.2) continue;          // propustek – žádná deska
+    const cely = podcara(0, delka);
+    let sx = 0, sy = 0;
+    for (const q of cely) { sx += q[0]; sy += q[1]; }
+    const eStred = vyska([sx / cely.length, sy / cely.length]);
+    if (eStred == null) continue;
+    const b = +Math.max(0.6, mostovka - eStred).toFixed(1);
+    podpis += b + delka + w;
+    const barvaDesky = zel ? MOST_BARVY.zel : (MOST_ASFALT[m.cls] || '#A39D94');
+    pridej(pas(cely, w, 0), b, b + 0.8, barvaDesky);                             // deska
+    pridej(pas(cely, w * 0.9, 0), b - 1.0, b, MOST_BARVY.nosnik);                // nosník
+    if (zel) {
+      pridej(pas(cely, 0.3, 0.72), b + 0.8, b + 0.95, MOST_BARVY.kolej);
+      pridej(pas(cely, 0.3, -0.72), b + 0.8, b + 0.95, MOST_BARVY.kolej);
+    } else if (w >= 4.5) {
+      pridej(pas(cely, 0.3, 0), b + 0.8, b + 0.9, MOST_BARVY.pruh);              // střední čára
+    }
+    // ⭐ engine 237: ZÁBRADLÍ. Bez něj je deska jen šedý pás; dvě tenké stěny
+    // po krajích udělají z pásu most i tam, kde je světlá výška malá.
+    const zbr = Math.max(0.7, Math.min(1.1, w * 0.16));
+    pridej(pas(cely, 0.25, (w - 0.25) / 2), b + 0.8, b + 0.8 + zbr, MOST_BARVY.zabradli);
+    pridej(pas(cely, 0.25, -(w - 0.25) / 2), b + 0.8, b + 0.8 + zbr, MOST_BARVY.zabradli);
+    // opěry na koncích – most dosedá i tam, kde DEM zapomněl násep
+    for (const kraj of [0, 1]) {
+      const s0 = kraj ? Math.max(0, delka - 4) : 0;
+      const s1 = kraj ? delka : Math.min(delka, 4);
+      const bd = podcara(s0, s1);
+      if (bd.length < 2) continue;
+      let ox = 0, oy = 0;
+      for (const q of bd) { ox += q[0]; oy += q[1]; }
+      const eO = vyska([ox / bd.length, oy / bd.length]);
+      if (eO == null) continue;
+      const hO = mostovka - 1.0 - eO;
+      if (hO < 0.8) continue;
+      pridej(pas(bd, w * 0.95, 0), 0, +hO.toFixed(1), MOST_BARVY.opera);
+    }
+    // pilíře uvnitř po ~30 m
+    const pocetP = Math.max(1, Math.round(delka / MOST_USEK_M));
+    for (let u = 0; u < pocetP; u++) {
+      const sM = (u + 0.5) / pocetP * delka;
+      if (sM < 6 || sM > delka - 6) continue;
+      const { P: PP, u: sm } = bodNa(sM);
+      const eP = vyska(PP);
+      if (eP == null) continue;
+      const hP = mostovka - 1.0 - eP;
+      if (hP < 2.5) continue;
+      const s2 = Math.max(1.0, Math.min(2.2, w / 5)), ux = sm[0], uy = sm[1], nx = -uy, ny = ux;
+      const ring = [[PP[0] + (ux * s2 + nx * s2) / kxM, PP[1] + (uy * s2 + ny * s2) / kyM],
+                    [PP[0] + (ux * s2 - nx * s2) / kxM, PP[1] + (uy * s2 - ny * s2) / kyM],
+                    [PP[0] + (-ux * s2 - nx * s2) / kxM, PP[1] + (-uy * s2 - ny * s2) / kyM],
+                    [PP[0] + (-ux * s2 + nx * s2) / kxM, PP[1] + (-uy * s2 + ny * s2) / kyM]];
+      ring.push(ring[0]);
+      pridej(ring, 0, +hP.toFixed(1), MOST_BARVY.pilir);
+    }
   }
   const nov = features.length + '|' + podpis.toFixed(2) + '|' + Math.round(z * 10);
   if (nov === mostyPodpis) return;
   mostyPodpis = nov;
   try { zdroj.setData(features.length ? { type: 'FeatureCollection', features } : prazdne); }
   catch (e) { /* zdroj se zrovna mění */ }
-  try { window.__casy = window.__casy || {}; window.__casy.mostyN = features.length; window.__casy.mostyKusu = mosty.size; window.__casy.mostyVPohledu = vPohledu; } catch (e) { /* nic */ }
+  try {
+    window.__casy = window.__casy || {};
+    window.__casy.mostyN = features.length;
+    window.__casy.mostyKusu = mosty.size;
+    window.__casy.mostyVPohledu = vPohledu;
+  } catch (e) { /* nic */ }
 }
 
 function prepoctiBudovyHerni() {
