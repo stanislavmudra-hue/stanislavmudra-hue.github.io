@@ -3137,13 +3137,12 @@ const MOST_BARVY = { zel: '#7A6E63', pruh: '#F3EFE4', kolej: '#C8BFB2',
                      zabradli: '#8A857D', deska: '#C9C2B4', hrana: '#6E675C' };
 const MOST_ASFALT = { motorway: '#87827C', trunk: '#87827C', primary: '#928C84',
                       secondary: '#9B958C' };
-/// ⛔ Šířka desky v METRECH, ale silnice se kreslí na 55 % skutečné šířky
-/// (`SILNICE_MERITKO`) – deska v plné šířce proto vypadala 2–3× širší než
-/// silnice pod ní („most nevypadá dobře"). Tady je tedy kreslená šířka
-/// silnice × 1,35 (most bývá o krajnice širší než vozovka).
-const MOST_SIRKY = { motorway: 8.5, trunk: 7.8, primary: 6.7, secondary: 5.6,
-                     tertiary: 4.8, minor: 4.1, service: 3.2, track: 2.8,
-                     path: 2.0, rail: 4.0, transit: 4.0 };
+/// Šířka desky v METRECH = kreslená šířka silnice × 1,35 (most bývá o
+/// krajnice širší než vozovka). ⚠️ Od 8. 9. se silnice kreslí ve SKUTEČNÉ
+/// šířce (`SILNICE_MERITKO` 1,0), takže i tyhle hodnoty jsou skutečné.
+const MOST_SIRKY = { motorway: 15.5, trunk: 14, primary: 12, secondary: 10,
+                     tertiary: 8.8, minor: 7.4, service: 5.5, track: 4.5,
+                     path: 3.0, rail: 5.0, transit: 5.0 };
 function nasadMosty3d() {
   if (!mapa || !mapa.getSource('omt')) return false;
   try {

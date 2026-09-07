@@ -482,7 +482,11 @@ const M_NA_PX_Z18 = 0.19;
 // zhruba na 55 % skutečné šířky (řeka 8–10 m = 26 px ≈ 5 m) – silnice a
 // cesty dostávají TENTÝŽ poměr, aby rostly stejně jako řeky a nepůsobily
 // při přiblížení jako tlusté pásy.
-const SILNICE_MERITKO = 0.55;
+// ⭐ 8. 9. 2026: PLNÁ ŠÍŘKA. Uživatel: „proč jsou silnice a cesty užší, než
+// jsou doopravdy?" + „silnice jsou na nic". Poměr 0,55 byl kvůli řekám
+// (5. 9.), ale při chůzi vypadaly silnice jako nitky. Teď skutečná šířka
+// (dálnice 11,5 m, I. třída 9 m, místní 5,5 m).
+const SILNICE_MERITKO = 1.0;
 function sirkaSilnic(f) {
   const z18 = {};
   for (const k of Object.keys(SILNICE_M)) {
@@ -584,7 +588,7 @@ function stylHerni(ctx) {
       // (kůlny, skleníky, přístřešky, věžovité stavby, h, fid) a `vertikaly`
       // (komíny, věže, vodojemy, větrníky, těžní věže, sila – čtverce, h, fid)
       // engine 234: promoteId → feature-state odkrytí staveb/vertikál podle fid
-      krajina: { type: 'vector', url: r2('krajina6.pmtiles'), promoteId: 'fid',
+      krajina: { type: 'vector', url: r2('krajina7.pmtiles'), promoteId: 'fid',
                  attribution: '© ČÚZK ZABAGED®' },
     }),
     layers: [
@@ -823,6 +827,26 @@ function stylHerni(ctx) {
         paint: AKVAREL
           ? { 'fill-pattern': 'vzor-voda', 'fill-opacity': 0.92 }
           : { 'fill-color': PALETA.tyrkys, 'fill-opacity': 0.92 } },
+      // ⭐ v7 (8. 9. 2026, přání „lesní cesty ze ZABAGED chci"): ZABAGED má
+      // polní a lesní cesty zaměřené (1,19 M) a pěšiny (74 k) – OSM je v lese
+      // má řídce. Kreslí se POD cestami z OSM (kde je má obojí, splynou).
+      // ⛔⛔ DVĚ VRSTVY, ne jedna s `case`: zoomový `interpolate` smí být jen
+      // na VRCHU výrazu (jinak se styl tiše nenačte VŮBEC) a `line-dasharray`
+      // vůbec neumí výrazy podle dat.
+      { id: 'zab-cesty', type: 'line', source: 'krajina', 'source-layer': 'cesty',
+        minzoom: 13, filter: ['==', ['get', 't'], 'cesta'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#7E6641',
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.5, 15, 0.85],
+                 'line-width': sirkaMetry(1.4, 2.8, 13),
+                 'line-dasharray': [2.4, 1.8] } },
+      { id: 'zab-pesiny', type: 'line', source: 'krajina', 'source-layer': 'cesty',
+        minzoom: 13.5, filter: ['==', ['get', 't'], 'pesina'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#8A7350',
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 13.5, 0.45, 15, 0.8],
+                 'line-width': sirkaMetry(1.1, 1.6, 13.5),
+                 'line-dasharray': [1.4, 1.8] } },
       { id: 'cesty', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 12,
         filter: ['in', ['get', 'class'], ['literal', ['path', 'track']]],
