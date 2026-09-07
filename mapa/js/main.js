@@ -3042,21 +3042,34 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
     if (L > 12 && (Math.abs(Q[0] - P[0]) < 1e-7 || Math.abs(Q[1] - P[1]) < 1e-7)) continue;   // řez dlaždice
     const ux = ex / L, uy = ey / L;
     const nx = ven * uy, ny = -ven * ux;            // vnější normála (m)
-    const eZed = L > 15 ? vyska([(P[0] + Q[0]) / 2, (P[1] + Q[1]) / 2]) : eDum;
-    const oprava = eZed === null ? 0 : Math.max(-12, Math.min(12, eDum - eZed));
     const pocet = Math.max(1, Math.floor(L / OKNA_ROZESTUP_M));
     const sirka = L < 4 ? 0.9 : 1.2;
     for (let k = 0; k < pocet; k++) {
       const t = (k + 0.5) / pocet;
       const cxo = P[0] + (Q[0] - P[0]) * t, cyo = P[1] + (Q[1] - P[1]) * t;
+      // engine 235: terén pro KAŽDÉ okno (MapLibre zvedá extruzi o terén ve středu
+      // prvku) – ve svahu okna vylézala nad střechu; keš po domech to počítá jednou
+      const eZed = vyska([cxo, cyo]);
+      // ⛔⛔ engine 235: KOREKCE MUSÍ BÝT MALÁ A OKNO SE MUSÍ VEJÍT POD STŘECHU.
+      // MapLibre zvedá extruzi o terén ve středu prvku, takže okno je potřeba
+      // posunout o rozdíl terénu (dům vs. okno) – jenže při velkém rozdílu
+      // (svah, chybějící DEM) okno vylezlo NA STŘECHU (výtka „okna se z
+      // několika úhlů bugují"). Korekce je proto do ±2 m a strop se počítá
+      // ZE ZKORIGOVANÉ výšky.
+      const oprava = eZed === null ? 0 : Math.max(-2, Math.min(2, eDum - eZed));
       const r = [];
-      for (const [a, d] of [[-0.5, 0.15], [0.5, 0.15], [0.5, 0.27], [-0.5, 0.27]]) {
+      // ⛔ engine 235: PŘESAH JEN 4 cm. Okno je krabička před zdí; s přesahem
+      // 15–27 cm se její VRŠEK při pohledu shora promítl na střechu jako tmavý
+      // čtvereček (výtka „okna se z několika úhlů bugují"). Ze strany je vidět
+      // čelo okna pořád stejně, shora už 6 cm hluboká krabička zanikne.
+      for (const [a, d] of [[-0.5, 0.04], [0.5, 0.04], [0.5, 0.10], [-0.5, 0.10]]) {
         r.push([cxo + (ux * a * sirka + nx * d) / kxM, cyo + (uy * a * sirka + ny * d) / kyM]);
       }
       r.push(r[0]);
       for (let f = 0; f < pater; f++) {
         const zb = B + 1.0 + f * OKNA_PATRO_M;
-        if (zb + 1.4 > H - 0.3) break;
+        if (zb + 1.4 + oprava > H - 0.6 - 0.25) break;   // pod horní hranou ZDI (zeď končí v H − 0,6)
+        if (zb + oprava < B) continue;                   // ani pod základnu domu
         out.push({ type: 'Feature', properties: { b: +(zb + oprava).toFixed(2), h: +(zb + 1.4 + oprava).toFixed(2) },
                    geometry: { type: 'Polygon', coordinates: [r] } });
       }
@@ -5422,12 +5435,17 @@ let mezeraFixu = 0;
 let navratStreduHlidac = 0;
 let navratStreduBezi = false;
 let overNaklonMinule = null;
-function vykresliPolohu(lng, lat, smer, rychlost) {
+/// `lehce` = mezisnímek dojezdu (engine 235, 60 fps): posune se jen značka
+/// a kotva kamery; šipka k zastávce a hlášení výšky (dotazy do mapy) se
+/// dělají jen na plných snímcích (~5×/s a na konci dojezdu).
+function vykresliPolohu(lng, lat, smer, rychlost, lehce) {
   // ⭐ v1.522: kotva startu drží kameru na KRESLENÉ poloze, ne na syrovém
   // fixu — jinak kamera skáče a figurka za ní dojíždí (viz `poloha`).
   kotviNaHrace(lng, lat);
-  obnovSipkuCile();            // v1.602: oranžová šipka k zastávce plánu
-  posliVyskuHrace(lng, lat);   // v1.602: převýšení k zastávce
+  if (!lehce) {
+    obnovSipkuCile();          // v1.602: oranžová šipka k zastávce plánu
+    posliVyskuHrace(lng, lat); // v1.602: převýšení k zastávce
+  }
   Postavicka.pripoj(mapa);
   if (Postavicka.poloha(lng, lat, smer, rychlost)) {
     // figurka převzala značku – tečka pryč, ať nejsou dvě
@@ -5958,7 +5976,7 @@ window.OkolnikMost = {
       obnovHracSvetlo(lng, lat);
       predtahniOkoli(lat, lng);   // jednorázově předehřát okolí (v1.415)
       const start = polohaVykres;
-      if (polohaEase) { clearInterval(polohaEase); polohaEase = null; }
+      if (polohaEase) { cancelAnimationFrame(polohaEase); polohaEase = null; }
       const dM = start ? Math.hypot((lat - start.lat) * 111320,
           (lng - start.lng) * 111320 * Math.cos(lat * Math.PI / 180)) : 1e9;
       // šum GPS na stole (<0,5 m) — NEPŘEKRESLOVAT VŮBEC (jitter
@@ -5972,6 +5990,15 @@ window.OkolnikMost = {
       }
       const c0 = { lng: start.lng, lat: start.lat };
       const t0 = performance.now();
+      // ⭐ engine 235: RYCHLOST DOPOČÍTANÁ Z POHYBU. Appka ji posílá jen
+      // s fixem, který ji má (GNSS ji občas vynechá) – cedulka pod postavou
+      // pak „byla vidět jen občas" a figurka se nerozešla. Když chybí,
+      // spočítá se z ujetého kousku a odstupu fixů.
+      let rychlostK = rychlost;
+      if ((rychlostK === undefined || rychlostK === null || !(rychlostK > 0))
+          && mezeraFixu > 300 && dM > 0.8) {
+        rychlostK = Math.min(12, dM / (mezeraFixu / 1000));
+      }
       // ⭐⭐ v1.522: DOJEZD MUSÍ TRVAT TAK DLOUHO, JAK CHODÍ FIXY.
       //
       // Výtka: *„GPS posuv postavy na mapě je po skocích, není to
@@ -5984,17 +6011,28 @@ window.OkolnikMost = {
       // a jde plynule. ⚠️ Strop 3 s: při klidové kadenci 30 s by se
       // jinak plazila půl minuty a vypadalo by to jako zaseknutí.
       const trvani = Math.max(700, Math.min(3000, mezeraFixu || 900));
-      polohaEase = setInterval(() => {
+      // ⭐⭐ engine 235: DOJEZD NA rAF (60 fps). Dřív `setInterval(…, 100)` =
+      // deset skoků za vteřinu; při chůzi to je posun po ~14 cm a vypadá to
+      // „velmi trhaně po delších úsecích" (výtka z výletu 7. 9.). Plné
+      // překreslení (šipka k zastávce, výška) se dělá ~5×/s, mezitím se
+      // posouvá jen značka.
+      let poslednPlny = 0;
+      const krok = () => {
         try {
-          const f = Math.min(1, (performance.now() - t0) / trvani);
+          const ted = performance.now();
+          const f = Math.min(1, (ted - t0) / trvani);
           const g = 1 - (1 - f) * (1 - f);   // easeOutQuad
           polohaVykres = { lng: c0.lng + (lng - c0.lng) * g,
                            lat: c0.lat + (lat - c0.lat) * g };
+          const plny = f >= 1 || ted - poslednPlny > 200;
+          if (plny) poslednPlny = ted;
           vykresliPolohu(polohaVykres.lng, polohaVykres.lat,
-              smer, rychlost);
-          if (f >= 1) { clearInterval(polohaEase); polohaEase = null; }
-        } catch (e2) { clearInterval(polohaEase); polohaEase = null; }
-      }, 100);
+              smer, rychlostK, !plny);
+          if (f >= 1) { polohaEase = null; return; }
+          polohaEase = requestAnimationFrame(krok);
+        } catch (e2) { polohaEase = null; }
+      };
+      polohaEase = requestAnimationFrame(krok);
     } catch (e) { console.warn('[most] poloha', e); }
   },
 
@@ -6028,7 +6066,7 @@ window.OkolnikMost = {
       // ⚠️ `polohaVykres = null` musí zůstat: je to zároveň kotva
       // dojezdu, a po výměně značky se nesmí dojíždět z místa, kde
       // stála ta stará (skočilo by to).
-      if (polohaEase) { clearInterval(polohaEase); polohaEase = null; }
+      if (polohaEase) { cancelAnimationFrame(polohaEase); polohaEase = null; }
       polohaVykres = null;
       const p = poslednPolohaUziv;
       if (p) {
