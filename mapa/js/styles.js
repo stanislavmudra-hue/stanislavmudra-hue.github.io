@@ -827,8 +827,10 @@ function stylHerni(ctx) {
         'source-layer': 'transportation', minzoom: 12,
         filter: ['in', ['get', 'class'], ['literal', ['path', 'track']]],
         layout: { 'line-cap': 'round' },
-        paint: { 'line-color': '#6B5636', 'line-width': sirkaMetry(1.4, 2.5),
-                 'line-opacity': 0.95,
+        // engine 238: o třetinu širší a světlejší – v noční mapě se tenká
+        // tmavá čárka ztrácela („některé cesty jsou příliš nevýrazné")
+        paint: { 'line-color': '#7E6641', 'line-width': sirkaMetry(1.8, 3.2),
+                 'line-opacity': 1,
                  'line-dasharray': [2.2, 1.6] } },
       // ⭐ v1.540: ÚČELOVÉ CESTY (`service`) — příjezdy k domům, cesty
       // po dvorech a parkovištích. Do teď v herní mapě CHYBĚLY ÚPLNĚ,
