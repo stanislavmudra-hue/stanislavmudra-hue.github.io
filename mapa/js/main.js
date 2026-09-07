@@ -3134,7 +3134,7 @@ const MOST_USEK_M = 30;
 /// vypadá jako cizí těleso; zábradlí a nosník jsou o odstín tmavší.
 const MOST_BARVY = { zel: '#7A6E63', pruh: '#F3EFE4', kolej: '#C8BFB2',
                      nosnik: '#67615B', pilir: '#8A847C', opera: '#7F7A72',
-                     zabradli: '#8A857D' };
+                     zabradli: '#8A857D', deska: '#C9C2B4', hrana: '#6E675C' };
 const MOST_ASFALT = { motorway: '#87827C', trunk: '#87827C', primary: '#928C84',
                       secondary: '#9B958C' };
 /// ⛔ Šířka desky v METRECH, ale silnice se kreslí na 55 % skutečné šířky
@@ -3156,9 +3156,12 @@ function nasadMosty3d() {
       mapa.addSource('mosty-ploche', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     }
     if (!mapa.getLayer('okolnik-mosty-ploche')) {
-      const predP = prvniSymbolovaVrstva();
+      // ⭐ engine 239: POD SILNICI. Zábradlí NAD vozovkou vypadalo jako dva bílé
+      // pruhy podél silnice („mosty jsou nehezké"); most má být TĚLESO, po
+      // kterém silnice jede – deska tedy leží pod lemem silnice a kouká zpod ní.
+      const predP = mapa.getLayer('silnice-lem') ? 'silnice-lem' : prvniSymbolovaVrstva();
       mapa.addLayer({ id: 'okolnik-mosty-ploche', type: 'fill', source: 'mosty-ploche',
-        paint: { 'fill-color': ['get', 'c'], 'fill-opacity': 0.95 } }, predP);
+        paint: { 'fill-color': ['get', 'c'], 'fill-opacity': 0.92 } }, predP);
     }
     if (!mapa.getLayer('okolnik-mosty-3d')) {
       const pred = mapa.getLayer('akvarel-dekorace') ? 'akvarel-dekorace' : undefined;
@@ -3352,8 +3355,14 @@ function prepoctiMosty3d() {
     // protože DEM nezná násep – a to je přesně ta výtka „nesedí, dělá schody".
     if (svetlaM < 8) {
       podpis += delka + w;
-      pridejPlochy(pas(cely, 0.55, (w - 0.55) / 2), MOST_BARVY.zabradli);
-      pridejPlochy(pas(cely, 0.55, -(w - 0.55) / 2), MOST_BARVY.zabradli);
+      // ⭐ engine 239: DESKA POD SILNICÍ v betonovém odstínu, o kus širší než
+      // vozovka (1,9×), s tmavšími okraji = zábradlí při pohledu shora. Bílé
+      // pruhy NAD vozovkou (engine 238) vypadaly „nehezky"; takhle je most
+      // zřetelný a se silnicí se rozejít nemůže (obojí leží na terénu).
+      const sirkaD = w * 1.9;
+      pridejPlochy(pas(cely, sirkaD, 0), MOST_BARVY.deska);
+      pridejPlochy(pas(cely, 0.5, (sirkaD - 0.5) / 2), MOST_BARVY.hrana);
+      pridejPlochy(pas(cely, 0.5, -(sirkaD - 0.5) / 2), MOST_BARVY.hrana);
       continue;
     }
     const eStred = vyska([cely.reduce((a, q) => a + q[0], 0) / cely.length,
@@ -3386,7 +3395,7 @@ function prepoctiMosty3d() {
       if (eO == null) continue;
       const hO = mostovka - 1.6 - eO;
       if (hO < 1.0) continue;
-      pridejPlochy(pas(bd, w, 0), MOST_BARVY.opera);   // pata opěry na terénu (ať nevisí ve vzduchu)
+      pridejPlochy(pas(bd, w * 1.5, 0), MOST_BARVY.deska);   // pata opěry na terénu (ať nevisí ve vzduchu)
       pridej(pas(bd, w * 0.95, 0), 0, +hO.toFixed(1), MOST_BARVY.opera);
     }
     // pilíře uvnitř po ~30 m
