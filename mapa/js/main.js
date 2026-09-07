@@ -3163,26 +3163,72 @@ function nasadTerenKes() {
 let mostyCasovac = null;
 let mostyPodpis = '';
 const MOST_USEK_M = 30;
-/// ⛔⛔ BARVY 3D DÍLŮ SE ZADÁVAJÍ PŘEDKOMPENZOVANĚ. Herní styl svítí modrošedě
-/// (`light` = #7F8AA3, intenzita 0,18) a shader `fill-extrusion` barvu tím
-/// násobí: vodorovná plocha vyjde na (0,503 R; 0,548 G; 0,649 B) zadané barvy.
-/// Deska v barvě silnice `#A39D94` se proto vykreslila jako (82,86,96) – modrá
-/// břidlice vedle světle šedé vozovky (změřeno 8. 9. u Rtyně). Hodnoty níž
-/// jsou proto teplé a světlé, aby PO vynásobení vyšel odstín vozovky.
-/// ⚠️ Strop jasu 3D ploch je ~(128,140,165) – světlejší než to most nebude.
-const MOST_BARVY = { zel: '#B39A72', pruh: '#FFFFFF', kolej: '#E4D6B6',
-                     nosnik: '#A08A66', pilir: '#D8C7A2', opera: '#D0BE9A',
-                     zabradli: '#F2EFE6', deska: '#C9C2B4', hrana: '#6E675C' };
-/// Deska 3D mostu (předkompenzováno – viz výš). ⛔ MUSÍ MÍT VŠECHNY TŘÍDY:
-/// v enginu 243 chyběly `minor`/`tertiary`/`track`/`path` a padaly na záložní
-/// barvu silnice, takže deska zůstala modrá (změřeno u Rtyně).
-const MOST_ASFALT = { motorway: '#EFD2A6', trunk: '#EFD2A6', primary: '#F7DAAD',
-                      secondary: '#FBDEB1', tertiary: '#FFE1B4', minor: '#FFE1B4',
-                      service: '#FFE1B4', track: '#E9CFA6', path: '#E9CFA6' };
-const MOST_DESKA_ZAL = '#FFE1B4';   // záložní – TAKY předkompenzovaná
+/// ⛔⛔ SVĚTLO STYLU NÁSOBÍ BARVU KAŽDÉ 3D PLOCHY, a `svetlo.js` ho mění podle
+/// slunce a měsíce (ráno #FFB878/0,30, poledne #FFF7E8/0,70, měsíc #A9BDE0,
+/// tma #7F8AA3/0,18). Deska zadaná v barvě silnice `#A39D94` (163,157,148) se
+/// proto v noci vykreslila jako (82,86,96) – modrá břidlice vedle světle šedé
+/// vozovky. Barvy 3D dílů se tedy zadávají CÍLOVĚ (jak mají vypadat) a
+/// `proSvetlo()` je před stavbou přepočte podle aktuálního `mapa.getLight()`.
+/// ⚠️ Ve slabém světle (noc) na jas vozovky nedosáhnou – zůstane hue, jas
+/// klesne (víc `fill-extrusion` v tom světle neumí).
+const MOST_CIL = { zel: '#7A6E63', pruh: '#F3EFE4', kolej: '#C8BFB2',
+                   nosnik: '#6E675C', pilir: '#9A9287', opera: '#8E877C',
+                   zabradli: '#CFC8BA' };
+const MOST_CIL_ASFALT = { motorway: '#87827C', trunk: '#87827C', primary: '#928C84',
+                          secondary: '#9B958C', tertiary: '#A39D94', minor: '#A39D94',
+                          service: '#A39D94', track: '#9A9184', path: '#9A9184' };
+const MOST_ASFALT_ZAL = '#A39D94';
+/// Ploché díly (obyčejná výplň) – světlo je NENÁSOBÍ, barvy skutečné.
+const MOST_BARVY = { deska: '#C9C2B4', hrana: '#6E675C', stin: '#2B2A28' };
 /// Vozovka PLOCHÉHO mostu – obyčejná výplň, barvy tedy SKUTEČNÉ (jako styl).
 const MOST_SILNICE = { motorway: '#87827C', trunk: '#87827C', primary: '#928C84',
                        secondary: '#9B958C' };
+function hexNaRgb(h) {
+  h = String(h).trim();
+  if (h[0] === '#') {
+    if (h.length === 4) return [parseInt(h[1] + h[1], 16), parseInt(h[2] + h[2], 16), parseInt(h[3] + h[3], 16)];
+    return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  }
+  const m = h.match(/[\d.]+/g) || [255, 255, 255];
+  return [+m[0], +m[1], +m[2]];
+}
+/// Kolikrát světlo stylu ztlumí VODOROVNOU 3D plochu (shader `fill-extrusion`:
+/// `mix(1−I, max(1,I), dot(normála, pozice světla)) × barva světla`).
+/// Konstanta 1,05 je doměřená na telefonu (shader počítá o kousek světleji).
+function faktorSvetla() {
+  let L = null;
+  try { L = mapa && mapa.getLight && mapa.getLight(); } catch (e) { L = null; }
+  const c = hexNaRgb((L && L.color) || '#FFFFFF');
+  const I = (L && typeof L.intensity === 'number') ? L.intensity : 0.5;
+  const poz = (L && L.position) || [1.15, 335, 45];
+  const r = poz[0] == null ? 1.15 : poz[0], pol = poz[2] == null ? 45 : poz[2];
+  const d = Math.max(0, Math.min(1, r * Math.cos(pol * Math.PI / 180)));
+  const dir = (1 - I) + (Math.max(1, I) - (1 - I)) * d;
+  return [dir * c[0] / 255 * 1.05, dir * c[1] / 255 * 1.05, dir * c[2] / 255 * 1.05];
+}
+/// ⛔ Noční ztmavovací překryv (`noc-prekryv`, #081226 s krytím TMA) leží POD
+/// 3D vrstvami: silnici ztmaví, desku mostu ne. Cílová barva se proto ztlumí
+/// stejně, jinak most v noci SVÍTÍ (změřeno: deska 153,149,141 proti silnici
+/// 42,49,62). ⚠️ Ploché díly mostu leží pod překryvem, ty se netlumí.
+const NOC_TMA_KRYTI = [0, 0.22, 0.45, 0.78];
+const NOC_TMA_BARVA = [8, 18, 38];
+function ztlumNoci(hex) {
+  const a = NOC_TMA_KRYTI[Math.max(0, Math.min(3, typeof krokNoci === 'number' ? krokNoci : 0))] || 0;
+  if (!a) return hex;
+  const c = hexNaRgb(hex);
+  return '#' + c.map((x, i) => Math.round(x * (1 - a) + NOC_TMA_BARVA[i] * a)
+                                   .toString(16).padStart(2, '0')).join('');
+}
+/// Barva, kterou je třeba zadat, aby se 3D plocha vykreslila jako `hex`.
+/// Když na to světlo nestačí, zachová se odstín a sníží jas.
+function proSvetlo(hex, f) {
+  f = f || faktorSvetla();
+  const c = hexNaRgb(hex);
+  const raw = [c[0] / Math.max(0.04, f[0]), c[1] / Math.max(0.04, f[1]), c[2] / Math.max(0.04, f[2])];
+  const m = Math.max(raw[0], raw[1], raw[2], 255);
+  return '#' + raw.map((x) => Math.max(0, Math.min(255, Math.round(x * 255 / m)))
+                              .toString(16).padStart(2, '0')).join('');
+}
 /// ⛔⛔ ŠÍŘKA DESKY = ŠÍŘKA SILNICE + 1 m (římsy), NIC VÍC. Změřeno na
 /// telefonu 8. 9. (Rtyně, z17,4): deska byla 11,1 m proti 5,5 m silnici pod
 /// ní a most vypadal jako ranvej („most nevypadá jako most"). Násobek 1,35
@@ -3225,6 +3271,11 @@ function nasadMosty3d() {
   } catch (e) { console.warn('[mosty] vrstva', e); return false; }
   return true;
 }
+/// `svetlo.js` volá po každé změně `mapa.setLight` – barva desky se počítá
+/// ze světla, takže se most musí přestavět (jinak zůstane ranní odstín i večer).
+window.__mostyPrebarvi = function () {
+  try { naplanujMosty3d(600); } catch (e) { /* engine se zrovna staví */ }
+};
 function naplanujMosty3d(zaMs) {
   if (mostyCasovac) return;                       // throttle (idle chodí každých ~500 ms)
   mostyCasovac = setTimeout(() => { mostyCasovac = null; prepoctiMosty3d(); }, zaMs || 700);
@@ -3246,7 +3297,8 @@ function prepoctiMosty3d() {
     prvky = mapa.querySourceFeatures('omt', { sourceLayer: 'transportation',
                                               filter: ['==', ['get', 'brunnel'], 'bridge'] });
   } catch (e) { return; }
-  const ppM = podpisPohledu() + '|' + prvky.length;
+  const ppM = podpisPohledu() + '|' + prvky.length + '|' + krokNoci + '|'
+            + faktorSvetla().map((x) => x.toFixed(2)).join(',');
   if (ppM === pohledPodpisMosty) return;          // engine 232: v klidu nic
   pohledPodpisMosty = ppM;
   const vyska = (b) => { try { return mapa.queryTerrainElevation(b); } catch (e) { return null; } };
@@ -3282,6 +3334,13 @@ function prepoctiMosty3d() {
       mosty.set(klic, { cls: p['class'] || 'minor', body: c.slice() });
     }
   }
+  // barvy 3D dílů podle aktuálního světla (viz `proSvetlo`)
+  const fSv = faktorSvetla();
+  const B = {};
+  for (const k of Object.keys(MOST_CIL)) B[k] = proSvetlo(ztlumNoci(MOST_CIL[k]), fSv);
+  const asfaltKes = {};
+  const asfaltPro = (cls) => (asfaltKes[cls] || (asfaltKes[cls] =
+      proSvetlo(ztlumNoci(MOST_CIL_ASFALT[cls] || MOST_ASFALT_ZAL), fSv)));
   const features = [];
   const ploche = [];
   let podpis = 0, vPohledu = 0;
@@ -3432,7 +3491,7 @@ function prepoctiMosty3d() {
     // (base = mostovka), takže na most vedl schod vysoký jako deska.
     const b = +Math.max(1.0, mostovka - eStred).toFixed(1);
     podpis += b + delka + w;
-    const barvaDesky = zel ? MOST_BARVY.zel : (MOST_ASFALT[m.cls] || MOST_DESKA_ZAL);
+    const barvaDesky = zel ? B.zel : asfaltPro(m.cls);
     // ⭐ engine 242: VRŽENÝ STÍN. Deska ve výšce 2 m se z ptačí perspektivy
     // od ploché silnice nijak neliší – teprve stín vedle ní řekne „tohle je
     // nad zemí". Směr a délku bere ze `stinSvetlo` (týž zdroj jako stíny
@@ -3442,20 +3501,20 @@ function prepoctiMosty3d() {
       const dS = Math.min(24, b / Math.tan(Math.max(12, stinSvetlo.el) * Math.PI / 180));
       const oLon = Math.sin(smerS) * dS / kxM, oLat = Math.cos(smerS) * dS / kyM;
       pridejPlochy(pas(cely, w, 0).map((q) => [q[0] + oLon, q[1] + oLat]),
-                   '#2B2A28', +(0.30 * Math.min(1, stinSvetlo.sila / 0.35)).toFixed(2));
+                   MOST_BARVY.stin, +(0.30 * Math.min(1, stinSvetlo.sila / 0.35)).toFixed(2));
     }
     pridej(pas(cely, w, 0), b - 0.8, b, barvaDesky);                           // deska (povrch v úrovni silnice)
     // nosník jen u vozovek – u lávky a polní cesty by z mostu byla bedna
-    if (w >= 4) pridej(pas(cely, w * 0.84, 0), b - 1.7, b - 0.8, MOST_BARVY.nosnik);
+    if (w >= 4) pridej(pas(cely, w * 0.84, 0), b - 1.7, b - 0.8, B.nosnik);
     if (zel) {
-      pridej(pas(cely, 0.3, 0.72), b, b + 0.15, MOST_BARVY.kolej);
-      pridej(pas(cely, 0.3, -0.72), b, b + 0.15, MOST_BARVY.kolej);
+      pridej(pas(cely, 0.3, 0.72), b, b + 0.15, B.kolej);
+      pridej(pas(cely, 0.3, -0.72), b, b + 0.15, B.kolej);
     } else if (w >= 4.5) {
-      pridej(pas(cely, 0.3, 0), b, b + 0.1, MOST_BARVY.pruh);                  // střední čára
+      pridej(pas(cely, 0.3, 0), b, b + 0.1, B.pruh);                           // střední čára
     }
     // zábradlí: světlejší než vozovka, ať je z ptačí perspektivy vidět obrys
-    pridej(pas(cely, 0.3, (w - 0.3) / 2), b, b + zbr, MOST_BARVY.zabradli);
-    pridej(pas(cely, 0.3, -(w - 0.3) / 2), b, b + zbr, MOST_BARVY.zabradli);
+    pridej(pas(cely, 0.3, (w - 0.3) / 2), b, b + zbr, B.zabradli);
+    pridej(pas(cely, 0.3, -(w - 0.3) / 2), b, b + zbr, B.zabradli);
     // opěry na koncích – most dosedá i tam, kde DEM zapomněl násep
     for (const kraj of [0, 1]) {
       const dO = Math.max(2.5, Math.min(5, delka * 0.14));   // engine 242: krátký most = krátká opěra
@@ -3470,7 +3529,7 @@ function prepoctiMosty3d() {
       const hO = mostovka - 1.7 - eO;
       if (hO < 1.2) continue;
       pridejPlochy(pas(bd, w + 0.6, 0), MOST_SILNICE[m.cls] || '#A39D94');   // nájezd na terénu (navazuje na silnici)
-      pridej(pas(bd, w * 0.92, 0), 0, +hO.toFixed(1), MOST_BARVY.opera);
+      pridej(pas(bd, w * 0.92, 0), 0, +hO.toFixed(1), B.opera);
     }
     // pilíře uvnitř po ~30 m
     const pocetP = Math.max(1, Math.round(delka / MOST_USEK_M));
@@ -3488,7 +3547,7 @@ function prepoctiMosty3d() {
                     [PP[0] + (-ux * s2 - nx * s2) / kxM, PP[1] + (-uy * s2 - ny * s2) / kyM],
                     [PP[0] + (-ux * s2 + nx * s2) / kxM, PP[1] + (-uy * s2 + ny * s2) / kyM]];
       ring.push(ring[0]);
-      pridej(ring, 0, +hP.toFixed(1), MOST_BARVY.pilir);
+      pridej(ring, 0, +hP.toFixed(1), B.pilir);
     }
   }
   const nov = features.length + '|' + ploche.length + '|' + podpis.toFixed(2) + '|' + Math.round(z * 10);
@@ -4637,6 +4696,7 @@ function aplikujNoc() {
         }
         nastavBlikaniOken(krok >= 2);
         nastavZabarveniDekoraci(krok);
+        if (window.__mostyPrebarvi) window.__mostyPrebarvi();
       } catch (eN) { console.warn('[noc] okna/dekorace', eN); }
       mapa.setPaintProperty('mlha-rytina', 'raster-opacity', KRYTI_MLHY[krok]);
       mapa.setPaintProperty('mlha-rytina', 'raster-saturation', SYTOST_MLHY[krok]);

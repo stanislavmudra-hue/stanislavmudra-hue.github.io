@@ -121,6 +121,8 @@ const Svetlo = (() => {
         color: barva,
         intensity: intenzita,
       });
+      // engine 245: barvy mostu se počítají z tohohle světla – přestavět
+      try { if (window.__mostyPrebarvi) window.__mostyPrebarvi(); } catch (e) { /* nic */ }
       // stínování herního stylu (ostatní styly zůstávají, jak jsou)
       if (mapa.getLayer('stinovani')) {
         mapa.setPaintProperty('stinovani', 'hillshade-illumination-direction',
