@@ -583,7 +583,8 @@ function stylHerni(ctx) {
       // v3 (6. 9. noc): + zelen/park/zricenina, čáry hradba, vrstvy `stavby`
       // (kůlny, skleníky, přístřešky, věžovité stavby, h, fid) a `vertikaly`
       // (komíny, věže, vodojemy, větrníky, těžní věže, sila – čtverce, h, fid)
-      krajina: { type: 'vector', url: r2('krajina6.pmtiles'),
+      // engine 234: promoteId → feature-state odkrytí staveb/vertikál podle fid
+      krajina: { type: 'vector', url: r2('krajina6.pmtiles'), promoteId: 'fid',
                  attribution: '© ČÚZK ZABAGED®' },
     }),
     layers: [
@@ -800,12 +801,9 @@ function stylHerni(ctx) {
                  'hillshade-shadow-color': '#3A5C46',
                  'hillshade-highlight-color': 'rgba(0,0,0,0)',
                  'hillshade-accent-color': 'rgba(0,0,0,0)' } },
-      { id: 'voda', type: 'fill', source: 'omt', 'source-layer': 'water',
-        paint: AKVAREL
-          // engine 233: od z17 hladký tyrkys – vzor je kotvený v pixelech dlaždice,
-          // při přiblížení rostly vlnky na „malůvky" (výtka 6. 9.)
-          ? { 'fill-pattern': ['step', ['zoom'], 'vzor-voda', 17, 'vzor-voda-hladka'], 'fill-opacity': 0.92 }
-          : { 'fill-color': PALETA.tyrkys, 'fill-opacity': 0.92 } },
+      // engine 234: linka řek POD plochou vody – u velkých řek (polygon) kreslila
+      // hladký pruh bez vlnek uprostřed („pruh bez malůvek“); potoky bez polygonu
+      // zůstávají vidět
       // Řeky: 5. 9. večer potvrzeno uživatelem „řeky jsou OK" – měřítko
       // od z10 (řeka ~5 m, potok ~2 m na z18), velké řeky kreslí `voda`.
       // Silnice mají od enginu 184 TENTÝŽ poměr (SILNICE_MERITKO).
@@ -821,6 +819,10 @@ function stylHerni(ctx) {
       // při přiblížení tedy nerostly vůbec a tmavě zelená čárkovaná
       // čára se v akvarelové trávě ztratila. Teď roste se zoomem a má
       // hnědou barvu prašné cesty místo zelené.
+      { id: 'voda', type: 'fill', source: 'omt', 'source-layer': 'water',
+        paint: AKVAREL
+          ? { 'fill-pattern': 'vzor-voda', 'fill-opacity': 0.92 }
+          : { 'fill-color': PALETA.tyrkys, 'fill-opacity': 0.92 } },
       { id: 'cesty', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 12,
         filter: ['in', ['get', 'class'], ['literal', ['path', 'track']]],

@@ -1959,6 +1959,8 @@ let budovyHerniZap = (() => {
   try { return localStorage.getItem(BUDOVY_HERNI_KLIC) !== '0'; } catch (e) { return true; }
 })();
 const budovyHerniStav = new Map();   // id → objeveno? (false se zkouší znovu)
+const oznacenoOdkryte = new Set();   // engine 234: id domů s feature-state {o: true}
+const oznacenoZabaged = new Set();   // 'stavby:fid' / 'vertikaly:fid' s feature-state
 let budovyHerniCasovac = null;
 
 /// engine 230: OKNA NA DOMECH ZRUŠENA („ty okna se stále mění, dej je klidně
@@ -2011,24 +2013,28 @@ function nasadBudovyHerni() {
   const H = ['coalesce', ['get', 'render_height'], 6];
   const B = ['coalesce', ['get', 'render_min_height'], 0];
   const NIZKY = ['<=', H, 9.5];
-  const nic = ['==', ['id'], -1];
+  // engine 234: odkrytí = feature-state {o: true} (setFilter nutil MapLibre
+  // po každém posunu znovu parsovat CELÝ zdroj); neodkryté = výška 0 + průhledné
+  const ODK = ['boolean', ['feature-state', 'o'], false];
+  const PRUHLEDNA = 'rgba(0,0,0,0)';
   const nastup = ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, 1];
   const pred = prvniSymbolovaVrstva();
   budovyFiltrKlic = ''; zabagedFiltrKlice.clear(); pohledPodpisBudovy = ''; pohledPodpisOkna = '';   // nový styl → filtry znovu
+  oznacenoOdkryte.clear(); oznacenoZabaged.clear();   // engine 234: feature-state nový styl neznají
   try {
     mapa.addLayer({ id: 'okolnik-budovy-herni-zdi', type: 'fill-extrusion',
-      source: 'omt', 'source-layer': 'building', minzoom: 14.5, filter: nic,
-      paint: { 'fill-extrusion-color': '#EAD9B6',
-               'fill-extrusion-height': ['-', H, 0.6],
-               'fill-extrusion-base': B,
+      source: 'omt', 'source-layer': 'building', minzoom: 14.5,
+      paint: { 'fill-extrusion-color': ['case', ODK, '#EAD9B6', PRUHLEDNA],
+               'fill-extrusion-height': ['case', ODK, ['-', H, 0.6], 0],
+               'fill-extrusion-base': ['case', ODK, B, 0],
                'fill-extrusion-opacity': nastup } }, pred);
     mapa.addLayer({ id: 'okolnik-budovy-herni-strecha', type: 'fill-extrusion',
-      source: 'omt', 'source-layer': 'building', minzoom: 14.5, filter: nic,
-      paint: { 'fill-extrusion-color': ['case', NIZKY,
+      source: 'omt', 'source-layer': 'building', minzoom: 14.5,
+      paint: { 'fill-extrusion-color': ['case', ODK, ['case', NIZKY,
                  ['match', ['%', ['id'], 3], 0, '#B9684A', 1, '#AE6045', '#C0745A'],
-                 '#8E8478'],
-               'fill-extrusion-height': H,
-               'fill-extrusion-base': ['-', H, 0.6],
+                 '#8E8478'], PRUHLEDNA],
+               'fill-extrusion-height': ['case', ODK, H, 0],
+               'fill-extrusion-base': ['case', ODK, ['-', H, 0.6], 0],
                'fill-extrusion-opacity': nastup,
                'fill-extrusion-vertical-gradient': false } }, pred);
     // ⭐ engine 214: ZABAGED v3 – kůlny, skleníky, přístřešky a věžovité
@@ -2037,23 +2043,23 @@ function nasadBudovyHerni() {
     // body převedené na čtverce, výška h ze ZABAGED nebo výchozí podle
     // druhu). Filtr podle `fid` odkrytých (viz prepoctiBudovyHerni), stejně
     // jako domy jen v odkryté mapě – extruze se mlhou nezakryje.
-    const nicFid = ['==', ['get', 'fid'], -1];
     mapa.addLayer({ id: 'okolnik-stavby-3d', type: 'fill-extrusion',
-      source: 'krajina', 'source-layer': 'stavby', minzoom: 14.5, filter: nicFid,
-      paint: { 'fill-extrusion-color': ['match', ['get', 't'],
+      source: 'krajina', 'source-layer': 'stavby', minzoom: 14.5,
+      filter: ['!=', ['get', 't'], 'most'],          // mosty kreslí okolnik-mosty-3d
+      paint: { 'fill-extrusion-color': ['case', ODK, ['match', ['get', 't'],
                  'kulna', '#A78F6B', 'sklenik', '#D6E8EC', 'vezstavba', '#A89C8C',
                  // engine 218 (ZABAGED v4): lávky (dřevo), jezy (beton s pěnou), hráze
-                 'lavka', '#C9B38A', 'jez', '#B9C4C6', 'hraz', '#9A9A94', '#B9A98F'],
-               'fill-extrusion-height': ['coalesce', ['get', 'h'], 3],
+                 'lavka', '#C9B38A', 'jez', '#B9C4C6', 'hraz', '#9A9A94', '#B9A98F'], PRUHLEDNA],
+               'fill-extrusion-height': ['case', ODK, ['coalesce', ['get', 'h'], 3], 0],
                'fill-extrusion-base': 0,
                'fill-extrusion-opacity': nastup } }, pred);
     mapa.addLayer({ id: 'okolnik-vertikaly-3d', type: 'fill-extrusion',
-      source: 'krajina', 'source-layer': 'vertikaly', minzoom: 14, filter: nicFid,
-      paint: { 'fill-extrusion-color': ['match', ['get', 't'],
+      source: 'krajina', 'source-layer': 'vertikaly', minzoom: 14,
+      paint: { 'fill-extrusion-color': ['case', ODK, ['match', ['get', 't'],
                  'komin', '#8B5A46', 'vez_kostel', '#E2D2B2', 'vez_kaple', '#E6D8BC',
                  'vysilac', '#C9CCCF', 'rozhledna', '#9E7B55', 'vodojem', '#8C9AA0',
-                 'vetrnik', '#EFEFEF', 'tezni', '#5B5B5B', 'silo', '#B8B0A0', '#A09890'],
-               'fill-extrusion-height': ['coalesce', ['get', 'h'], 20],
+                 'vetrnik', '#EFEFEF', 'tezni', '#5B5B5B', 'silo', '#B8B0A0', '#A09890'], PRUHLEDNA],
+               'fill-extrusion-height': ['case', ODK, ['coalesce', ['get', 'h'], 20], 0],
                'fill-extrusion-base': 0,
                'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.6, 1] } }, pred);
   } catch (e) { console.warn('[budovy herní]', e); return; }
@@ -2092,13 +2098,16 @@ function prepoctiZabagedHerni(vrstvaId, sourceLayer) {
     }
     if (o) fids.push(fid);
   }
-  const klicF = fids.length + ':' + fids.join(',');
-  if (zabagedFiltrKlice.get(vrstvaId) === klicF) return;        // engine 232: beze změny nic
-  zabagedFiltrKlice.set(vrstvaId, klicF);
-  try {
-    mapa.setFilter(vrstvaId, fids.length ? ['match', ['get', 'fid'], fids, true, false]
-                                         : ['==', ['get', 'fid'], -1]);
-  } catch (e) { /* styl se mění */ }
+  // engine 234: odkrytí přes feature-state (bez setFilter = bez reloadu zdroje)
+  let nove = 0;
+  for (const fid of fids) {
+    const k = sourceLayer + ':' + fid;
+    if (oznacenoZabaged.has(k)) continue;
+    oznacenoZabaged.add(k);
+    try { mapa.setFeatureState({ source: 'krajina', sourceLayer, id: fid }, { o: true }); nove++; }
+    catch (e) { oznacenoZabaged.delete(k); }
+  }
+  void nove;
 }
 
 /// engine 228: THROTTLE místo debounce. `idle` chodí na stojící mapě i každých
@@ -2329,6 +2338,51 @@ const DEM_KES_MAX = 48;             // 48 × 256 KB; VĚTŠÍ než blok (36), ji
 const STINY_TERENU_MRIZKA = 128;
 let stinyTerenPlatno = null;
 let demMozaika = null;              // slepený blok dlaždic { klic, data, S, V, ... }
+/// ⭐ engine 234: paprsky ke slunci ve WORKERU (`js/stiny-worker.js`). Na
+/// hlavním vlákně stály 14–220 ms po každém posunu (trhnutí po gestu, A/B
+/// bez kopců −0,5 s dlouhých úloh na sadu gest). Worker dostane dlaždice DEM
+/// a parametry, vrátí masku G×G; tady se jen položí do plátna (~1 ms).
+let stinyWorker = null, stinyWorkerChyba = false;
+let terenMaska = null;              // { podpis, G, img: ImageData, veStinu }
+let terenCekaPodpis = '';
+let terenPozadavekId = 0;
+const terenPozadavky = new Map();   // id → podpis
+function zajistiStinyWorker() {
+  if (stinyWorker || stinyWorkerChyba) return stinyWorker;
+  try {
+    if (typeof Worker === 'undefined') { stinyWorkerChyba = true; return null; }
+    const sk = Array.from(document.scripts).find((x) => /\/main\.js/.test(x.src || ''));
+    const q = sk && sk.src.indexOf('?') >= 0 ? sk.src.slice(sk.src.indexOf('?')) : '';
+    stinyWorker = new Worker('js/stiny-worker.js' + q);
+    stinyWorker.onmessage = (ev) => {
+      const m = ev.data || {};
+      if (m.typ === 'chybi') {
+        for (const k of m.klice) { if (DEM_KES.has(k)) stinyWorker.postMessage({ typ: 'dem', klic: k, data: DEM_KES.get(k) }); }
+        return;
+      }
+      if (m.typ === 'hotovo') {
+        const podpis = terenPozadavky.get(m.id);
+        terenPozadavky.delete(m.id);
+        if (!podpis) return;
+        try {
+          terenMaska = { podpis, G: m.G, img: new ImageData(new Uint8ClampedArray(m.px), m.G, m.G), veStinu: m.veStinu };
+        } catch (e) { terenMaska = null; return; }
+        if (terenCekaPodpis === podpis) terenCekaPodpis = '';
+        try { window.__casy = window.__casy || {}; window.__casy.stinyTerenMs = m.ms; window.__casy.stinyTerenBunek = m.veStinu; window.__casy.stinyTerenWorker = true; } catch (e) { /* nic */ }
+        stinyPodpis = '';
+        naplanujStinyDomu(30);
+      }
+    };
+    stinyWorker.onerror = (e) => {
+      console.warn('[stíny] worker', e && e.message ? e.message : e);
+      stinyWorkerChyba = true;
+      try { stinyWorker.terminate(); } catch (e2) { /* nic */ }
+      stinyWorker = null; terenCekaPodpis = ''; terenPozadavky.clear();
+      stinyPodpis = ''; naplanujStinyDomu(50);
+    };
+  } catch (e) { stinyWorkerChyba = true; stinyWorker = null; }
+  return stinyWorker;
+}
 function demDlazdice(z, x, y) {
   const k = z + '/' + x + '/' + y;
   if (DEM_KES.has(k)) return DEM_KES.get(k);
@@ -2336,6 +2390,7 @@ function demDlazdice(z, x, y) {
     DEM_CEKAME.add(k);
     const hotovo = (data) => {
       DEM_KES.set(k, data);
+      if (stinyWorker) { try { stinyWorker.postMessage({ typ: 'dem', klic: k, data }); } catch (e) { /* nic */ } }
       while (DEM_KES.size > DEM_KES_MAX) DEM_KES.delete(DEM_KES.keys().next().value);
       DEM_CEKAME.delete(k);
       if (!DEM_CEKAME.size) { stinyPodpis = ''; naplanujStinyDomu(150); }   // až dojdou všechny
@@ -2394,9 +2449,6 @@ function kresliStinyTerenu(ctx, r, W, H, mpu, stredLat, ex) {
   const y0 = Math.floor((r.y0 - okrajMerc) * n), y1 = Math.floor((r.y1 + okrajMerc) * n);
   if ((x1 - x0 + 1) * (y1 - y0 + 1) > 36) return true;     // moc dlaždic – přeskočit
   const t0 = performance.now();
-  const moz = demMozaikaPro(zD, x0, y0, x1, y1);
-  if (!moz) return false;
-  const data = moz.data, S = moz.S, V = moz.V;
   const kPx = n * 256;                             // Mercator → pixel mozaiky
   const oX = x0 * 256, oY = y0 * 256;
   const az = stinSvetlo.az * Math.PI / 180;
@@ -2404,11 +2456,47 @@ function kresliStinyTerenu(ctx, r, W, H, mpu, stredLat, ex) {
   const stoupani = krokM * tg;                     // výška paprsku na krok (m)
   if (!stinyTerenPlatno) { stinyTerenPlatno = document.createElement('canvas'); stinyTerenPlatno.width = G; stinyTerenPlatno.height = G; }
   const tctx = stinyTerenPlatno.getContext('2d');
+  const cx0 = r.x0 * kPx - oX, cy0 = r.y0 * kPx - oY;
+  const cdx = (r.x1 - r.x0) * kPx / G, cdy = (r.y1 - r.y0) * kPx / G;
+  // --- engine 234: přes worker (maska kešovaná podle podpisu)
+  const wk = zajistiStinyWorker();
+  if (wk) {
+    const podpis = [zD, x0, y0, x1, y1, G, cx0.toFixed(1), cy0.toFixed(1), cdx.toFixed(4), cdy.toFixed(4),
+                    dpx.toFixed(4), dpy.toFixed(4), stoupani.toFixed(3), ex, KROKU_BLIZKO, KROKU_DALEKO, HRUBOST].join('|');
+    if (terenMaska && terenMaska.podpis === podpis) {
+      if (terenMaska.veStinu) {
+        tctx.putImageData(terenMaska.img, 0, 0);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(stinyTerenPlatno, 0, 0, W, H);
+      }
+      return true;
+    }
+    if (terenCekaPodpis !== podpis) {
+      terenCekaPodpis = podpis;
+      const id = ++terenPozadavekId;
+      terenPozadavky.set(id, podpis);
+      const klice = [];
+      for (let ty = y0; ty <= y1; ty++) {
+        for (let tx = x0; tx <= x1; tx++) {
+          const k = zD + '/' + tx + '/' + ty;
+          klice.push(k);
+          if (!DEM_KES.has(k)) demDlazdice(zD, tx, ty);   // stáhnout; po dojití se pošle workeru
+        }
+      }
+      try {
+        wk.postMessage({ typ: 'stiny', id, zD, x0, y0, x1, y1, klice, G, cx0, cy0, cdx, cdy, dpx, dpy, stoupani, ex,
+                         KROKU_BLIZKO, KROKU_DALEKO, HRUBOST });
+      } catch (e) { terenCekaPodpis = ''; terenPozadavky.delete(id); }
+    }
+    return true;                                   // tentokrát bez kopců, po dojití masky přepočet
+  }
+  // --- záloha bez workeru: synchronně
+  const moz = demMozaikaPro(zD, x0, y0, x1, y1);
+  if (!moz) return false;
+  const data = moz.data, S = moz.S, V = moz.V;
   const img = tctx.createImageData(G, G);
   const px = img.data;
   let veStinu = 0;
-  const cx0 = r.x0 * kPx - oX, cy0 = r.y0 * kPx - oY;
-  const cdx = (r.x1 - r.x0) * kPx / G, cdy = (r.y1 - r.y0) * kPx / G;
   for (let gy = 0; gy < G; gy++) {
     const fy0 = cy0 + (gy + 0.5) * cdy;
     for (let gx = 0; gx < G; gx++) {
@@ -3271,14 +3359,17 @@ function prepoctiBudovyHerni() {
     }
     if (o) ids.push(id);
   }
-  const filtr = ids.length ? ['match', ['id'], ids, true, false] : ['==', ['id'], -1];
-  const klicF = ids.length + ':' + ids.join(',');
-  if (klicF === budovyFiltrKlic) return;           // engine 232: filtr beze změny → žádný update stylu
-  budovyFiltrKlic = klicF;
-  try {
-    mapa.setFilter('okolnik-budovy-herni-zdi', filtr);
-    mapa.setFilter('okolnik-budovy-herni-strecha', filtr);
-  } catch (e) { console.warn('[budovy herní] filtr', e); }
+  // engine 234: odkrytí přes feature-state {o: true} – ⛔ setFilter = reload
+  // CELÉHO zdroje omt po každém posunu (viz nasadBudovyHerni)
+  let nove = 0;
+  for (const id of ids) {
+    if (oznacenoOdkryte.has(id)) continue;
+    oznacenoOdkryte.add(id);
+    try { mapa.setFeatureState({ source: 'omt', sourceLayer: 'building', id }, { o: true }); nove++; }
+    catch (e) { oznacenoOdkryte.delete(id); }
+  }
+  try { window.__casy = window.__casy || {}; window.__casy.budovyNove = nove; window.__casy.budovyOdkryto = ids.length; } catch (e) { /* nic */ }
+  const filtr = ids.length ? ['match', ['id'], ids, true, false] : ['==', ['id'], -1];   // jen pro stíny (legacy)
   // ⭐ 5. 9. noc (engine 200): stíny jen pod DOMY, KTERÉ STOJÍ (odkryté =
   // vytažené). Stín pod neodkrytým plochým domem vypadal jako šmouha bez
   // domu (Bukov, snímek 108).
