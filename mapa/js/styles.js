@@ -802,7 +802,9 @@ function stylHerni(ctx) {
                  'hillshade-accent-color': 'rgba(0,0,0,0)' } },
       { id: 'voda', type: 'fill', source: 'omt', 'source-layer': 'water',
         paint: AKVAREL
-          ? { 'fill-pattern': 'vzor-voda', 'fill-opacity': 0.92 }
+          // engine 233: od z17 hladký tyrkys – vzor je kotvený v pixelech dlaždice,
+          // při přiblížení rostly vlnky na „malůvky" (výtka 6. 9.)
+          ? { 'fill-pattern': ['step', ['zoom'], 'vzor-voda', 17, 'vzor-voda-hladka'], 'fill-opacity': 0.92 }
           : { 'fill-color': PALETA.tyrkys, 'fill-opacity': 0.92 } },
       // Řeky: 5. 9. večer potvrzeno uživatelem „řeky jsou OK" – měřítko
       // od z10 (řeka ~5 m, potok ~2 m na z18), velké řeky kreslí `voda`.

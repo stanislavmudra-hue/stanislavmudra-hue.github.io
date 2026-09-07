@@ -255,7 +255,8 @@ const Ptaci = (() => {
               { getElevationForLngLat: () => teren + VYSKA_LETU })
           : tr.locationToScreenPoint(ll);
       } catch (e) { continue; }
-      const otoc = (p.smer || 0) * 180 / Math.PI;
+      // engine 233: směr letu je v mapě, prvek je na obrazovce → odečíst natočení mapy
+      const otoc = (p.smer || 0) * 180 / Math.PI - (mapa.getBearing ? mapa.getBearing() : 0);
       p.el.style.opacity = (0.9 * p.op).toFixed(2);
       p.el.style.transform = 'translate(-50%, -50%) translate(' + bod.x.toFixed(1)
         + 'px, ' + bod.y.toFixed(1) + 'px) rotate(' + otoc.toFixed(1) + 'deg) scale('

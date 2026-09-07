@@ -1337,7 +1337,7 @@ let VZOR_PX = 256;
 function nastavVelikostVzoru(px) {
   VZOR_PX = px;
   for (const jm of ['vzor-les', 'vzor-pole', 'vzor-louka',
-                    'vzor-mesta', 'vzor-voda']) {
+                    'vzor-mesta', 'vzor-voda', 'vzor-voda-hladka']) {
     try { if (mapa.hasImage(jm)) mapa.removeImage(jm); } catch (e) { /* nevadí */ }
   }
   pridejAkvarelVzory();
@@ -1610,6 +1610,8 @@ function pridejAkvarelVzory(vynutit) {
       });
     }
   });
+  // engine 233: hladká voda pro z17+ (vzor by při přiblížení rostl na malůvky)
+  vyrob('vzor-voda-hladka', '#2FA7A0', () => { /* jen podklad */ });
 }
 
 /// Základní (hotový styl Liberty) mluví anglicky a uprostřed mapy má
@@ -3064,96 +3066,160 @@ function prepoctiMosty3d() {
   if (ppM === pohledPodpisMosty) return;          // engine 232: v klidu nic
   pohledPodpisMosty = ppM;
   const vyska = (b) => { try { return mapa.queryTerrainElevation(b); } catch (e) { return null; } };
-  const konce = new Map();                         // fid → { A, B, eA, eB } nebo null
-  const features = [];
-  let podpis = 0;
-  const pridej = (ring, b, h, c) => {
-    features.push({ type: 'Feature', properties: { b: +b.toFixed(1), h: +h.toFixed(1), c },
-                    geometry: { type: 'Polygon', coordinates: [ring] } });
-  };
+  // engine 233: kusy z dlaždic sloučit podle fid do jedné lomené čáry
+  const mosty = new Map();
   for (const f of prvky) {
     const p = f.properties || {};
     if (p.fid == null || p.ax == null || p.bx == null) continue;
     const g = f.geometry;
     const cary = g && g.type === 'LineString' ? [g.coordinates] : (g && g.type === 'MultiLineString' ? g.coordinates : null);
     if (!cary) continue;
-    let k = konce.get(p.fid);
-    if (k === undefined) {
-      const A = [+p.ax, +p.ay], B = [+p.bx, +p.by];
-      const eA = vyska(A), eB = vyska(B);
-      k = (eA == null || eB == null) ? null : { A, B, eA, eB };
-      konce.set(p.fid, k);
-    }
-    if (!k) continue;
+    let m = mosty.get(p.fid);
+    if (!m) { m = { p, cary: [] }; mosty.set(p.fid, m); }
+    for (const c of cary) if (c && c.length >= 2) m.cary.push(c);
+  }
+  const features = [];
+  let podpis = 0;
+  const pridej = (ring, b, h, c) => {
+    features.push({ type: 'Feature', properties: { b: +b.toFixed(1), h: +h.toFixed(1), c },
+                    geometry: { type: 'Polygon', coordinates: [ring] } });
+  };
+  for (const [fid, m] of mosty) {
+    const p = m.p;
+    const A = [+p.ax, +p.ay], B = [+p.bx, +p.by];
+    const eA = vyska(A), eB = vyska(B);
+    if (eA == null || eB == null) continue;
     const zel = p.d === 'zel';
     const w = Math.max(3, Math.min(+p.w || (zel ? 4.5 : 7), 40));
     const strop = p.v ? +p.v * ex * 1.3 : Infinity;
-    for (const cara of cary) {
-      for (let i = 0; i + 1 < cara.length; i++) {
-        const P = cara[i], Q = cara[i + 1];
-        const kxM = 111320 * Math.cos(P[1] * Math.PI / 180), kyM = 110574;
-        const dx = (Q[0] - P[0]) * kxM, dy = (Q[1] - P[1]) * kyM;
-        const delka = Math.hypot(dx, dy);
-        if (delka < 1) continue;
-        const ux = dx / delka, uy = dy / delka;           // směr (m)
-        const nx = -uy, ny = ux;                          // kolmice (m)
-        const useku = Math.max(1, Math.ceil(delka / MOST_USEK_M));
-        // projekce na osu A→B (m) pro interpolaci mostovky
-        const abx = (k.B[0] - k.A[0]) * kxM, aby = (k.B[1] - k.A[1]) * kyM;
-        const ab2 = abx * abx + aby * aby || 1;
-        for (let u = 0; u < useku; u++) {
-          const t0 = u / useku, t1 = (u + 1) / useku;
-          const P0 = [P[0] + (Q[0] - P[0]) * t0, P[1] + (Q[1] - P[1]) * t0];
-          const P1 = [P[0] + (Q[0] - P[0]) * t1, P[1] + (Q[1] - P[1]) * t1];
-          const C = [(P0[0] + P1[0]) / 2, (P0[1] + P1[1]) / 2];
-          const tAB = Math.max(0, Math.min(1, ((C[0] - k.A[0]) * kxM * abx + (C[1] - k.A[1]) * kyM * aby) / ab2));
-          const mostovka = k.eA + tAB * (k.eB - k.eA);
-          const eC = vyska(C);
-          if (eC == null) continue;
-          let b = Math.min(mostovka - eC, strop);
-          if (b < 1.0) continue;                       // tady most sedí na zemi
-          b = +b.toFixed(1);
-          podpis += b + p.fid * 0.001 + u * 0.01;
-          // čtyřúhelník o šířce sirka (m) kolem osy P0→P1, posunutý o `posun` m napříč
-          const ctverec = (sirka, posun, od, doo) => {
-            const A0 = [P0[0] + (Q[0] - P[0]) * (od || 0) * 0, P0[1]];   // (od/doo nevyužito – celý úsek)
-            void A0; void doo;
-            const hw = sirka / 2;
-            const o = posun || 0;
-            const l1 = [(nx * (hw + o)) / kxM, (ny * (hw + o)) / kyM];
-            const l2 = [(nx * (-hw + o)) / kxM, (ny * (-hw + o)) / kyM];
-            return [[P0[0] + l1[0], P0[1] + l1[1]], [P1[0] + l1[0], P1[1] + l1[1]],
-                    [P1[0] + l2[0], P1[1] + l2[1]], [P0[0] + l2[0], P0[1] + l2[1]],
-                    [P0[0] + l1[0], P0[1] + l1[1]]];
-          };
-          pridej(ctverec(w, 0), b, b + 0.8, zel ? MOST_BARVY.zel : MOST_BARVY.sil);      // deska
-          pridej(ctverec(w * 0.9, 0), b - 1.0, b, MOST_BARVY.nosnik);                  // nosník
-          if (zel) {
-            pridej(ctverec(0.3, 0.72), b + 0.8, b + 0.95, MOST_BARVY.kolej);
-            pridej(ctverec(0.3, -0.72), b + 0.8, b + 0.95, MOST_BARVY.kolej);
-          } else {
-            pridej(ctverec(0.35, 0), b + 0.8, b + 0.92, MOST_BARVY.pruh);
-          }
-          if (b > 3) {                                  // pilíř uprostřed úseku
-            const s2 = 1.3;
-            const cx = C[0], cy = C[1];
-            const ring = [[cx + (ux * s2 + nx * s2) / kxM, cy + (uy * s2 + ny * s2) / kyM],
-                          [cx + (ux * s2 - nx * s2) / kxM, cy + (uy * s2 - ny * s2) / kyM],
-                          [cx + (-ux * s2 - nx * s2) / kxM, cy + (-uy * s2 - ny * s2) / kyM],
-                          [cx + (-ux * s2 + nx * s2) / kxM, cy + (-uy * s2 + ny * s2) / kyM]];
-            ring.push(ring[0]);
-            pridej(ring, 0, b - 1.0, MOST_BARVY.pilir);
-          }
-        }
+    const kxM = 111320 * Math.cos(A[1] * Math.PI / 180), kyM = 110574;
+    const abx = (B[0] - A[0]) * kxM, aby = (B[1] - A[1]) * kyM;
+    const ab2 = abx * abx + aby * aby || 1;
+    const tNaOse = (P) => Math.max(0, Math.min(1, ((P[0] - A[0]) * kxM * abx + (P[1] - A[1]) * kyM * aby) / ab2));
+    // kusy seřadit podél osy A→B a otočit ty, které jdou proti ní
+    const kusy = m.cary.map((c) => {
+      const t0 = tNaOse(c[0]), t1 = tNaOse(c[c.length - 1]);
+      return { c: t0 <= t1 ? c : c.slice().reverse(), t: Math.min(t0, t1) };
+    }).sort((a, b) => a.t - b.t);
+    const cara = [];
+    for (const k of kusy) {
+      for (const q of k.c) {
+        const last = cara[cara.length - 1];
+        if (!last || Math.abs(last[0] - q[0]) > 1e-7 || Math.abs(last[1] - q[1]) > 1e-7) cara.push(q);
       }
     }
+    if (cara.length < 2) continue;
+    // délka po čáře
+    const useky = [];
+    let delka = 0;
+    for (let i = 0; i + 1 < cara.length; i++) {
+      const dx = (cara[i + 1][0] - cara[i][0]) * kxM, dy = (cara[i + 1][1] - cara[i][1]) * kyM;
+      const L = Math.hypot(dx, dy) || 1e-6;
+      useky.push([dx / L, dy / L, L]); delka += L;
+    }
+    if (delka < 2) continue;
+    // bod (a směr) ve vzdálenosti s po čáře
+    const bodNa = (sM) => {
+      let akum = 0;
+      for (let i = 0; i < useky.length; i++) {
+        const L = useky[i][2];
+        if (akum + L >= sM || i === useky.length - 1) {
+          const t = Math.max(0, Math.min(1, (sM - akum) / L));
+          return { P: [cara[i][0] + (cara[i + 1][0] - cara[i][0]) * t, cara[i][1] + (cara[i + 1][1] - cara[i][1]) * t], u: useky[i] };
+        }
+        akum += L;
+      }
+      return { P: cara[cara.length - 1], u: useky[useky.length - 1] };
+    };
+    // podčára mezi vzdálenostmi s0..s1 (vloží krajní body)
+    const podcara = (s0, s1) => {
+      const out = [bodNa(s0).P];
+      let akum = 0;
+      for (let i = 0; i + 1 < cara.length; i++) {
+        akum += useky[i][2];
+        if (akum > s0 && akum < s1) out.push(cara[i + 1]);
+      }
+      out.push(bodNa(s1).P);
+      return out;
+    };
+    // pás podél lomené čáry (miter v lomech, omezený)
+    const pas = (body, sirka, posun) => {
+      const n = body.length;
+      const sm = [];
+      for (let i = 0; i + 1 < n; i++) {
+        const dx = (body[i + 1][0] - body[i][0]) * kxM, dy = (body[i + 1][1] - body[i][1]) * kyM;
+        const L = Math.hypot(dx, dy) || 1e-6;
+        sm.push([dx / L, dy / L]);
+      }
+      const lev = [], prav = [];
+      for (let i = 0; i < n; i++) {
+        const s0 = sm[Math.max(0, i - 1)], s1 = sm[Math.min(sm.length - 1, i)];
+        let ux = s0[0] + s1[0], uy = s0[1] + s1[1];
+        const un = Math.hypot(ux, uy) || 1; ux /= un; uy /= un;
+        const nx = -uy, ny = ux;
+        const cosHalf = Math.max(0.5, ux * s1[0] + uy * s1[1]);
+        const hw = sirka / 2 / cosHalf;
+        const o = posun || 0;
+        lev.push([body[i][0] + nx * (hw + o) / kxM, body[i][1] + ny * (hw + o) / kyM]);
+        prav.push([body[i][0] + nx * (-hw + o) / kxM, body[i][1] + ny * (-hw + o) / kyM]);
+      }
+      const ring = lev.concat(prav.reverse());
+      ring.push(ring[0]);
+      return ring;
+    };
+    // rovné díly: 1 (schod uprostřed je horší než konce o pár m vedle),
+    // jen u hodně sklonitých mostů (|eA−eB| > 6 m) dva
+    const dilu = Math.abs(eA - eB) > 6 ? 2 : 1;
+    let mostovkaStred = null;
+    for (let d = 0; d < dilu; d++) {
+      const s0 = delka * d / dilu, s1 = delka * (d + 1) / dilu;
+      const body = podcara(s0, s1);
+      if (body.length < 2) continue;
+      let sx = 0, sy = 0;
+      for (const q of body) { sx += q[0]; sy += q[1]; }
+      const C = [sx / body.length, sy / body.length];
+      const eC = vyska(C);
+      if (eC == null) continue;
+      const mostovka = eA + tNaOse(C) * (eB - eA);
+      let b = Math.min(mostovka - eC, strop);
+      if (b < 1.0) continue;                        // tady most sedí na zemi
+      b = +b.toFixed(1);
+      if (mostovkaStred === null) mostovkaStred = mostovka;
+      podpis += b + fid * 0.001 + delka + d;
+      // pilíře tohoto dílu po ~30 m, každý vůči SVÉMU terénu, po spodek nosníku
+      // (deska je rovná ve výšce `mostovka` dílu, ne interpolovaná)
+      const pocetP = Math.max(1, Math.round((s1 - s0) / MOST_USEK_M));
+      for (let u = 0; u < pocetP; u++) {
+        const { P, u: sm } = bodNa(s0 + (u + 0.5) / pocetP * (s1 - s0));
+        const eP = vyska(P);
+        if (eP == null) continue;
+        const hP = Math.min(mostovka, eP + strop) - 1.0 - eP;
+        if (hP < 2.0) continue;
+        const s2 = 1.3, ux = sm[0], uy = sm[1], nx = -uy, ny = ux;
+        const ring = [[P[0] + (ux * s2 + nx * s2) / kxM, P[1] + (uy * s2 + ny * s2) / kyM],
+                      [P[0] + (ux * s2 - nx * s2) / kxM, P[1] + (uy * s2 - ny * s2) / kyM],
+                      [P[0] + (-ux * s2 - nx * s2) / kxM, P[1] + (-uy * s2 - ny * s2) / kyM],
+                      [P[0] + (-ux * s2 + nx * s2) / kxM, P[1] + (-uy * s2 + ny * s2) / kyM]];
+        ring.push(ring[0]);
+        pridej(ring, 0, hP, MOST_BARVY.pilir);
+      }
+      pridej(pas(body, w, 0), b, b + 0.8, zel ? MOST_BARVY.zel : MOST_BARVY.sil);   // deska
+      pridej(pas(body, w * 0.9, 0), b - 1.0, b, MOST_BARVY.nosnik);               // nosník
+      if (zel) {
+        pridej(pas(body, 0.3, 0.72), b + 0.8, b + 0.95, MOST_BARVY.kolej);
+        pridej(pas(body, 0.3, -0.72), b + 0.8, b + 0.95, MOST_BARVY.kolej);
+      } else {
+        pridej(pas(body, 0.35, 0), b + 0.8, b + 0.92, MOST_BARVY.pruh);
+      }
+    }
+    if (mostovkaStred === null) continue;
   }
   const nov = features.length + '|' + podpis.toFixed(2) + '|' + Math.round(z * 10);
   if (nov === mostyPodpis) return;
   mostyPodpis = nov;
   try { zdroj.setData(features.length ? { type: 'FeatureCollection', features } : prazdne); }
   catch (e) { /* zdroj se zrovna mění */ }
-  try { window.__casy = window.__casy || {}; window.__casy.mostyN = features.length; } catch (e) { /* nic */ }
+  try { window.__casy = window.__casy || {}; window.__casy.mostyN = features.length; window.__casy.mostyKusu = mosty.size; } catch (e) { /* nic */ }
 }
 
 function prepoctiBudovyHerni() {
