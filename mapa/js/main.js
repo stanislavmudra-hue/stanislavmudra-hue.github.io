@@ -2250,6 +2250,12 @@ function registrujProtokolStinu() {
     if (sx + sw > stinyPlatno.width) { const o = sx + sw - stinyPlatno.width; dw -= o / sw * dw; sw -= o; }
     if (sy + sh > stinyPlatno.height) { const o = sy + sh - stinyPlatno.height; dh -= o / sh * dh; sh -= o; }
     if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return { data: await prazdnaDlazdice() };
+    // ⛔ engine 236: ZKOUŠENO A VRÁCENO – vlastní PNG BEZ KOMPRESE (stored
+    // bloky zlibu) a poloviční rozlišení dlaždice. Mikrotest sliboval
+    // 60 → 27 ms na dlaždici, jenže celá sada gest se ZDVOJNÁSOBILA
+    // (144 → 275 snímků nad 33 ms, dlouhé úlohy 1,3 → 6,7 s): komprimovaný
+    // PNG dekóduje Chrome mimo hlavní vlákno, kdežto megabajtový
+    // nekomprimovaný se dekóduje draho v něm. Měřit celou sadu, ne kodér.
     const c = document.createElement('canvas');
     c.width = STINY_DLAZDICE; c.height = STINY_DLAZDICE;
     c.getContext('2d').drawImage(stinyPlatno, sx, sy, sw, sh, dx, dy, dw, dh);
@@ -3042,21 +3048,23 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
     if (L > 12 && (Math.abs(Q[0] - P[0]) < 1e-7 || Math.abs(Q[1] - P[1]) < 1e-7)) continue;   // řez dlaždice
     const ux = ex / L, uy = ey / L;
     const nx = ven * uy, ny = -ven * ux;            // vnější normála (m)
+    // ⛔ engine 236: TERÉN JEN JEDNOU ZA ZEĎ. Engine 235 se ptal pro KAŽDÉ
+    // okno a `queryTerrainElevation` stojí ~0,1 ms – při 3 000 oknech to bylo
+    // 240 ms na přepočet (změřeno). Zeď je nejvýš pár desítek metrů, takže
+    // střed zdi stačí; u krátkých zdí stačí střed domu.
+    const eZed = L > 12 ? vyska([(P[0] + Q[0]) / 2, (P[1] + Q[1]) / 2]) : eDum;
     const pocet = Math.max(1, Math.floor(L / OKNA_ROZESTUP_M));
     const sirka = L < 4 ? 0.9 : 1.2;
+    // ⛔⛔ engine 235: KOREKCE MUSÍ BÝT MALÁ A OKNO SE MUSÍ VEJÍT POD STŘECHU.
+    // MapLibre zvedá extruzi o terén ve středu prvku, takže okno je potřeba
+    // posunout o rozdíl terénu (dům vs. okno) – jenže při velkém rozdílu
+    // (svah, chybějící DEM) okno vylezlo NA STŘECHU (výtka „okna se z
+    // několika úhlů bugují"). Korekce je proto do ±2 m a strop se počítá
+    // ZE ZKORIGOVANÉ výšky.
+    const oprava = eZed === null ? 0 : Math.max(-2, Math.min(2, eDum - eZed));
     for (let k = 0; k < pocet; k++) {
       const t = (k + 0.5) / pocet;
       const cxo = P[0] + (Q[0] - P[0]) * t, cyo = P[1] + (Q[1] - P[1]) * t;
-      // engine 235: terén pro KAŽDÉ okno (MapLibre zvedá extruzi o terén ve středu
-      // prvku) – ve svahu okna vylézala nad střechu; keš po domech to počítá jednou
-      const eZed = vyska([cxo, cyo]);
-      // ⛔⛔ engine 235: KOREKCE MUSÍ BÝT MALÁ A OKNO SE MUSÍ VEJÍT POD STŘECHU.
-      // MapLibre zvedá extruzi o terén ve středu prvku, takže okno je potřeba
-      // posunout o rozdíl terénu (dům vs. okno) – jenže při velkém rozdílu
-      // (svah, chybějící DEM) okno vylezlo NA STŘECHU (výtka „okna se z
-      // několika úhlů bugují"). Korekce je proto do ±2 m a strop se počítá
-      // ZE ZKORIGOVANÉ výšky.
-      const oprava = eZed === null ? 0 : Math.max(-2, Math.min(2, eDum - eZed));
       const r = [];
       // ⛔ engine 235: PŘESAH JEN 4 cm. Okno je krabička před zdí; s přesahem
       // 15–27 cm se její VRŠEK při pohledu shora promítl na střechu jako tmavý
@@ -3122,6 +3130,7 @@ function nasadTerenKes() {
 /// (× převýšení × 1,3). Bez terénu se nic nekreslí.
 let mostyCasovac = null;
 let mostyPodpis = '';
+const mostyOsy = new Map();   // engine 236: fid|kusů → slepená osa (z dlaždic, na kameře nezávislá)
 const MOST_USEK_M = 30;
 const MOST_BARVY = { sil: '#9C9C9C', zel: '#7A6E63', pruh: '#E6E6DE', kolej: '#C8BFB2',
                      nosnik: '#67615B', pilir: '#8A847C' };
@@ -3181,13 +3190,27 @@ function prepoctiMosty3d() {
   }
   const features = [];
   let podpis = 0;
+  // engine 236: výřez + 25 % okraj – mosty mimo pohled se nepočítají
+  let hr = null;
+  try { hr = mapa.getBounds(); } catch (e) { hr = null; }
+  let vzW = -180, vzE = 180, vzS = -90, vzN = 90;
+  if (hr) {
+    const okX = (hr.getEast() - hr.getWest()) * 0.25;
+    const okY = (hr.getNorth() - hr.getSouth()) * 0.25;
+    vzW = hr.getWest() - okX; vzE = hr.getEast() + okX;
+    vzS = hr.getSouth() - okY; vzN = hr.getNorth() + okY;
+  }
   const pridej = (ring, b, h, c) => {
     features.push({ type: 'Feature', properties: { b: +b.toFixed(1), h: +h.toFixed(1), c },
                     geometry: { type: 'Polygon', coordinates: [ring] } });
   };
+  let vPohledu = 0;
   for (const [fid, m] of mosty) {
     const p = m.p;
     const A = [+p.ax, +p.ay], B = [+p.bx, +p.by];
+    if (Math.max(A[0], B[0]) < vzW || Math.min(A[0], B[0]) > vzE
+        || Math.max(A[1], B[1]) < vzS || Math.min(A[1], B[1]) > vzN) continue;
+    vPohledu++;
     const eA = vyska(A), eB = vyska(B);
     if (eA == null || eB == null) continue;
     const zel = p.d === 'zel';
@@ -3197,19 +3220,41 @@ function prepoctiMosty3d() {
     const abx = (B[0] - A[0]) * kxM, aby = (B[1] - A[1]) * kyM;
     const ab2 = abx * abx + aby * aby || 1;
     const tNaOse = (P) => Math.max(0, Math.min(1, ((P[0] - A[0]) * kxM * abx + (P[1] - A[1]) * kyM * aby) / ab2));
-    // kusy seřadit podél osy A→B a otočit ty, které jdou proti ní
-    const kusy = m.cary.map((c) => {
-      const t0 = tNaOse(c[0]), t1 = tNaOse(c[c.length - 1]);
-      return { c: t0 <= t1 ? c : c.slice().reverse(), t: Math.min(t0, t1) };
-    }).sort((a, b) => a.t - b.t);
-    const cara = [];
-    for (const k of kusy) {
-      for (const q of k.c) {
-        const last = cara[cara.length - 1];
-        if (!last || Math.abs(last[0] - q[0]) > 1e-7 || Math.abs(last[1] - q[1]) > 1e-7) cara.push(q);
+    // ⛔⛔ engine 236: KUSY Z DLAŽDIC SE PŘEKRÝVAJÍ. Týž most vrací
+    // `querySourceFeatures` z několika dlaždic a u okraje se kusy opakují;
+    // prosté zřetězení (engine 233) udělalo z lomené čáry cik-cak (dopředu,
+    // zpět, dopředu) a pás z ní vyšel jako KLÍN (deformované mosty, Rtyně).
+    // Body se proto promítnou na osu A→B, seřadí podle polohy na ose a
+    // nechají se jen ty, které postupují dopředu a drží se u osy.
+    const klicOsy = fid + '|' + m.cary.length + '|' + m.cary.reduce((a, c) => a + c.length, 0);
+    let cara = mostyOsy.get(klicOsy);
+    if (!cara) {
+      const body = [];
+      const kolmoM = (P) => {
+        const dx = (P[0] - A[0]) * kxM, dy = (P[1] - A[1]) * kyM;
+        const t = tNaOse(P);
+        return Math.hypot(dx - abx * t, dy - aby * t);
+      };
+      for (const c of m.cary) {
+        for (const q of c) {
+          if (kolmoM(q) > 60) continue;          // výběžek mimo most
+          body.push({ q, t: tNaOse(q) });
+        }
+      }
+      body.sort((x, y) => x.t - y.t);
+      cara = [];
+      let posledniT = -1;
+      for (const b of body) {
+        if (b.t <= posledniT + 1e-4) continue;   // duplicita nebo krok zpět
+        posledniT = b.t;
+        cara.push(b.q);
+      }
+      if (cara.length >= 2) {
+        if (mostyOsy.size > 400) mostyOsy.clear();
+        mostyOsy.set(klicOsy, cara);
       }
     }
-    if (cara.length < 2) continue;
+    if (!cara || cara.length < 2) continue;
     // délka po čáře
     const useky = [];
     let delka = 0;
@@ -3282,8 +3327,13 @@ function prepoctiMosty3d() {
       const eC = vyska(C);
       if (eC == null) continue;
       const mostovka = eA + tNaOse(C) * (eB - eA);
-      let b = Math.min(mostovka - eC, strop);
-      if (b < 1.0) continue;                        // tady most sedí na zemi
+      // ⛔ engine 236: KRÁTKÝ MOST SE NESMÍ ZTRATIT. Terén je z DEM se sítí
+      // ~19 m, takže u mostu dlouhého 25 m padnou oba konce do téže buňky a
+      // rozdíl výšek je šum – „světlá výška" pak vyjde pod prahem a most
+      // zmizel úplně (Rtyně). Kreslí se proto vždy, nejmíň 0,6 m nad terénem;
+      // strop drží ZABAGED (`v`), takže se nevznese.
+      let b = Math.max(0.6, Math.min(mostovka - eC, strop));
+      if (strop < 1.0) continue;                    // ZABAGED: leží na zemi
       b = +b.toFixed(1);
       if (mostovkaStred === null) mostovkaStred = mostovka;
       podpis += b + fid * 0.001 + delka + d;
@@ -3295,7 +3345,7 @@ function prepoctiMosty3d() {
         const eP = vyska(P);
         if (eP == null) continue;
         const hP = Math.min(mostovka, eP + strop) - 1.0 - eP;
-        if (hP < 2.0) continue;
+        if (hP < 2.0) continue;                     // pilíř až od 2 m světlé výšky
         const s2 = 1.3, ux = sm[0], uy = sm[1], nx = -uy, ny = ux;
         const ring = [[P[0] + (ux * s2 + nx * s2) / kxM, P[1] + (uy * s2 + ny * s2) / kyM],
                       [P[0] + (ux * s2 - nx * s2) / kxM, P[1] + (uy * s2 - ny * s2) / kyM],
@@ -3320,7 +3370,7 @@ function prepoctiMosty3d() {
   mostyPodpis = nov;
   try { zdroj.setData(features.length ? { type: 'FeatureCollection', features } : prazdne); }
   catch (e) { /* zdroj se zrovna mění */ }
-  try { window.__casy = window.__casy || {}; window.__casy.mostyN = features.length; window.__casy.mostyKusu = mosty.size; } catch (e) { /* nic */ }
+  try { window.__casy = window.__casy || {}; window.__casy.mostyN = features.length; window.__casy.mostyKusu = mosty.size; window.__casy.mostyVPohledu = vPohledu; } catch (e) { /* nic */ }
 }
 
 function prepoctiBudovyHerni() {
