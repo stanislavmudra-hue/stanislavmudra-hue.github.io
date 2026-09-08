@@ -4073,7 +4073,9 @@ function prepoctiMosty3d() {
     // 1,5 m: vytažený je skoro každý most, plochý zůstává jen propustek. Aby
     // konce seděly i tam, kde DEM nezná násep, leží pod deskou plochá deska
     // (kreslí se vždy) a na koncích stojí opěry.
-    if (svetlaM < 1.5 || rozdilKoncu > 12) {
+    // engine 265: prah 1,5 -> 1,1 m, jinak by nizsi zdvih (1,4 m + pokles) shodil
+    // vetsinu mostu na plochou desku ("ty 3D mosty byly fajn")
+    if (svetlaM < 1.1 || rozdilKoncu > 12) {
       // ⭐ engine 239: DESKA POD SILNICÍ v betonovém odstínu, o kus širší než
       // vozovka (1,9×), s tmavšími okraji = zábradlí při pohledu shora. Bílé
       // pruhy NAD vozovkou (engine 238) vypadaly „nehezky"; takhle je most
