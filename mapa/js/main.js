@@ -3545,19 +3545,24 @@ function prepoctiMosty3d() {
       if (e != null && e < tMin) tMin = e;
     }
     if (!isFinite(tMin)) tMin = Math.min(eA, eB);
-    // ⭐ engine 249: deska na PRŮMĚRU výšek konců. Na vyšším konci ležela
-    // proto, aby tam dosedla – jenže druhý pak visel o celý rozdíl. Průměr
-    // ten rozdíl PŮLÍ: nižší konec visí o polovinu (dorovná opěra) a vyšší se
-    // zaboří do svahu, kde ho není vidět. Nikdy níž než metr nad dnem.
-    const mostovka = Math.max((eA + eB) / 2, tMin + 1.0 * ex);
+    // ⭐⭐ engine 250: DESKA LEŽÍ NA NIŽŠÍM KONCI. Uživatel: „mosty nesedí,
+    // jako kdyby měly jiná data než terén." Data jsou tatáž (týž DEM), chyba
+    // byla ve VOLBĚ výšky: deska je JEDEN VODOROVNÝ pás (MapLibre zvedne
+    // celý prvek o terén v jeho středu), takže sedne jen na jednu výšku.
+    //   · na vyšším konci (do enginu 248) → nižší konec VISÍ o celý rozdíl,
+    //   · na průměru (engine 249) → visí o polovinu na obou stranách,
+    //   · na NIŽŠÍM konci → nikde nevisí. Vyšší konec se zaboří do svahu,
+    //     kde ho není vidět, a přechod zakryje drapérovaný nájezd.
+    // Visící konec je vždycky horší než zabořený, proto minimum.
+    const mostovka = Math.max(Math.min(eA, eB), tMin + 1.0 * ex);
     const svetlaM = (mostovka - tMin) / ex;       // světlá výška ve skutečných metrech
     // ⛔⛔ engine 247: KDYŽ SE KONCE NESEJDOU, DEM LŽE. MapLibre staví extruzi
     // VODOROVNĚ (zvedne ji o terén ve středu prvku), takže deska sedne na vyšší
     // konec a druhý visí ve vzduchu o celý rozdíl. U kolejí nad Rtyní dal DEM
     // profil 175 → 198 m na 41 m délky (skok v modelu, ne skutečnost) a nad
-    // polem visela deska 23 m vysoko. Nad 6 m rozdílu proto plochý most –
-    // ten je drapérovaný a sejde se se silnicí vždycky. (engine 249: práh 3 → 6,
-    // protože deska teď leží na PRŮMĚRU konců, takže visí jen polovina rozdílu.)
+    // polem visela deska 23 m vysoko. Nad 12 m rozdílu proto plochý most – ten
+    // je drapérovaný a sejde se se silnicí vždycky. (engine 250: práh 6 → 12,
+    // protože deska leží na NIŽŠÍM konci, takže nevisí vůbec – jen se zabořuje.)
     const rozdilKoncu = Math.abs(eA - eB) / ex;
     const cely = podcara(0, delka);
     // ⭐⭐ engine 238: MALÝ MOST JE PLOCHÝ. Silnice je drapovaná na terén a DEM
@@ -3569,7 +3574,7 @@ function prepoctiMosty3d() {
     // 1,5 m: vytažený je skoro každý most, plochý zůstává jen propustek. Aby
     // konce seděly i tam, kde DEM nezná násep, leží pod deskou plochá deska
     // (kreslí se vždy) a na koncích stojí opěry.
-    if (svetlaM < 1.5 || rozdilKoncu > 6) {
+    if (svetlaM < 1.5 || rozdilKoncu > 12) {
       // ⭐ engine 239: DESKA POD SILNICÍ v betonovém odstínu, o kus širší než
       // vozovka (1,9×), s tmavšími okraji = zábradlí při pohledu shora. Bílé
       // pruhy NAD vozovkou (engine 238) vypadaly „nehezky"; takhle je most
