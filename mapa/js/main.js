@@ -1618,16 +1618,26 @@ function pridejAkvarelVzory(vynutit) {
         ctx.stroke();
       });
     }
-    // ⭐ engine 261: BRÁZDY – tenké tahy v témž směru, ať pole není jednolité
-    for (let i = 0; i < kolik(150); i++) {
+    // ⭐ engine 261: BRÁZDY – tenké tahy v témž směru, ať pole není jednolité.
+    // ⭐ engine 264 („pole více oraná"): brázda = DVOJICE tmavý hřbet + světlý
+    // hřeben posunutý kolmo o 1,4 px, výraznější (0,10 → 0,17) a hustší.
+    for (let i = 0; i < kolik(190); i++) {
       const x = r() * S; const y = r() * S;
       const d = (30 + r() * 70) * k;
-      ctx.strokeStyle = r() < 0.5 ? 'rgba(255,255,255,0.10)' : 'rgba(90,70,40,0.10)';
-      ctx.lineWidth = (0.8 + r() * 1.2) * k;
+      const o = 1.4 * k;                          // kolmý posun hřebene
+      const w = (0.8 + r() * 1.2) * k;
       torus((ox, oy) => {
+        ctx.strokeStyle = 'rgba(90,70,40,0.17)';
+        ctx.lineWidth = w;
         ctx.beginPath();
         ctx.moveTo(x + ox, y + oy);
         ctx.lineTo(x + ox + d * 0.85, y + oy - d * 0.5);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.lineWidth = w * 0.9;
+        ctx.beginPath();
+        ctx.moveTo(x + ox + 0.5 * o, y + oy + 0.85 * o);
+        ctx.lineTo(x + ox + d * 0.85 + 0.5 * o, y + oy - d * 0.5 + 0.85 * o);
         ctx.stroke();
       });
     }
@@ -1675,6 +1685,20 @@ function pridejAkvarelVzory(vynutit) {
         ctx.moveTo(x + ox, y + oy);
         ctx.lineTo(x + ox + d * sk, y + oy - d);
         ctx.stroke();
+      });
+    }
+    // ⭐ engine 264: KVÍTKY – drobné barevné tečky v barvách sezóny („louky
+    // více květnaté"; SEZONY.kvitky: jaro bílá/růžová, léto bílá/žlutá,
+    // podzim krémová/okrová, sníh bílá). Tečky nejsou tvar, přeskládání
+    // dlaždic se na nich nepozná.
+    for (let i = 0; i < kolik(120); i++) {
+      const x = r() * S; const y = r() * S;
+      const pr = (1.0 + r() * 1.6) * k;
+      ctx.fillStyle = SEZ.kvitky[r() < 0.55 ? 0 : 1];
+      torus((ox, oy) => {
+        ctx.beginPath();
+        ctx.arc(x + ox, y + oy, pr, 0, Math.PI * 2);
+        ctx.fill();
       });
     }
   });
@@ -3124,7 +3148,7 @@ const oknaKes = new Map();          // engine 232: klíč domu → hotová okna 
 /// světlo stylu barvu ztlumí (viz `proSvetlo`) a 3D domy v noci netmavly vůbec.
 /// Barvy proto jdou přes `proSvetlo` (rozsvícené okno BEZ nočního ztlumení –
 /// svítí samo) a `NOC_DOMY_TLUM` ztmaví v noci zdi a střechy.
-const OKNA_BARVA = { den: '#4F5D6B', noc: '#FFE9A8', zhasle: '#1A1F27' };
+const OKNA_BARVA = { den: '#4F5D6B', noc: '#FFF0C0', zhasle: '#1A1F27' };   // engine 264: noc svetlejsi (svetlo styl srazi na ~0,82)
 /// Kolik z nočního překryvu dostanou 3D domy (1 = jako zem). Půlka: dům
 /// zůstane čitelný, ale rozsvícené okno je proti němu jasně vidět.
 const NOC_DOMY_TLUM = 0.55;
@@ -3133,6 +3157,27 @@ const NOC_DOMY_TLUM = 0.55;
 /// jednotlivá okna pak přepíná časovač přes `feature-state` (`sv` 1/0), takže
 /// se nepřekresluje geometrie, jen paint dlaždice.
 const OKNA_SVITI_PRAH = 35;
+/// ⭐ engine 264: ZÁŘE OKEN („svítící okna skoro nesvítí, není glow záře").
+/// Rozsvícené okno má průsvitnou AURU – druhý prvek o `OKNA_ZARE_M` větší
+/// (2–8 cm před zdí, okno samo je 4–10 cm, takže zůstává vpředu) ve vlastní
+/// vrstvě `okolnik-okna-zare` s krytím 0,32. Zhasnutá okna mají auru nulové
+/// výšky (height = base), takže se nekreslí. Aura je prvek `i + N` k oknu `i`
+/// (okna první, aury za nimi, `generateId`), blikání ji přepíná zároveň.
+const OKNA_ZARE_M = 0.5;                 // 8. 9. noc: 0,35 bylo skoro nevidet
+const OKNA_ZARE_BARVA = '#FFD37A';
+const OKNA_ZARE_KRYTI = 0.42;
+const OKNA_ZARE_SVITI = ['any', ['==', ['feature-state', 'sv'], 1],
+  ['all', ['!=', ['feature-state', 'sv'], 0], ['<', ['coalesce', ['get', 'r'], 50], OKNA_SVITI_PRAH]]];
+function vyrazVyskyZare(noc) {
+  return noc ? ['case', OKNA_ZARE_SVITI, ['get', 'h'], ['get', 'b']] : ['get', 'b'];
+}
+function nastavZariOken(noc) {
+  if (!mapa || !mapa.getLayer('okolnik-okna-zare')) return;
+  try {
+    mapa.setPaintProperty('okolnik-okna-zare', 'fill-extrusion-height', vyrazVyskyZare(noc));
+    mapa.setPaintProperty('okolnik-okna-zare', 'fill-extrusion-color', proSvetlo(OKNA_ZARE_BARVA));
+  } catch (e) { /* styl se zrovna mění */ }
+}
 function vyrazBarvyOken(noc, krok) {
   if (!noc) return proSvetlo(ztlumNoci(OKNA_BARVA.den, krok));
   const sviti = proSvetlo(OKNA_BARVA.noc);          // světlo z okna se netlumí
@@ -3183,7 +3228,9 @@ function nastavBlikaniOken(noc) {
       const kolik = Math.max(1, Math.min(6, Math.round(n / 500)));
       for (let i = 0; i < kolik; i++) {
         const id = Math.floor(Math.random() * n);
-        mapa.setFeatureState({ source: 'okna-3d', id }, { sv: Math.random() < 0.45 ? 1 : 0 });
+        const sv = Math.random() < 0.45 ? 1 : 0;
+        mapa.setFeatureState({ source: 'okna-3d', id }, { sv });
+        mapa.setFeatureState({ source: 'okna-3d', id: id + n }, { sv });   // engine 264: aura okna
       }
     } catch (e) { /* zdroj se zrovna mění */ }
   }, 4000);
@@ -3199,11 +3246,22 @@ function nasadOkna3d() {
     if (!mapa.getLayer('okolnik-okna-3d')) {
       const pred = mapa.getLayer('akvarel-dekorace') ? 'akvarel-dekorace' : undefined;
       mapa.addLayer({ id: 'okolnik-okna-3d', type: 'fill-extrusion', source: 'okna-3d', minzoom: OKNA_OD_Z,
+        filter: ['!', ['has', 'z']],                     // engine 264: aury mají z: 1
         paint: { 'fill-extrusion-color': vyrazBarvyOken(typeof krokNoci === 'number' && krokNoci >= 2),
                  'fill-extrusion-height': ['get', 'h'],
                  'fill-extrusion-base': ['get', 'b'],
                  'fill-extrusion-opacity': 1,
                  'fill-extrusion-vertical-gradient': false } }, pred);
+    }
+    if (!mapa.getLayer('okolnik-okna-zare') && mapa.getLayer('okolnik-okna-3d')) {
+      const noc = typeof krokNoci === 'number' && krokNoci >= 2;
+      mapa.addLayer({ id: 'okolnik-okna-zare', type: 'fill-extrusion', source: 'okna-3d', minzoom: OKNA_OD_Z,
+        filter: ['==', ['get', 'z'], 1],
+        paint: { 'fill-extrusion-color': proSvetlo(OKNA_ZARE_BARVA),
+                 'fill-extrusion-height': vyrazVyskyZare(noc),
+                 'fill-extrusion-base': ['get', 'b'],
+                 'fill-extrusion-opacity': OKNA_ZARE_KRYTI,
+                 'fill-extrusion-vertical-gradient': false } }, 'okolnik-okna-3d');
     }
   } catch (e) { console.warn('[okna] vrstva', e); return false; }
   return true;
@@ -3263,6 +3321,7 @@ function prepoctiOkna3d() {
   }
   domy.sort((a, b) => a.d - b.d);
   const features = [];
+  const zare = [];                                  // engine 264: aury oken (za okny)
   const klice = [];
   let budov = 0, spocitano = 0;
   for (const dm of domy) {
@@ -3278,12 +3337,19 @@ function prepoctiOkna3d() {
     if (!okna.length) continue;
     budov++;
     klice.push(dm.klic);
-    for (const o of okna) { features.push(o); if (features.length >= OKNA_MAX) break; }
+    for (let i = 0; i < okna.length; i++) {
+      const o = okna[i];
+      if (o.properties.z) continue;                 // aury přijdou v páru s oknem
+      features.push(o);
+      const g = okna[i + 1];
+      zare.push(g && g.properties.z ? g : o);       // vždy stejný počet (záloha = okno samo)
+      if (features.length >= OKNA_MAX) break;
+    }
   }
   const nov = features.length + '|' + klice.join(';');
   if (nov === oknaPodpis) return;
   oknaPodpis = nov;
-  try { zdroj.setData(features.length ? { type: 'FeatureCollection', features } : OKNA_PRAZDNE); }
+  try { zdroj.setData(features.length ? { type: 'FeatureCollection', features: features.concat(zare) } : OKNA_PRAZDNE); }
   catch (e) { /* zdroj se zrovna mění */ }
   try {
     window.__casy = window.__casy || {};
@@ -3301,6 +3367,7 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
   if (eDum === null) return null;
   const out = [];
   const patra = [];               // engine 259: okna po PATRECH, ne po kusech
+  const patraZare = [];           // engine 264: aury oken po patrech (týž prvek → týž terén)
   const ring = dm.ring;
   const n = ring.length - 1;
   let plocha = 0;
@@ -3343,11 +3410,19 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
         r.push([cxo + (ux * a * sirka + nx * d) / kxM, cyo + (uy * a * sirka + ny * d) / kyM]);
       }
       r.push(r[0]);
+      // engine 264: aura – o OKNA_ZARE_M širší, 2–8 cm před zdí (okno 4–10 cm zůstává vpředu)
+      const rz = [];
+      const m = OKNA_ZARE_M / sirka;
+      for (const [a, d] of [[-0.5 - m, 0.02], [0.5 + m, 0.02], [0.5 + m, 0.08], [-0.5 - m, 0.08]]) {
+        rz.push([cxo + (ux * a * sirka + nx * d) / kxM, cyo + (uy * a * sirka + ny * d) / kyM]);
+      }
+      rz.push(rz[0]);
       for (let f = 0; f < pater; f++) {
         const zb = B + 1.0 + f * OKNA_PATRO_M;
         if (zb + 1.4 > H - 0.75 - 0.25) break;   // pod SPODNÍ hranou střechy
         if (zb < B) continue;                    // ani pod základnu domu
         (patra[f] || (patra[f] = [])).push([r]);
+        (patraZare[f] || (patraZare[f] = [])).push([rz]);
       }
     }
   }
@@ -3357,10 +3432,16 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
     const kusy = patra[f];
     if (!kusy || !kusy.length) continue;
     const zb = B + 1.0 + f * OKNA_PATRO_M;
+    const rnd = Math.floor(Math.random() * 100);
     out.push({ type: 'Feature',
-               properties: { b: +zb.toFixed(2), h: +(zb + 1.4).toFixed(2),
-                             r: Math.floor(Math.random() * 100) },
+               properties: { b: +zb.toFixed(2), h: +(zb + 1.4).toFixed(2), r: rnd },
                geometry: { type: 'MultiPolygon', coordinates: kusy } });
+    // engine 264: aura patra hned za oknem (prepoctiOkna3d je řadí za všechna okna)
+    out.push({ type: 'Feature',
+               properties: { z: 1, r: rnd,
+                             b: +Math.max(B, zb - OKNA_ZARE_M).toFixed(2),
+                             h: +Math.min(zb + 1.4 + OKNA_ZARE_M, H - 0.6).toFixed(2) },
+               geometry: { type: 'MultiPolygon', coordinates: patraZare[f] } });
   }
   return out;
 }
@@ -3456,8 +3537,8 @@ function faktorSvetla() {
 /// 3D vrstvami: silnici ztmaví, desku mostu ne. Cílová barva se proto ztlumí
 /// stejně, jinak most v noci SVÍTÍ (změřeno: deska 153,149,141 proti silnici
 /// 42,49,62). ⚠️ Ploché díly mostu leží pod překryvem, ty se netlumí.
-const NOC_TMA_KRYTI = [0, 0.22, 0.45, 0.78];
-const NOC_TMA_BARVA = [8, 18, 38];
+const NOC_TMA_KRYTI = [0, 0.20, 0.40, 0.66];   // engine 264: světlejší noc (viz TMA)
+const NOC_TMA_BARVA = [11, 26, 58];            // engine 264: #0B1A3A
 function ztlumNoci(hex, krok) {
   // ⛔ `krokNoci` se v `aplikujNoc` nastavuje AŽ NA KONCI – kdo tlumí během ní,
   // musí krok předat, jinak počítá se starým (engine 247: okna zůstala denní).
@@ -3536,6 +3617,7 @@ window.__mostyPrebarvi = function () {
       mapa.setPaintProperty('okolnik-okna-3d', 'fill-extrusion-color',
           vyrazBarvyOken(typeof krokNoci === 'number' && krokNoci >= 2));
     }
+    nastavZariOken(typeof krokNoci === 'number' && krokNoci >= 2);   // engine 264
     prebarviDomyNoci();
   } catch (e) { /* styl se zrovna mění */ }
 };
@@ -3928,10 +4010,12 @@ function prepoctiMosty3d() {
     // engine 260: o kousek výš („teď jsou zase moc utopené"). V rovině vyjde
     // 1,2 m – deska je vidět, ale nestojí na silnici jako stůl; nad údolím
     // se přidá skutečný pokles terénu.
-    const stropZdvihu = Math.min(delka < 12 ? 1.5 : 2.6, 1.2 + poklesM);
+    // engine 264 („ještě malinko zvedni"): 1,2 → 1,6 m nad nižším koncem,
+    // stropy 1,5/2,6 → 1,9/3,0 m; minimum nad terénem 1,0 → 1,3 m
+    const stropZdvihu = Math.min(delka < 12 ? 1.9 : 3.0, 1.6 + poklesM);
     const dno = krizeni > 0 ? Math.min(tMin, vyska(bodNa(delka / 2).P) || tMin) : tMin;
     const zKrizeni = krizeni > 0 ? dno + krizeni * ex : -Infinity;
-    const mostovka = Math.max(Math.min(eA, eB), tMin + 1.0 * ex,
+    const mostovka = Math.max(Math.min(eA, eB), tMin + 1.3 * ex,
                               Math.min(zKrizeni, Math.min(eA, eB) + stropZdvihu * ex));
     const svetlaM = (mostovka - tMin) / ex;       // světlá výška ve skutečných metrech
     // ⛔⛔ engine 247: KDYŽ SE KONCE NESEJDOU, DEM LŽE. MapLibre staví extruzi
@@ -5076,7 +5160,9 @@ function aplikujNoc() {
     // v1.396: plná noc tmavší (přání „ve 22:00 může být větší tma“)
     // ⭐ v1.424: díry/polostín/kaluže ODSTRANĚNY („vypadá to naprd“)
     // — tma je zase JEDNA vrstva, světla vesnic jen bodové záře oken
-    const TMA = [0, 0.22, 0.45, 0.78];
+    // engine 264 („ve tmě je vážně moc tma"): plná noc 0,78 → 0,66, soumrak
+    // 0,45 → 0,40; barva do modra – měsíční noc, ne černá díra
+    const TMA = [0, 0.20, 0.40, 0.66];
     if (!mapa.getLayer('noc-prekryv')) {
       // kotva jako dekorace: první nedrapovaná vrstva → překryv je
       // poslední v drapovaném bloku (ztmaví svět, nerozřízne stack)
@@ -5094,7 +5180,7 @@ function aplikujNoc() {
       // a mění se zřídka, skok okem prakticky nezachytitelný.
       mapa.addLayer({
         id: 'noc-prekryv', type: 'fill', source: 'noc-zdroj',
-        paint: { 'fill-color': '#081226', 'fill-opacity': TMA[krok] },
+        paint: { 'fill-color': '#0B1A3A', 'fill-opacity': TMA[krok] },
       }, kotva ? kotva.id : undefined);
     } else {
       // ⛔ ZAMRZLÝ PŘECHOD (v1.592, tatáž past jako u mlhy 12. 8.):
@@ -5199,6 +5285,7 @@ function aplikujNoc() {
         if (mapa.getLayer('okolnik-okna-3d')) {
           mapa.setPaintProperty('okolnik-okna-3d', 'fill-extrusion-color', vyrazBarvyOken(krok >= 2, krok));
         }
+        nastavZariOken(krok >= 2);                  // engine 264
         nastavBlikaniOken(krok >= 2);
         prebarviDomyNoci(krok);
         nastavZabarveniDekoraci(krok);

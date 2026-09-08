@@ -97,7 +97,7 @@ const Dekorace = (() => {
       hustota: 0.7,
     },
     kvet: {
-      rozestup: 100,
+      rozestup: 72,               // engine 264 („louky více květnaté"): 100 → 72 m
       zjemnit: true,
       // ⚠️ 6. 8. 2026 („nevidím obrázky květin a keřů"): `louka` je
       // v OMT jen `grass`/`wetland` – v české krajině vzácnost, takže
@@ -109,7 +109,7 @@ const Dekorace = (() => {
       ikony: ['deko-kvet-1', 'deko-kvet-2', 'deko-kvet-3',
               'deko-kvet-4', 'deko-kvet-5', 'deko-kvet-6'],
       k: 0.25,                    // ~5 m (malba, ne měřítko)
-      hustota: 0.62,
+      hustota: 0.8,               // engine 264: 0,62 → 0,8
     },
     // ⭐ v1.423: rostliny od uživatele (archy jaro/léto/podzim,
     // zima = podzimní suché; řez 5×4, standardní kolotoč čištění)
@@ -399,11 +399,21 @@ const Dekorace = (() => {
   /// prázdný během style.load zůstal STERILNÍ — setData pak plnil data
   /// i querySourceFeatures, ale dlaždice se nikdy nevykreslily (ověřeno
   /// pokusně; zdroj založený rovnou s daty kreslí okamžitě).
-  function pridejVrstvu(data) {
+  function pridejVrstvu(data, svetla) {
     if (!mapa || mapa.getSource('dekorace')) return;
     // buffer 0: s allow-overlap netřeba přesah — levnější přeskládání
     mapa.addSource('dekorace',
         { type: 'geojson', data, buffer: 0, maxzoom: 14 });
+    // ⛔⛔ engine 264: SVĚTLA SÍDEL VE VLASTNÍM ZDROJI. Mihotání přes
+    // `setFeatureState` na zdroji `dekorace` (tisíce stromů) přestavovalo
+    // paint buffery všech dekorací každých 400 ms (dlouhé úlohy 60–88 ms)
+    // a mapa se v noci překreslovala 26×/s i v klidu – noc měla o 100–170
+    // pomalých snímků na sadu gest víc než den. Malý zdroj = levný stav.
+    if (!mapa.getSource('dekorace-svetla-zdroj')) {
+      mapa.addSource('dekorace-svetla-zdroj',
+          { type: 'geojson', data: svetla || { type: 'FeatureCollection', features: [] },
+            buffer: 0, maxzoom: 14 });
+    }
     // (engine 217: sprite `deko-stin` zrušen – stíny stromů kreslí main.js)
     // POD MLHU: dekorace patří do barevného světa a odkrývají se
     // objevováním — nad šedou rytinou zelené stromky svítily (chyba
@@ -592,7 +602,7 @@ const Dekorace = (() => {
     const mihot = (zaklad) => ['*', zaklad,
         ['coalesce', ['feature-state', 'o'], 1]];
     mapa.addLayer({
-      id: 'dekorace-svetla', type: 'symbol', source: 'dekorace',
+      id: 'dekorace-svetla', type: 'symbol', source: 'dekorace-svetla-zdroj',   // engine 264
       minzoom: 12.6,
       filter: ['==', ['get', 'sv'], 1],
       layout: {
@@ -724,12 +734,15 @@ const Dekorace = (() => {
   // Běží jen v noci (vlajky z aplikujNoc) a při viditelné stránce.
   // -------------------------------------------------------------------------
   let svetlaEvidence = [];           // features s sv (plní `dopln`)
+  let svetlaPodpis = '';             // engine 264: podpis kolekce světel (vlastní zdroj)
   const svetlaCile = new Map();      // id → {ted, cil, krok}
 
   setInterval(() => {
     try {
-      if (!mapa || !mapa.getSource('dekorace')) return;
+      if (!mapa || !mapa.getSource('dekorace-svetla-zdroj')) return;
       if (document.visibilityState !== 'visible') return;
+      // engine 264: během gesta se nemihotá (každý stav = přestavba bufferů zdroje)
+      if (mapa.isMoving && mapa.isMoving()) return;
       const okna = !!window.__svetlaAktivni;
       if (!okna) {
         if (svetlaCile.size) svetlaCile.clear();
@@ -749,10 +762,10 @@ const Dekorace = (() => {
             let ted = 1;
             try {
               const st = mapa.getFeatureState(
-                  { source: 'dekorace', id: f.id });
+                  { source: 'dekorace-svetla-zdroj', id: f.id });
               if (st && typeof st.o === 'number') ted = st.o;
             } catch (e) { /* stav ještě není */ }
-            svetlaCile.set(f.id, { ted, cil, krok: 0.07 });
+            svetlaCile.set(f.id, { ted, cil, krok: 0.12 });   // engine 264: tik 700 ms, stejné tempo
           }
         }
         for (const [id, s] of svetlaCile) {
@@ -763,11 +776,11 @@ const Dekorace = (() => {
           } else {
             s.ted += Math.sign(d) * s.krok;
           }
-          mapa.setFeatureState({ source: 'dekorace', id }, { o: s.ted });
+          mapa.setFeatureState({ source: 'dekorace-svetla-zdroj', id }, { o: s.ted });
         }
       }
     } catch (e) { /* zdroj se právě mění — příští tik */ }
-  }, 400);
+  }, 700);
 
   // ⭐ v1.396: SVĚTLUŠKY VE VLASTNÍM RYCHLEJŠÍM TIKU (133 ms, „pohyb
   // udělej plynulejší“). Kroky jsou třetinové, takže rychlost letu
@@ -2320,9 +2333,25 @@ const Dekorace = (() => {
             .map((f) => f.geometry.coordinates);
         if (window.__nocniDiry) window.__nocniDiry();
       } catch (e) { /* nevadí */ }
-      const kolekce = { type: 'FeatureCollection', features: featury };
+      // engine 264: světla sídel (sv 1) jdou do vlastního zdroje, stromy bez nich
+      const svetlaFeat = featury.filter((f) => f.properties.sv === 1);
+      const kolekce = { type: 'FeatureCollection',
+                        features: svetlaFeat.length ? featury.filter((f) => f.properties.sv !== 1) : featury };
+      const kolekceSvetel = { type: 'FeatureCollection', features: svetlaFeat };
       const zdroj = mapa.getSource('dekorace');
       if (zdroj) {
+        const zs = mapa.getSource('dekorace-svetla-zdroj');
+        if (zs) {
+          const ps = svetlaFeat.length + ':' + (svetlaFeat.length ? posledniPodpis(svetlaFeat) : '');
+          if (ps !== svetlaPodpis) {
+            svetlaPodpis = ps;
+            if (typeof zapisAzVKlidu === 'function') {
+              zapisAzVKlidu('deko-svetla', () => zs.setData(kolekceSvetel));
+            } else {
+              zs.setData(kolekceSvetel);
+            }
+          }
+        }
         // ⛔⛔ NEZAPISOVAT, KDYŽ SE NIC NEZMĚNILO (6. 8. 2026, hon na
         // sekání). Se ZAPNUTÝM TERÉNEM je `setData` mimořádně drahé:
         // vyvolá per-dlaždici událost `data`, na kterou MapLibre zahodí
@@ -2345,7 +2374,8 @@ const Dekorace = (() => {
           }
         }
       } else if (featury.length) {
-        pridejVrstvu(kolekce);       // líné založení s prvními daty
+        svetlaPodpis = svetlaFeat.length + ':' + (svetlaFeat.length ? posledniPodpis(svetlaFeat) : '');
+        pridejVrstvu(kolekce, kolekceSvetel);   // líné založení s prvními daty
       }
     }
   }
