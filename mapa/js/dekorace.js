@@ -741,8 +741,10 @@ const Dekorace = (() => {
     try {
       if (!mapa || !mapa.getSource('dekorace-svetla-zdroj')) return;
       if (document.visibilityState !== 'visible') return;
-      // engine 264: během gesta se nemihotá (každý stav = přestavba bufferů zdroje)
+      // engine 264: během gesta se nemihotá (každý stav = přestavba bufferů zdroje);
+      // engine 265: a ještě 1,5 s po něm („zkus těch 1,5 s klidu kvůli výkonu")
       if (mapa.isMoving && mapa.isMoving()) return;
+      if (performance.now() - (window.__posledniPohybMs || 0) < 1500) return;
       const okna = !!window.__svetlaAktivni;
       if (!okna) {
         if (svetlaCile.size) svetlaCile.clear();
