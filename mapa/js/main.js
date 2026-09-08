@@ -2024,6 +2024,10 @@ function nasadBudovyHerni() {
   try {
     mapa.addLayer({ id: 'okolnik-budovy-herni-zdi', type: 'fill-extrusion',
       source: 'omt', 'source-layer': 'building', minzoom: 14.5,
+      // ⛔⛔ engine 248: STŘECHA ZAČÍNÁ O 15 cm NÍŽ NEŽ KONČÍ ZEĎ. Když obě
+      // plochy ležely přesně na sobě (obojí `H − 0,6`), grafická karta na
+      // šikmém pohledu nevěděla, která je blíž, a kreslila je po proužcích –
+      // to jsou ty „deformace" (moaré a pruh střešní barvy přes zeď).
       paint: { 'fill-extrusion-color': ['case', ODK, '#EAD9B6', PRUHLEDNA],
                'fill-extrusion-height': ['case', ODK, ['-', H, 0.6], 0],
                'fill-extrusion-base': ['case', ODK, B, 0],
@@ -2034,7 +2038,7 @@ function nasadBudovyHerni() {
                  ['match', ['%', ['id'], 3], 0, '#B9684A', 1, '#AE6045', '#C0745A'],
                  '#8E8478'], PRUHLEDNA],
                'fill-extrusion-height': ['case', ODK, H, 0],
-               'fill-extrusion-base': ['case', ODK, ['-', H, 0.6], 0],
+               'fill-extrusion-base': ['case', ODK, ['-', H, 0.75], 0],   // engine 248: o 15 cm níž než končí zeď
                'fill-extrusion-opacity': nastup,
                'fill-extrusion-vertical-gradient': false } }, pred);
     // ⭐ engine 214: ZABAGED v3 – kůlny, skleníky, přístřešky a věžovité
@@ -3144,7 +3148,7 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
       r.push(r[0]);
       for (let f = 0; f < pater; f++) {
         const zb = B + 1.0 + f * OKNA_PATRO_M;
-        if (zb + 1.4 + oprava > H - 0.6 - 0.25) break;   // pod horní hranou ZDI (zeď končí v H − 0,6)
+        if (zb + 1.4 + oprava > H - 0.75 - 0.25) break;  // pod SPODNÍ hranou střechy (engine 248: H − 0,75)
         if (zb + oprava < B) continue;                   // ani pod základnu domu
         out.push({ type: 'Feature', properties: { b: +(zb + oprava).toFixed(2), h: +(zb + 1.4 + oprava).toFixed(2),
                                                   r: Math.floor(Math.random() * 100) },
@@ -3275,7 +3279,7 @@ function proSvetlo(hex, f) {
 /// enginu 240 se kreslí v plné (`SILNICE_M` ve styles.js), takže se
 /// zdvojnásobil. ⚠️ Kdykoli se hne `SILNICE_M`, hni i tímhle.
 const MOST_SIRKY = { motorway: 12.5, trunk: 11.5, primary: 10, secondary: 8.5,
-                     tertiary: 7.5, minor: 6.5, service: 5.0, track: 4.2,
+                     tertiary: 7.0, minor: 6.0, service: 4.5, track: 4.2,
                      path: 2.8, rail: 5.0, transit: 5.0 };
 function nasadMosty3d() {
   if (!mapa || !mapa.getSource('omt')) return false;

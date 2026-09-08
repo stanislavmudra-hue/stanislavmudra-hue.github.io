@@ -1487,7 +1487,7 @@ const Dekorace = (() => {
   // ve skutečné šířce, takže koruna přerostla vozovku. Hodnota = poloviční
   // šířka vozovky + ~4 m na korunu.
   const SIRKY_CAR = { motorway: 12, trunk: 11, primary: 9, secondary: 8,
-                      tertiary: 7.2, minor: 6.5, service: 5, track: 4, path: 2.6 };
+                      tertiary: 7, minor: 6.2, service: 4.7, track: 4, path: 2.6 };
   const MRIZKA_CAR = 0.0025;        // ° (~280 m) – jemnější mřížka pro úseky
   // ⭐ 5. 9. 2026 večer: DRUH LESA (ZABAGED, vrstvy `les-jehlicnaty` /
   // `les-listnaty` v herním stylu) – jsou v indexu ploch, aby strom věděl,

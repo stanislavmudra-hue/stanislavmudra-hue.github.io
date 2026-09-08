@@ -478,8 +478,12 @@ const SILNICE_TRIDY = ['minor', 'tertiary', 'secondary', 'primary',
 /// náklonu vidět dvě vozovky vedle sebe (perspektiva vyvýšené desky).
 /// ⚠️ Používat POUZE ve vrstvách herní mapy, kde most staví `prepoctiMosty3d`.
 const NA_MOSTE = ['!=', ['get', 'brunnel'], 'bridge'];
+// ⛔ engine 248 („některé domy lezou do silnice"): změřeno v Přítkově – 14 ze
+// 111 domů zasahovalo do kresleného pásu, nejhorší o 1,6 m. `minor` 5,5 m je
+// městská ulice; vesnická vozovka má 4,5–5 m. ⚠️ Když se tohle hne, hni
+// i `MOST_CIL_ASFALT`/`MOST_SIRKY` v main.js a `SIRKY_CAR` v dekorace.js.
 const SILNICE_M = { motorway: 11.5, trunk: 10.5, primary: 9.0,
-                    secondary: 7.5, tertiary: 6.5, minor: 5.5 };
+                    secondary: 7.5, tertiary: 6.0, minor: 5.0 };
 const SILNICE_Z12 = { motorway: 3.0, trunk: 2.7, primary: 2.2,
                       secondary: 1.6, tertiary: 1.3, minor: 1.1 };
 const M_NA_PX_Z18 = 0.19;
@@ -874,7 +878,7 @@ function stylHerni(ctx) {
         filter: ['all', NA_MOSTE, ['==', ['get', 'class'], 'service']],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#A98F63',
-                 'line-width': sirkaMetry(0.9, 3.5, 14.5) } },
+                 'line-width': sirkaMetry(0.9, 3.0, 14.5) } },
       // ⭐ 5. 9. 2026: SILNICE JAKO SILNICE (přání: „šedá cesta s čárami
       // dle reality – plná, dva pruhy, přerušovaná"). Tři patra: tmavý
       // lem, šedý asfalt (odstín podle třídy), bílé značení: přerušovaná
@@ -892,8 +896,11 @@ function stylHerni(ctx) {
         'source-layer': 'transportation', minzoom: 11,
         filter: ['all', NA_MOSTE, ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]]],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
+        // ⛔ engine 248: LEM PŘI PŘIBLÍŽENÍ TENČÍ. Byl 12 % šířky + 0,8 m,
+        // tedy 0,73 m navíc na KAŽDOU stranu – na z18 se o něj rozšířil pás
+        // vozovky až na zdi domů („domy lezou do silnice").
         paint: { 'line-color': '#5E5850', 'line-opacity': 0.85,
-                 'line-width': sirkaSilnic((w, z) => +(w + (z >= 18 ? w * 0.12 + 0.8 : 1.4)).toFixed(2)) } },
+                 'line-width': sirkaSilnic((w, z) => +(w + (z >= 18 ? w * 0.06 + 0.4 : 1.4)).toFixed(2)) } },
       { id: 'silnice-asfalt', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 8,
         filter: ['all', NA_MOSTE, ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]]],
