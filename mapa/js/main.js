@@ -3473,6 +3473,64 @@ function prepoctiMosty3d() {
   // spojilo tentýž most z několika dlaždic (a dva mosty téže silnice) do
   // jednoho pásu přes celou obrazovku – klíčem je proto GEOMETRIE úseku
   // (první a poslední bod), ne id cesty.
+  // ⭐⭐ engine 257: SVĚTLÁ VÝŠKA Z TOHO, CO MOST PŘEKLENUJE. Z DEM ji spolehlivě
+  // vzít nejde – DMR 5G se sítí 19 m údolí vyhladí a most přes řeku vyjde metr
+  // nad terénem, takže se jako most nečte. Zato VÍME, co pod mostem leží:
+  // protne-li čára mostu vodu, je pod ním řeka (3 m), protne-li jinou silnici
+  // nebo koleje, je to mimoúrovňové křížení (5 m).
+  const vodaPolys = [], vodaLinie = [], cizi = [];
+  try {
+    for (const f of mapa.querySourceFeatures('omt', { sourceLayer: 'water' })) {
+      const g = f.geometry; if (!g) continue;
+      const kusy = g.type === 'Polygon' ? [g.coordinates] : (g.type === 'MultiPolygon' ? g.coordinates : []);
+      for (const poly of kusy) if (poly[0] && poly[0].length >= 4) vodaPolys.push(poly[0]);
+    }
+    for (const f of mapa.querySourceFeatures('omt', { sourceLayer: 'waterway' })) {
+      const g = f.geometry; if (!g) continue;
+      const cs = g.type === 'LineString' ? [g.coordinates] : (g.type === 'MultiLineString' ? g.coordinates : []);
+      for (const c of cs) for (let i = 1; i < c.length; i++) vodaLinie.push([c[i - 1], c[i]]);
+    }
+    for (const f of mapa.querySourceFeatures('omt', { sourceLayer: 'transportation' })) {
+      const p2 = f.properties || {};
+      if (p2.brunnel === 'bridge') continue;              // sám sebe nepočítat
+      if (['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'minor',
+           'rail', 'transit'].indexOf(p2['class']) < 0) continue;
+      const g = f.geometry; if (!g) continue;
+      const cs = g.type === 'LineString' ? [g.coordinates] : (g.type === 'MultiLineString' ? g.coordinates : []);
+      for (const c of cs) for (let i = 1; i < c.length; i++) cizi.push([c[i - 1], c[i]]);
+    }
+  } catch (e) { /* dlaždice se zrovna mění */ }
+  const vBodu = (ring, P) => {
+    let uvnitr = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if (((yi > P[1]) !== (yj > P[1]))
+          && (P[0] < (xj - xi) * (P[1] - yi) / ((yj - yi) || 1e-12) + xi)) uvnitr = !uvnitr;
+    }
+    return uvnitr;
+  };
+  /// Vrátí světlou výšku v metrech podle toho, co most překlenuje (0 = nic).
+  const svetlaPodleKrizeni = (body, kxL, kyL) => {
+    const vzorky = [];
+    for (let i = 1; i < 4; i++) {
+      const t = i / 4;
+      const A0 = body[0], B0 = body[body.length - 1];
+      vzorky.push([A0[0] + (B0[0] - A0[0]) * t, A0[1] + (B0[1] - A0[1]) * t]);
+    }
+    const dU = (P, u) => {
+      const ax = u[0][0] * kxL, ay = u[0][1] * kyL, bx = u[1][0] * kxL, by = u[1][1] * kyL;
+      const px = P[0] * kxL, py = P[1] * kyL;
+      const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-9;
+      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L2));
+      return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+    };
+    for (const q of vzorky) for (const u of cizi) if (dU(q, u) < 6) return 5.0;   // mimoúrovňové křížení
+    for (const q of vzorky) {
+      for (const r of vodaPolys) if (vBodu(r, q)) return 3.0;
+      for (const u of vodaLinie) if (dU(q, u) < 5) return 3.0;
+    }
+    return 0;
+  };
   const mosty = new Map();
   for (const f of prvky) {
     const p = f.properties || {};
@@ -3661,7 +3719,14 @@ function prepoctiMosty3d() {
     //   · na NIŽŠÍM konci → nikde nevisí. Vyšší konec se zaboří do svahu,
     //     kde ho není vidět, a přechod zakryje drapérovaný nájezd.
     // Visící konec je vždycky horší než zabořený, proto minimum.
-    const mostovka = Math.max(Math.min(eA, eB), tMin + 1.0 * ex);
+    // ⭐ engine 257: co most překlenuje, to určí světlou výšku. Zdvih nad
+    // NIŽŠÍM koncem je stropovaný na 2 m, aby se náběh nerozešel se silnicí –
+    // zbytek dorovnají opěry. Bez protnutí zůstává starý výpočet z DEM.
+    const krizeni = svetlaPodleKrizeni(cara, kxM, kyM);
+    const dno = krizeni > 0 ? Math.min(tMin, vyska(bodNa(delka / 2).P) || tMin) : tMin;
+    const zKrizeni = krizeni > 0 ? dno + krizeni * ex : -Infinity;
+    const mostovka = Math.max(Math.min(eA, eB), tMin + 1.0 * ex,
+                              Math.min(zKrizeni, Math.min(eA, eB) + 2.0 * ex));
     const svetlaM = (mostovka - tMin) / ex;       // světlá výška ve skutečných metrech
     // ⛔⛔ engine 247: KDYŽ SE KONCE NESEJDOU, DEM LŽE. MapLibre staví extruzi
     // VODOROVNĚ (zvedne ji o terén ve středu prvku), takže deska sedne na vyšší
@@ -3671,6 +3736,7 @@ function prepoctiMosty3d() {
     // je drapérovaný a sejde se se silnicí vždycky. (engine 250: práh 6 → 12,
     // protože deska leží na NIŽŠÍM konci, takže nevisí vůbec – jen se zabořuje.)
     const rozdilKoncu = Math.abs(eA - eB) / ex;
+    if (krizeni > 0) podpis += krizeni;
     const cely = podcara(0, delka);
     // ⭐⭐ engine 238: MALÝ MOST JE PLOCHÝ. Silnice je drapovaná na terén a DEM
     // (síť ~19 m) nezná náspy ani zářezy, takže vodorovná deska u jednoho konce

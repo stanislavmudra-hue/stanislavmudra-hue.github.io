@@ -201,10 +201,30 @@ function stylTuristicka(ctx) {
     name: 'Okolník — Turistická',
     glyphs: KONFIG.glyphs,
     sky: obloha(),
-    sources: zdroje(ctx),
+    sources: zdroje(ctx, {
+    krajina: { type: 'vector', url: r2('krajina7.pmtiles'), promoteId: 'fid',
+               attribution: '© ČÚZK ZABAGED®' },
+    }),
     layers: [
       { id: 'pozadi', type: 'background',
         paint: { 'background-color': '#f4efe3' } },
+      // ⭐ engine 257 („dej ty ZABAGED trasy i do Cestovatele a Dobyvatele"):
+      // polní a lesní cesty (1,19 M) a pěšiny (74 k) ze ZABAGED. Měkká plná
+      // linka – kde OSM cestu má, splyne s ní; v lese, kde OSM nic nemá, svítí
+      // sama. (Proč ne čárkovaně: dvě čárkované čáry vedle sebe = „zdvojené
+      // cesty", viz engine 256.)
+      { id: 'zab-cesty', type: 'line', source: 'krajina', 'source-layer': 'cesty',
+        minzoom: 13, filter: ['==', ['get', 't'], 'cesta'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#8B7550', 'line-blur': 0.6,
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.32, 15, 0.55],
+                 'line-width': sirkaMetry(1.1, 1.8, 13) } },
+      { id: 'zab-pesiny', type: 'line', source: 'krajina', 'source-layer': 'cesty',
+        minzoom: 13.5, filter: ['==', ['get', 't'], 'pesina'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#96805C', 'line-blur': 0.6,
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 13.5, 0.3, 15, 0.5],
+                 'line-width': sirkaMetry(0.9, 1.1, 13.5) } },
       { id: 'les', type: 'fill', source: 'omt', 'source-layer': 'landcover',
         filter: ['==', ['get', 'class'], 'wood'],
         paint: { 'fill-color': '#cadfb6', 'fill-opacity': 0.85 } },
@@ -1193,7 +1213,10 @@ function stylDobyvatel(ctx) {
     name: 'Okolník — Dobyvatel',
     glyphs: KONFIG.glyphs,
     sky: obloha(),
-    sources: zdroje(ctx),
+    sources: zdroje(ctx, {
+    krajina: { type: 'vector', url: r2('krajina7.pmtiles'), promoteId: 'fid',
+               attribution: '© ČÚZK ZABAGED®' },
+    }),
     layers: [
       { id: 'pozadi', type: 'background',
         paint: { 'background-color': '#f2efe6' } },
@@ -1208,6 +1231,23 @@ function stylDobyvatel(ctx) {
                  'hillshade-shadow-color': '#6e6150',
                  // odlesk = barva papíru (bílá vysvěcovala vady DEM)
                  'hillshade-highlight-color': '#f5f1e4' } },
+      // ⭐ engine 257 („dej ty ZABAGED trasy i do Cestovatele a Dobyvatele"):
+      // polní a lesní cesty (1,19 M) a pěšiny (74 k) ze ZABAGED. Měkká plná
+      // linka – kde OSM cestu má, splyne s ní; v lese, kde OSM nic nemá, svítí
+      // sama. (Proč ne čárkovaně: dvě čárkované čáry vedle sebe = „zdvojené
+      // cesty", viz engine 256.)
+      { id: 'zab-cesty', type: 'line', source: 'krajina', 'source-layer': 'cesty',
+        minzoom: 13, filter: ['==', ['get', 't'], 'cesta'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#8B7550', 'line-blur': 0.6,
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.32, 15, 0.55],
+                 'line-width': sirkaMetry(1.1, 1.8, 13) } },
+      { id: 'zab-pesiny', type: 'line', source: 'krajina', 'source-layer': 'cesty',
+        minzoom: 13.5, filter: ['==', ['get', 't'], 'pesina'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#96805C', 'line-blur': 0.6,
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 13.5, 0.3, 15, 0.5],
+                 'line-width': sirkaMetry(0.9, 1.1, 13.5) } },
       // jemné zvýraznění vodstva (přání 28. 8.) — stejné jako web
       { id: 'voda', type: 'fill', source: 'omt',
         'source-layer': 'water',
