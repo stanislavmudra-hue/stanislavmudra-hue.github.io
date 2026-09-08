@@ -8676,6 +8676,21 @@ function potlacDuplicity() {
   // past jako u terénu) a potlačení se přes ni TIŠE nikdy nenasadilo;
   // chybějící vrstvy odchytá try/catch u každé vlastnosti zvlášť.
   if (!mapa || !mapa.getStyle) return;
+  // ⚡ engine 264: každé `setPaintProperty` s výrazem `within` na vrstvách POI
+  // a vrcholů = přepočet stylu nad celým zdrojem OMT; volalo se při KAŽDÉM
+  // hlášení míst (16× za sadu gest, úlohy až 620 ms). Beze změny množiny
+  // míst a stylu se nic nepřepisuje; po výměně stylu (vrstvy bez našeho
+  // výrazu) podpis nesedí a nasadí se znovu.
+  try {
+    const sonda = mapa.getLayer('ink-vrcholy')
+        ? JSON.stringify(mapa.getPaintProperty('ink-vrcholy', 'text-opacity') || null).slice(0, 16) : '';
+    const podpisKruhu = (posledniMista || [])
+        .map((m) => (typeof m.lat === 'number' && typeof m.lng === 'number')
+            ? m.lng.toFixed(5) + ',' + m.lat.toFixed(5) : '').join(';')
+        + '|' + (typeof aktualniKod !== 'undefined' ? aktualniKod : '') + '|' + sonda;
+    if (podpisKruhu === potlacDuplicity._podpis) return;
+    potlacDuplicity._podpis = podpisKruhu;
+  } catch (e) { /* bez brány */ }
   try {
     const R = 0.00028;   // ~31 m na severu Čech
     const kruhy = [];
@@ -8800,6 +8815,7 @@ function nasadOdznakNavstevy() {
   }
   nasadOdznakNavstevy._pokusu = 0;
   if (!mapa.getLayer('okolnik-navsteva-odznak')) {
+    nasadOdznakNavstevy._posl = null;            // engine 264: nová vrstva → filtr nastavit
     mapa.addLayer({
       id: 'okolnik-navsteva-odznak',
       type: 'symbol',
@@ -8837,15 +8853,23 @@ function nasadOdznakNavstevy() {
       } catch (err) { console.warn('[most] odznak návštěvy', err); }
     });
   }
-  mapa.setFilter('okolnik-navsteva-odznak',
-      ['==', ['get', 'id'], idNabidkyNavstevy || '\u0000']);
+  // ⚡ engine 264: `setFilter` = přeparsování celého zdroje míst; appka posílá
+  // místa při každém hlášení výřezu (16× za sadu gest), id odznaku se ale
+  // mění jen klepnutím. Beze změny se filtr nesahá.
+  const klicOdznaku = idNabidkyNavstevy || '';
+  const zmenaOdznaku = nasadOdznakNavstevy._posl !== klicOdznaku;
+  if (zmenaOdznaku) {
+    nasadOdznakNavstevy._posl = klicOdznaku;
+    mapa.setFilter('okolnik-navsteva-odznak',
+        ['==', ['get', 'id'], idNabidkyNavstevy || '\u0000']);
+  }
   nasadOdznakIlustrace();
   // ⛔⛔ BEZ PŘEPARSOVÁNÍ SE ODZNAK NEUKÁŽE. Symboly dlaždice se
   // rozparsují jednou; obrázek přidaný `addImage` AŽ POTÉ se do nich
   // sám nepromítne — vrstva má správný filtr, obrázek je v atlasu
   // a přesto `queryRenderedFeatures` vrací NULU (změřeno). Tatáž past,
   // kvůli které `nactiIkonyZdroje` na závěr přepisuje zdroj.
-  if (idNabidkyNavstevy) {
+  if (idNabidkyNavstevy && zmenaOdznaku) {      // engine 264: jen při změně id
     try { zajistiIkonu(IKONA_ODZNAKU); } catch (e) { /* nevadi */ }
     preparsujMistaPozdeji();
   }
@@ -8866,6 +8890,7 @@ function nasadOdznakIlustrace() {
       ? idNabidkyNavstevy.slice(6)
       : null;
   if (!mapa.getLayer('ilus-navsteva-odznak')) {
+    nasadOdznakIlustrace._posl = null;           // engine 264: nová vrstva → filtr nastavit
     try { zajistiIkonu(IKONA_ODZNAKU); } catch (e) { /* nevadí */ }
     mapa.addLayer({
       id: 'ilus-navsteva-odznak',
@@ -8895,6 +8920,8 @@ function nasadOdznakIlustrace() {
       } catch (err) { console.warn('[most] odznak kresby', err); }
     });
   }
+  if (nasadOdznakIlustrace._posl === (slug || '')) return;   // engine 264: beze změny nesahat
+  nasadOdznakIlustrace._posl = slug || '';
   mapa.setFilter('ilus-navsteva-odznak',
       ['==', ['get', 's'], slug || '\u0000']);
 }
