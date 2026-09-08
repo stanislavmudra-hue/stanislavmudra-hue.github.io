@@ -1482,8 +1482,12 @@ const Dekorace = (() => {
   const ZAKAZ_PLOCHY = ['voda', 'budovy-vypln'];
   // silnice a cesty jako ČÁRY se šířkou podle třídy (m, včetně rezervy)
   const CARY_ZAKAZ = { 'silnice-asfalt': 1, 'silnice-servisni': 1, 'cesty': 1 };
-  const SIRKY_CAR = { motorway: 9, trunk: 8, primary: 6, secondary: 5,
-                      tertiary: 4.5, minor: 4, service: 3, track: 2.2, path: 1.2 };
+  // ⛔ engine 247 („po rozšíření stromy lezou do silnice"): obal byl počítaný
+  // pro POLOVIČNÍ šířky silnic (SILNICE_MERITKO 0,55). Od enginu 240 se kreslí
+  // ve skutečné šířce, takže koruna přerostla vozovku. Hodnota = poloviční
+  // šířka vozovky + ~4 m na korunu.
+  const SIRKY_CAR = { motorway: 12, trunk: 11, primary: 9, secondary: 8,
+                      tertiary: 7.2, minor: 6.5, service: 5, track: 4, path: 2.6 };
   const MRIZKA_CAR = 0.0025;        // ° (~280 m) – jemnější mřížka pro úseky
   // ⭐ 5. 9. 2026 večer: DRUH LESA (ZABAGED, vrstvy `les-jehlicnaty` /
   // `les-listnaty` v herním stylu) – jsou v indexu ploch, aby strom věděl,
