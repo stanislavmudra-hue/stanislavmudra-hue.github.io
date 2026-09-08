@@ -2310,6 +2310,44 @@ function naplanujStinyDomu(zaMs) {
   if (stinyCasovac) return;
   stinyCasovac = setTimeout(() => { stinyCasovac = null; prepoctiStinyDomu(); }, zaMs || 300);
 }
+/// ⭐ engine 262: JEDNA VÝMĚNA DLAŽDIC NARAZ. Dva `setTiles` těsně po sobě
+/// (domy hned, kopce po workeru o ~150 ms) MapLibre nesloučí: každou dlaždici
+/// natahuje DVAKRÁT a vyhrává odpověď, která dorazí POSLEDNÍ – změřeno 8. 9.:
+/// odpovědi obou vln se prokládaly, část dlaždic skončila se STARŠÍM obsahem.
+/// Proto: dokud zdroj nedohrál, další výměna jen čeká (`stinyZnovu`) a spustí
+/// se po `sourcedata` s `isSourceLoaded` (záloha 2,6 s). Plátno je vždy
+/// aktuální – protokol `stiny://` z něj řeže až při požadavku.
+let stinyNacitaOd = 0;
+let stinyZnovu = false;
+let stinyZnovuCasovac = null;
+let stinyPosluchacMapy = null;
+function publikujStiny() {
+  if (!mapa || !mapa.getSource('stiny-domu')) return;
+  const ted = performance.now();
+  if (stinyNacitaOd && ted - stinyNacitaOd < 2500) {
+    stinyZnovu = true;
+    if (!stinyZnovuCasovac) {
+      stinyZnovuCasovac = setTimeout(() => { stinyZnovuCasovac = null; if (stinyZnovu) publikujStiny(); }, 2600);
+    }
+    return;
+  }
+  if (stinyPosluchacMapy !== mapa) {
+    stinyPosluchacMapy = mapa;
+    mapa.on('sourcedata', (e) => {
+      if (!e || e.sourceId !== 'stiny-domu' || !e.isSourceLoaded || !stinyNacitaOd) return;
+      // události vyvolané vlastním setTiles (dlaždice ještě staré) přeskočit
+      if (performance.now() - stinyNacitaOd < 60) return;
+      stinyNacitaOd = 0;
+      if (stinyZnovu) publikujStiny();
+    });
+  }
+  stinyZnovu = false;
+  if (stinyZnovuCasovac) { clearTimeout(stinyZnovuCasovac); stinyZnovuCasovac = null; }
+  stinyVerze++;
+  stinyNacitaOd = ted;
+  try { mapa.getSource('stiny-domu').setTiles(['stiny://' + stinyVerze + '/{z}/{x}/{y}']); }
+  catch (e) { stinyNacitaOd = 0; /* zdroj se zrovna mění */ }
+}
 function mercX(lng) { return (180 + lng) / 360; }
 function mercY(lat) {
   return (180 - 180 / Math.PI * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))) / 360;
@@ -2464,7 +2502,7 @@ let stinyWorker = null, stinyWorkerChyba = false;
 let terenMaska = null;              // { podpis, G, img: ImageData, veStinu }
 let terenCekaPodpis = '';
 let terenPozadavekId = 0;
-const terenPozadavky = new Map();   // id → podpis
+const terenPozadavky = new Map();   // id → { podpis, rozsah, az, el } (engine 262)
 function zajistiStinyWorker() {
   if (stinyWorker || stinyWorkerChyba) return stinyWorker;
   try {
@@ -2479,11 +2517,15 @@ function zajistiStinyWorker() {
         return;
       }
       if (m.typ === 'hotovo') {
-        const podpis = terenPozadavky.get(m.id);
+        const poz = terenPozadavky.get(m.id);
         terenPozadavky.delete(m.id);
-        if (!podpis) return;
+        if (!poz) return;
+        const podpis = poz.podpis;
         try {
-          terenMaska = { podpis, G: m.G, img: new ImageData(new Uint8ClampedArray(m.px), m.G, m.G), veStinu: m.veStinu };
+          // engine 262: rozsah a světlo masky – kvůli dočasnému použití, než
+          // dojde nová (kresliStarouMaskuTerenu)
+          terenMaska = { podpis, G: m.G, img: new ImageData(new Uint8ClampedArray(m.px), m.G, m.G), veStinu: m.veStinu,
+                         rozsah: poz.rozsah, az: poz.az, el: poz.el };
         } catch (e) { terenMaska = null; return; }
         if (terenCekaPodpis === podpis) terenCekaPodpis = '';
         try { window.__casy = window.__casy || {}; window.__casy.stinyTerenMs = m.ms; window.__casy.stinyTerenBunek = m.veStinu; window.__casy.stinyTerenWorker = true; } catch (e) { /* nic */ }
@@ -2548,6 +2590,28 @@ function demMozaikaPro(zD, x0, y0, x1, y1) {
   demMozaika = { klic, zD, x0, y0, nx, ny, data, S, V };
   return demMozaika;
 }
+/// engine 262: poslední hotová maska kopců položená na plátno s NOVÝM rozsahem
+/// r (maska zná svůj rozsah v Mercatoru → lineární přeložení, přesah ořízne
+/// plátno). Jen při podobném světle: do 6° azimutu a 4° výšky – po dlouhé
+/// pauze appky by starý stín ukazoval jinam, to je horší než chvíli nic.
+function kresliStarouMaskuTerenu(ctx, r, W, H) {
+  const m = terenMaska;
+  if (!m || !m.rozsah || !m.veStinu || !stinyTerenPlatno) return false;
+  const dAz = Math.abs((((m.az - stinSvetlo.az) % 360) + 540) % 360 - 180);
+  if (dAz > 6 || Math.abs(m.el - stinSvetlo.el) > 4) return false;
+  const q = m.rozsah;
+  const kx = W / (r.x1 - r.x0), ky = H / (r.y1 - r.y0);
+  const dx0 = (q.x0 - r.x0) * kx, dy0 = (q.y0 - r.y0) * ky;
+  const dw = (q.x1 - q.x0) * kx, dh = (q.y1 - q.y0) * ky;
+  if (!(dw > 0 && dh > 0) || dx0 >= W || dy0 >= H || dx0 + dw <= 0 || dy0 + dh <= 0) return false;
+  try {
+    const tctx = stinyTerenPlatno.getContext('2d');
+    tctx.putImageData(m.img, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(stinyTerenPlatno, dx0, dy0, dw, dh);
+  } catch (e) { return false; }
+  return true;
+}
 /// Stíny terénu do ctx (pomocné plátno W×H, rozsah r). Vrací true, když se
 /// kreslilo (nebo nebylo co), false, když chybí dlaždice DEM (přijde přepočet).
 function kresliStinyTerenu(ctx, r, W, H, mpu, stredLat, ex) {
@@ -2592,7 +2656,8 @@ function kresliStinyTerenu(ctx, r, W, H, mpu, stredLat, ex) {
     if (terenCekaPodpis !== podpis) {
       terenCekaPodpis = podpis;
       const id = ++terenPozadavekId;
-      terenPozadavky.set(id, podpis);
+      terenPozadavky.set(id, { podpis, rozsah: { x0: r.x0, x1: r.x1, y0: r.y0, y1: r.y1 },
+                               az: stinSvetlo.az, el: stinSvetlo.el });
       const klice = [];
       for (let ty = y0; ty <= y1; ty++) {
         for (let tx = x0; tx <= x1; tx++) {
@@ -2606,7 +2671,14 @@ function kresliStinyTerenu(ctx, r, W, H, mpu, stredLat, ex) {
                          KROKU_BLIZKO, KROKU_DALEKO, HRUBOST });
       } catch (e) { terenCekaPodpis = ''; terenPozadavky.delete(id); }
     }
-    return true;                                   // tentokrát bez kopců, po dojití masky přepočet
+    // ⭐ engine 262: NEŽ DOJDE NOVÁ MASKA, KRESLÍ SE STARÁ (přeložená na nový
+    // rozsah). Dřív se první průchod kreslil BEZ KOPCŮ a druhý (o ~150 ms
+    // později, po workeru) je doplnil – na obrazovce stíny kopců na půl
+    // vteřiny ZMIZELY a zase naskočily („sem tam problikávají všechny
+    // stíny"), při každé změně světla (časovač 5 min) i po každém posunu.
+    // Po dojití přesné masky přijde přepočet a přesná ji nahradí.
+    kresliStarouMaskuTerenu(ctx, r, W, H);
+    return true;                                   // po dojití masky přepočet
   }
   // --- záloha bez workeru: synchronně
   const moz = demMozaikaPro(zD, x0, y0, x1, y1);
@@ -2901,11 +2973,10 @@ function prepoctiStinyDomu() {
   stinyPodpis = podpis;
   stinyRozsah = r;
   // engine 221: nová verze v URL → dlaždice se přenačtou z plátna (staré drží
-  // do příchodu nových); událost zdroje zároveň uvolní terénní RTT keš
+  // do příchodu nových); událost zdroje zároveň uvolní terénní RTT keš.
+  // engine 262: přes publikujStiny – nikdy dvě výměny naráz.
   srovnejPoradiStinu(true);
-  stinyVerze++;
-  try { mapa.getSource('stiny-domu').setTiles(['stiny://' + stinyVerze + '/{z}/{x}/{y}']); }
-  catch (e) { /* zdroj se zrovna mění */ }
+  publikujStiny();
   try {
     window.__casy = window.__casy || {};
     window.__casy.stinyMs = Math.round(performance.now() - t0);
