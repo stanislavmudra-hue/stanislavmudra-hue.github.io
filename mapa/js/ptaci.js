@@ -49,7 +49,7 @@ const Ptaci = (() => {
     // ⭐ engine 258: STÍN VE TVARU KÁNĚTE. Byla to elipsa s přechodem; teď je
     // to TÁŽ silueta jako pták, jen načerno (`brightness(0)`), rozmazaná
     // a zploštělá – a mává křídly zároveň s ním (třída `kane-machani`).
-    + '.kane-stin svg{filter:brightness(0) blur(1.6px);opacity:.85;}';
+    + '.kane-stin svg{filter:brightness(0) blur(4px);opacity:.6;}';
 
   // Káně SHORA, letí nahoru (-y). Proporce káněte: rozpětí ≈ 2,4× délka,
   // široká zaoblená křídla s rovnější přední hranou a 5 roztaženými
@@ -295,7 +295,8 @@ const Ptaci = (() => {
       p.stin.style.opacity = (sila * p.op).toFixed(2);
       p.stin.style.transform = 'translate(-50%, -50%) translate(' + bs.x.toFixed(1)
         + 'px, ' + bs.y.toFixed(1) + 'px) rotate(' + otoc.toFixed(1) + 'deg) scale('
-        + (mer * 0.95).toFixed(3) + ', ' + (mer * 0.72).toFixed(3) + ')';
+        // engine 259: stín je MENŠÍ než pták (leží 120 m pod ním) a měkký
+        + (mer * 0.55).toFixed(3) + ', ' + (mer * 0.40).toFixed(3) + ')';
     }
   }
 

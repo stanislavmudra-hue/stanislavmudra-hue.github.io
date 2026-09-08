@@ -3117,6 +3117,7 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
   const eDum = vyska([dm.cx, dm.cy]);
   if (eDum === null) return null;
   const out = [];
+  const patra = [];               // engine 259: okna po PATRECH, ne po kusech
   const ring = dm.ring;
   const n = ring.length - 1;
   let plocha = 0;
@@ -3134,13 +3135,11 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
     // okno a `queryTerrainElevation` stojí ~0,1 ms – při 3 000 oknech to bylo
     // 240 ms na přepočet (změřeno). Zeď je nejvýš pár desítek metrů, takže
     // střed zdi stačí; u krátkých zdí stačí střed domu.
-    // ⛔⛔ engine 258: TERÉN SE MUSÍ MĚNIT PO DÉLCE STĚNY. Jeden vzorek uprostřed
-    // (engine 236) stačil na krátké zdi, ale u dlouhé stěny ve svahu skončilo
-    // okno na konci jinde než zeď a ODLEPILO SE („některá okna levitují") –
-    // MapLibre totiž zvedá KAŽDÝ prvek o terén v JEHO těžišti. Dva vzorky na
-    // koncích + interpolace stojí o jeden dotaz víc na stěnu, ne na okno.
-    const eZedA = L > 10 ? vyska(P) : eDum;
-    const eZedB = L > 10 ? vyska(Q) : eDum;
+    // ⛔⛔⛔ engine 259: ŽÁDNÁ KOREKCE TERÉNU. Okna jednoho patra jsou JEDEN
+    // prvek (viz konec funkce), takže mají SPOLEČNÉ těžiště uprostřed domu –
+    // tam, kde má těžiště zeď – a zvednou se přesně s ní. Dopočítávat rozdíl
+    // terénu (engine 235–258) byl boj s vlastním ocasem: každé okno bylo
+    // vlastní prvek a MapLibre ho zvedal o terén v JEHO těžišti.
     const pocet = Math.max(1, Math.floor(L / OKNA_ROZESTUP_M));
     const sirka = L < 4 ? 0.9 : 1.2;
     // ⛔⛔ engine 235: KOREKCE MUSÍ BÝT MALÁ A OKNO SE MUSÍ VEJÍT POD STŘECHU.
@@ -3151,9 +3150,6 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
     // ZE ZKORIGOVANÉ výšky.
     for (let k = 0; k < pocet; k++) {
       const t = (k + 0.5) / pocet;
-      // výška terénu POD TÍMHLE oknem (lineárně po stěně)
-      const eZed = (eZedA === null || eZedB === null) ? null : eZedA + (eZedB - eZedA) * t;
-      const oprava = eZed === null ? 0 : Math.max(-2, Math.min(2, eDum - eZed));
       const cxo = P[0] + (Q[0] - P[0]) * t, cyo = P[1] + (Q[1] - P[1]) * t;
       const r = [];
       // ⛔ engine 235: PŘESAH JEN 4 cm. Okno je krabička před zdí; s přesahem
@@ -3166,13 +3162,22 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
       r.push(r[0]);
       for (let f = 0; f < pater; f++) {
         const zb = B + 1.0 + f * OKNA_PATRO_M;
-        if (zb + 1.4 + oprava > H - 0.75 - 0.25) break;  // pod SPODNÍ hranou střechy (engine 248: H − 0,75)
-        if (zb + oprava < B) continue;                   // ani pod základnu domu
-        out.push({ type: 'Feature', properties: { b: +(zb + oprava).toFixed(2), h: +(zb + 1.4 + oprava).toFixed(2),
-                                                  r: Math.floor(Math.random() * 100) },
-                   geometry: { type: 'Polygon', coordinates: [r] } });
+        if (zb + 1.4 > H - 0.75 - 0.25) break;   // pod SPODNÍ hranou střechy
+        if (zb < B) continue;                    // ani pod základnu domu
+        (patra[f] || (patra[f] = [])).push([r]);
       }
     }
+  }
+  // ⭐ engine 259: jedno patro = JEDEN prvek (MultiPolygon všech jeho oken).
+  // Společné těžiště leží uprostřed domu, takže se okna zvednou s ním.
+  for (let f = 0; f < patra.length; f++) {
+    const kusy = patra[f];
+    if (!kusy || !kusy.length) continue;
+    const zb = B + 1.0 + f * OKNA_PATRO_M;
+    out.push({ type: 'Feature',
+               properties: { b: +zb.toFixed(2), h: +(zb + 1.4).toFixed(2),
+                             r: Math.floor(Math.random() * 100) },
+               geometry: { type: 'MultiPolygon', coordinates: kusy } });
   }
   return out;
 }
@@ -3730,11 +3735,18 @@ function prepoctiMosty3d() {
     // ⭐ engine 257: co most překlenuje, to určí světlou výšku. Zdvih nad
     // NIŽŠÍM koncem je stropovaný na 2 m, aby se náběh nerozešel se silnicí –
     // zbytek dorovnají opěry. Bez protnutí zůstává starý výpočet z DEM.
+    // ⛔ engine 259: MOST NESMÍ STÁT NA SILNICI JAKO STŮL. Engine 257 zvedal
+    // desku o 3 m nad každou vodou – i nad potokem v rovině, kde okolní terén
+    // žádné převýšení nemá. Rozhoduje proto i OKOLÍ: zdvih smí být nejvýš
+    // „0,6 m + skutečný pokles terénu pod mostem" a krátký most (do 12 m)
+    // se zvedá nejvýš o metr.
     const krizeni = svetlaPodleKrizeni(cara, kxM, kyM);
+    const poklesM = Math.max(0, (Math.min(eA, eB) - tMin) / ex);
+    const stropZdvihu = Math.min(delka < 12 ? 1.0 : 2.0, 0.6 + poklesM);
     const dno = krizeni > 0 ? Math.min(tMin, vyska(bodNa(delka / 2).P) || tMin) : tMin;
     const zKrizeni = krizeni > 0 ? dno + krizeni * ex : -Infinity;
     const mostovka = Math.max(Math.min(eA, eB), tMin + 1.0 * ex,
-                              Math.min(zKrizeni, Math.min(eA, eB) + 2.0 * ex));
+                              Math.min(zKrizeni, Math.min(eA, eB) + stropZdvihu * ex));
     const svetlaM = (mostovka - tMin) / ex;       // světlá výška ve skutečných metrech
     // ⛔⛔ engine 247: KDYŽ SE KONCE NESEJDOU, DEM LŽE. MapLibre staví extruzi
     // VODOROVNĚ (zvedne ji o terén ve středu prvku), takže deska sedne na vyšší
