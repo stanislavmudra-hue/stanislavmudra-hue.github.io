@@ -2334,9 +2334,10 @@ function publikujStiny() {
   if (stinyPosluchacMapy !== mapa) {
     stinyPosluchacMapy = mapa;
     mapa.on('sourcedata', (e) => {
-      if (!e || e.sourceId !== 'stiny-domu' || !e.isSourceLoaded || !stinyNacitaOd) return;
-      // události vyvolané vlastním setTiles (dlaždice ještě staré) přeskočit
-      if (performance.now() - stinyNacitaOd < 60) return;
+      // jen události Z DLAŽDICE (`e.tile`): metadata/content ze samotného
+      // setTiles přijdou ještě se starými dlaždicemi a `isSourceLoaded` by
+      // tam bylo true (změřeno 8. 9. večer - časový filtr 60 ms nestačil)
+      if (!e || e.sourceId !== 'stiny-domu' || !e.tile || !e.isSourceLoaded || !stinyNacitaOd) return;
       stinyNacitaOd = 0;
       if (stinyZnovu) publikujStiny();
     });
