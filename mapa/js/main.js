@@ -3134,7 +3134,13 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
     // okno a `queryTerrainElevation` stojí ~0,1 ms – při 3 000 oknech to bylo
     // 240 ms na přepočet (změřeno). Zeď je nejvýš pár desítek metrů, takže
     // střed zdi stačí; u krátkých zdí stačí střed domu.
-    const eZed = L > 12 ? vyska([(P[0] + Q[0]) / 2, (P[1] + Q[1]) / 2]) : eDum;
+    // ⛔⛔ engine 258: TERÉN SE MUSÍ MĚNIT PO DÉLCE STĚNY. Jeden vzorek uprostřed
+    // (engine 236) stačil na krátké zdi, ale u dlouhé stěny ve svahu skončilo
+    // okno na konci jinde než zeď a ODLEPILO SE („některá okna levitují") –
+    // MapLibre totiž zvedá KAŽDÝ prvek o terén v JEHO těžišti. Dva vzorky na
+    // koncích + interpolace stojí o jeden dotaz víc na stěnu, ne na okno.
+    const eZedA = L > 10 ? vyska(P) : eDum;
+    const eZedB = L > 10 ? vyska(Q) : eDum;
     const pocet = Math.max(1, Math.floor(L / OKNA_ROZESTUP_M));
     const sirka = L < 4 ? 0.9 : 1.2;
     // ⛔⛔ engine 235: KOREKCE MUSÍ BÝT MALÁ A OKNO SE MUSÍ VEJÍT POD STŘECHU.
@@ -3143,9 +3149,11 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
     // (svah, chybějící DEM) okno vylezlo NA STŘECHU (výtka „okna se z
     // několika úhlů bugují"). Korekce je proto do ±2 m a strop se počítá
     // ZE ZKORIGOVANÉ výšky.
-    const oprava = eZed === null ? 0 : Math.max(-2, Math.min(2, eDum - eZed));
     for (let k = 0; k < pocet; k++) {
       const t = (k + 0.5) / pocet;
+      // výška terénu POD TÍMHLE oknem (lineárně po stěně)
+      const eZed = (eZedA === null || eZedB === null) ? null : eZedA + (eZedB - eZedA) * t;
+      const oprava = eZed === null ? 0 : Math.max(-2, Math.min(2, eDum - eZed));
       const cxo = P[0] + (Q[0] - P[0]) * t, cyo = P[1] + (Q[1] - P[1]) * t;
       const r = [];
       // ⛔ engine 235: PŘESAH JEN 4 cm. Okno je krabička před zdí; s přesahem
@@ -3737,7 +3745,6 @@ function prepoctiMosty3d() {
     // protože deska leží na NIŽŠÍM konci, takže nevisí vůbec – jen se zabořuje.)
     const rozdilKoncu = Math.abs(eA - eB) / ex;
     if (krizeni > 0) podpis += krizeni;
-    const cely = podcara(0, delka);
     // ⭐⭐ engine 238: MALÝ MOST JE PLOCHÝ. Silnice je drapovaná na terén a DEM
     // (síť ~19 m) nezná náspy ani zářezy, takže vodorovná deska u jednoho konce
     // vždy visí nad silnicí a dva sousední úseky dělají schod (výtky ze 7. 9.).
@@ -3766,8 +3773,31 @@ function prepoctiMosty3d() {
     // a strop 4 m ji drží při zemi, kdyby DEM zase lhal.
     // ⭐ Pojistkou proti všem nepřesnostem je, že se vozovka na mostě KRESLÍ
     // (engine 251) – silnice je spojitá, i když deska sedí o kus vedle.
-    const eStred = vyska([cely.reduce((a, q) => a + q[0], 0) / cely.length,
-                          cely.reduce((a, q) => a + q[1], 0) / cely.length]);
+    // ⭐⭐ engine 258: DESKA SE ZAPOUŠTÍ DO NÁSPU. Vodorovná deska stojí u konce
+    // nad silnicí (u mostu přes řeku až o 2 m) a její ČELO bylo vidět jako schod.
+    // Prodloužíme ji proto za oba konce, dokud ji terén nepřeroste – čelo se
+    // zaboří do svahu a most z terénu vystupuje. Když terén do 14 m nestoupne,
+    // prodlouží se aspoň o 2 m, ať čelo schová opěra.
+    const smerKonce = (od, k) => {
+      const a = cara[od], b = cara[k];
+      const dx = (b[0] - a[0]) * kxM, dy = (b[1] - a[1]) * kyM;
+      const L2 = Math.hypot(dx, dy) || 1;
+      return [dx / L2 / kxM, dy / L2 / kyM];       // jednotkový vektor ve stupních
+    };
+    const zapust = (bod, sm) => {
+      for (let d = 2; d <= 14; d += 2) {
+        const e = vyska([bod[0] + sm[0] * d, bod[1] + sm[1] * d]);
+        if (e != null && e >= mostovka) return d;
+      }
+      return 2;
+    };
+    const smA = smerKonce(1, 0), smB = smerKonce(cara.length - 2, cara.length - 1);
+    const dA = zapust(cara[0], smA), dB = zapust(cara[cara.length - 1], smB);
+    const cely = [[cara[0][0] + smA[0] * dA, cara[0][1] + smA[1] * dA]]
+      .concat(podcara(0, delka),
+              [[cara[cara.length - 1][0] + smB[0] * dB, cara[cara.length - 1][1] + smB[1] * dB]]);
+    const eStred = vyska([(cely[0][0] + cely[cely.length - 1][0]) / 2,
+                          (cely[0][1] + cely[cely.length - 1][1]) / 2]);
     if (eStred == null) { jenPlochy(); continue; }
     const b = +Math.max(0.4, Math.min(4.0 * ex, mostovka - eStred)).toFixed(2);
     podpis += b + delka + w;

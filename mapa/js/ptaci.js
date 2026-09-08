@@ -45,7 +45,11 @@ const Ptaci = (() => {
     + '.kane{pointer-events:none;position:absolute;top:0;left:0;'
     + 'will-change:transform;}'
     + '.kane-stin{pointer-events:none;position:absolute;top:0;left:0;'
-    + 'will-change:transform,opacity;}';
+    + 'will-change:transform,opacity;}'
+    // ⭐ engine 258: STÍN VE TVARU KÁNĚTE. Byla to elipsa s přechodem; teď je
+    // to TÁŽ silueta jako pták, jen načerno (`brightness(0)`), rozmazaná
+    // a zploštělá – a mává křídly zároveň s ním (třída `kane-machani`).
+    + '.kane-stin svg{filter:brightness(0) blur(1.6px);opacity:.85;}';
 
   // Káně SHORA, letí nahoru (-y). Proporce káněte: rozpětí ≈ 2,4× délka,
   // široká zaoblená křídla s rovnější přední hranou a 5 roztaženými
@@ -127,9 +131,7 @@ const Ptaci = (() => {
     el.innerHTML = KANE_SVG;
     const stin = document.createElement('div');
     stin.className = 'kane-stin';
-    stin.innerHTML = '<div style="width:72px;height:30px;border-radius:50%;'
-      + 'background:radial-gradient(ellipse at center,rgba(20,16,10,.5) 0%,'
-      + 'rgba(20,16,10,.22) 55%,rgba(20,16,10,0) 100%)"></div>';
+    stin.innerHTML = KANE_SVG;
     mapa.getCanvasContainer().appendChild(stin);
     mapa.getCanvasContainer().appendChild(el);
     return {
@@ -216,8 +218,10 @@ const Ptaci = (() => {
       p.smer = Math.atan2(tx, ty);
       if (t > p.dalsiMach) {
         p.el.classList.add('kane-machani');
+        p.stin.classList.add('kane-machani');
         p.dalsiMach = t + 9000 + Math.random() * 8000;
-        setTimeout(() => p.el.classList.remove('kane-machani'), 1750);
+        setTimeout(() => { p.el.classList.remove('kane-machani');
+                           p.stin.classList.remove('kane-machani'); }, 1750);
       }
       // výška: terén pod STŘEDEM kroužení, zřídka, dohánět pomalu
       if (t > p.dalsiMereni) {
@@ -291,7 +295,7 @@ const Ptaci = (() => {
       p.stin.style.opacity = (sila * p.op).toFixed(2);
       p.stin.style.transform = 'translate(-50%, -50%) translate(' + bs.x.toFixed(1)
         + 'px, ' + bs.y.toFixed(1) + 'px) rotate(' + otoc.toFixed(1) + 'deg) scale('
-        + (mer * 0.95).toFixed(3) + ')';
+        + (mer * 0.95).toFixed(3) + ', ' + (mer * 0.72).toFixed(3) + ')';
     }
   }
 
