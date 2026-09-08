@@ -1343,17 +1343,25 @@ const SEZONY = {
 /// (dekorace, ikony míst) se tím nezmenší.
 // ⭐ engine 261: 512 px @ pixelRatio 2 – na obrazovce stejně velký vzor,
 // ale DVAKRÁT jemnější (výtka „plochy jsou příliš bez detailů").
-let VZOR_PX = 512;
+// ⛔ engine 263: JEMNĚ JEN POLE A LOUKA. Každá dlaždice nese VLASTNÍ kopii
+// vzorů (`tile.imageAtlas`), takže 512 px u všech = 4× větší textura na
+// dlaždici (0,76 → 3,0 MB) a +20 % pomalých snímků (188/180 vs 155/146 na
+// sadu gest). Brázdy a stébla jemnost potřebují, les/města/voda ne.
+let VZOR_PX = 256;                                   // les, města, voda
+let VZOR_PX_JEMNE = 512;                             // pole, louka
+const VZOR_JEMNE = new Set(['vzor-pole', 'vzor-louka']);
 
-/// Přepnutí velikosti vzorů za běhu (pro měření přes CDP).
-function nastavVelikostVzoru(px) {
+/// Přepnutí velikosti vzorů za běhu (pro měření přes CDP):
+/// `nastavVelikostVzoru(256, 512)` = ostrý stav, `(512)` = vše jemně.
+function nastavVelikostVzoru(px, pxJemne) {
   VZOR_PX = px;
+  VZOR_PX_JEMNE = pxJemne == null ? px : pxJemne;
   for (const jm of ['vzor-les', 'vzor-pole', 'vzor-louka',
                     'vzor-mesta', 'vzor-voda', 'vzor-voda-hladka']) {
     try { if (mapa.hasImage(jm)) mapa.removeImage(jm); } catch (e) { /* nevadí */ }
   }
   pridejAkvarelVzory();
-  return VZOR_PX;
+  return [VZOR_PX, VZOR_PX_JEMNE];
 }
 
 // ⭐ v1.606: PLYNULÁ SEZÓNA (přání 4. 9. 2026: „přechody mezi obdobími,
@@ -1508,10 +1516,15 @@ function pridejAkvarelVzory(vynutit) {
   // s kazdym celym zoomem preskladava a objekty v nem "poskakovaly,
   // pribyvaly a zmensovaly se" (vytka uzivatele). Mekke skvrny zadne
   // rozpoznatelne tvary nemaji, takze jejich preskladani neni videt.
-  const S = VZOR_PX;
-  const k = S / 256;                 // engine 261: měřítko proti původním 256 px
-  const kolik = (n) => Math.round(n * k * k);   // hustota na plochu
+  // engine 263: velikost se nastavuje PO VZORECH ve `vyrob` (kreslicí
+  // uzávěry čtou S, k a kolik z tohoto rozsahu, proto `let`).
+  let S = VZOR_PX;
+  let k = S / 256;                   // engine 261: měřítko proti původním 256 px
+  let kolik = (n) => Math.round(n * k * k);     // hustota na plochu
   const vyrob = (jmeno, zaklad, kresliN) => {
+    S = VZOR_JEMNE.has(jmeno) ? VZOR_PX_JEMNE : VZOR_PX;
+    k = S / 256;
+    kolik = (n) => Math.round(n * k * k);
     const p = document.createElement('canvas');
     p.width = S;
     p.height = S;
