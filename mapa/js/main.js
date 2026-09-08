@@ -1341,7 +1341,9 @@ const SEZONY = {
 /// ⚠️ NÍŽ UŽ NECHODIT: 128 px nepřineslo nic (53 vs 53 fps při zoomu).
 /// Pod 256 přestávají vzory být v atlasu tou velkou položkou a zbytek
 /// (dekorace, ikony míst) se tím nezmenší.
-let VZOR_PX = 256;
+// ⭐ engine 261: 512 px @ pixelRatio 2 – na obrazovce stejně velký vzor,
+// ale DVAKRÁT jemnější (výtka „plochy jsou příliš bez detailů").
+let VZOR_PX = 512;
 
 /// Přepnutí velikosti vzorů za běhu (pro měření přes CDP).
 function nastavVelikostVzoru(px) {
@@ -1507,6 +1509,8 @@ function pridejAkvarelVzory(vynutit) {
   // pribyvaly a zmensovaly se" (vytka uzivatele). Mekke skvrny zadne
   // rozpoznatelne tvary nemaji, takze jejich preskladani neni videt.
   const S = VZOR_PX;
+  const k = S / 256;                 // engine 261: měřítko proti původním 256 px
+  const kolik = (n) => Math.round(n * k * k);   // hustota na plochu
   const vyrob = (jmeno, zaklad, kresliN) => {
     const p = document.createElement('canvas');
     p.width = S;
@@ -1524,16 +1528,29 @@ function pridejAkvarelVzory(vynutit) {
     // hustě se vzor na mapě opakuje. 512@2 a 256@1 kreslí NA OBRAZOVCE
     // stejně velký vzor, jen s poloviční jemností.
     const data = ctx.getImageData(0, 0, S, S);
+    // ⭐ engine 261: PAPÍROVÉ ZRNO. Plochá výplň vypadá jako plast; jemný šum
+    // z ní udělá malbu na papíře. Dělá se v pixelech (levné, 512² = 260 k)
+    // a je samo o sobě dlaždicovatelné – šum nemá strukturu, takže se švy
+    // nepoznají.
+    const px = data.data;
+    let sm = 0x9E3779B9;
+    for (let i = 0; i < px.length; i += 4) {
+      sm = (sm * 1664525 + 1013904223) | 0;
+      const n = ((sm >>> 24) - 128) * 0.055;   // ±7
+      px[i] = Math.max(0, Math.min(255, px[i] + n));
+      px[i + 1] = Math.max(0, Math.min(255, px[i + 1] + n));
+      px[i + 2] = Math.max(0, Math.min(255, px[i + 2] + n));
+    }
     if (mapa.hasImage(jmeno)) mapa.updateImage(jmeno, data);
     else mapa.addImage(jmeno, data, { pixelRatio: S / 256 });
   };
 
-  // LES: jen mekke mechove skvrny (zadne koruny - stromy ma dekorace)
+  // LES: mechove skvrny + jemne tecky korunek a mekke stiny pod nimi
   vyrob('vzor-les', SEZ.lesZaklad, (ctx, torus) => {
     const r = rng(11);
-    for (let i = 0; i < 70; i++) {
+    for (let i = 0; i < kolik(70); i++) {
       const x = r() * S; const y = r() * S;
-      const pr = 24 + r() * 56;
+      const pr = (24 + r() * 56) * k;
       const b = SEZ.les[Math.floor(r() * SEZ.les.length)];
       torus((ox, oy) => {
         const g = ctx.createRadialGradient(x + ox, y + oy, pr * 0.15,
@@ -1544,18 +1561,43 @@ function pridejAkvarelVzory(vynutit) {
         ctx.fillRect(x + ox - pr, y + oy - pr, pr * 2, pr * 2);
       });
     }
+    // ⭐ engine 261: drobné tečky korunek – bez obrysu, jen tón (rozpoznatelný
+    // tvar by při přeskládání vzoru „poskakoval")
+    for (let i = 0; i < kolik(260); i++) {
+      const x = r() * S; const y = r() * S;
+      const pr = (2.2 + r() * 4.4) * k;
+      ctx.fillStyle = SEZ.les[Math.floor(r() * SEZ.les.length)] + 'B0';
+      torus((ox, oy) => {
+        ctx.beginPath();
+        ctx.arc(x + ox, y + oy, pr, 0, 6.283);
+        ctx.fill();
+      });
+    }
+    // měkké obloučky = stín pod korunami
+    ctx.lineCap = 'round';
+    for (let i = 0; i < kolik(70); i++) {
+      const x = r() * S; const y = r() * S;
+      const d = (6 + r() * 12) * k;
+      ctx.strokeStyle = 'rgba(24,46,26,0.10)';
+      ctx.lineWidth = (1.2 + r() * 1.6) * k;
+      torus((ox, oy) => {
+        ctx.beginPath();
+        ctx.arc(x + ox, y + oy, d, 0.6, 2.4);
+        ctx.stroke();
+      });
+    }
   });
 
-  // POLE: dlouhe sikme tahy stetce ("tahy jsou ok")
+  // POLE: hrube tahy stetce + jemne brazdy a kolme vlaceni
   vyrob('vzor-pole', SEZ.poleZaklad, (ctx, torus) => {
     const r = rng(22);
     ctx.lineCap = 'round';
-    for (let i = 0; i < 56; i++) {
+    for (let i = 0; i < kolik(56); i++) {
       const x = r() * S; const y = r() * S;
-      const d = 55 + r() * 100;
+      const d = (55 + r() * 100) * k;
       const svetla = r() < 0.5;
       ctx.strokeStyle = svetla ? SEZ.poleSvetla : SEZ.poleTmava;
-      ctx.lineWidth = 5 + r() * 7;
+      ctx.lineWidth = (5 + r() * 7) * k;
       torus((ox, oy) => {
         ctx.beginPath();
         ctx.moveTo(x + ox, y + oy);
@@ -1563,14 +1605,40 @@ function pridejAkvarelVzory(vynutit) {
         ctx.stroke();
       });
     }
+    // ⭐ engine 261: BRÁZDY – tenké tahy v témž směru, ať pole není jednolité
+    for (let i = 0; i < kolik(150); i++) {
+      const x = r() * S; const y = r() * S;
+      const d = (30 + r() * 70) * k;
+      ctx.strokeStyle = r() < 0.5 ? 'rgba(255,255,255,0.10)' : 'rgba(90,70,40,0.10)';
+      ctx.lineWidth = (0.8 + r() * 1.2) * k;
+      torus((ox, oy) => {
+        ctx.beginPath();
+        ctx.moveTo(x + ox, y + oy);
+        ctx.lineTo(x + ox + d * 0.85, y + oy - d * 0.5);
+        ctx.stroke();
+      });
+    }
+    // krátké kolmé čárky = vláčení
+    for (let i = 0; i < kolik(90); i++) {
+      const x = r() * S; const y = r() * S;
+      const d = (3 + r() * 6) * k;
+      ctx.strokeStyle = 'rgba(90,70,40,0.09)';
+      ctx.lineWidth = (0.8 + r() * 0.9) * k;
+      torus((ox, oy) => {
+        ctx.beginPath();
+        ctx.moveTo(x + ox, y + oy);
+        ctx.lineTo(x + ox + d * 0.5, y + oy + d * 0.85);
+        ctx.stroke();
+      });
+    }
   });
 
-  // LOUKA: jen mekke tonove skvrny (kytky ma dekorace)
+  // LOUKA: tonove skvrny + stebla (kytky ma dekorace)
   vyrob('vzor-louka', SEZ.loukaZaklad, (ctx, torus) => {
     const r = rng(44);
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < kolik(30); i++) {
       const x = r() * S; const y = r() * S;
-      const pr = 26 + r() * 52;
+      const pr = (26 + r() * 52) * k;
       const b = SEZ.loukaSkvrny[r() < 0.5 ? 0 : 1];
       torus((ox, oy) => {
         const g = ctx.createRadialGradient(x + ox, y + oy, pr * 0.2,
@@ -1581,14 +1649,29 @@ function pridejAkvarelVzory(vynutit) {
         ctx.fillRect(x + ox - pr, y + oy - pr, pr * 2, pr * 2);
       });
     }
+    // ⭐ engine 261: STÉBLA – stovky drobných čárek ve dvou tónech
+    ctx.lineCap = 'round';
+    for (let i = 0; i < kolik(420); i++) {
+      const x = r() * S; const y = r() * S;
+      const d = (2.5 + r() * 4.5) * k;
+      const sk = r() * 0.8 - 0.4;                 // mírný náklon
+      ctx.strokeStyle = SEZ.loukaSkvrny[r() < 0.5 ? 0 : 1] + 'A0';
+      ctx.lineWidth = (0.7 + r() * 0.9) * k;
+      torus((ox, oy) => {
+        ctx.beginPath();
+        ctx.moveTo(x + ox, y + oy);
+        ctx.lineTo(x + ox + d * sk, y + oy - d);
+        ctx.stroke();
+      });
+    }
   });
 
   // MESTA: tepla omitka s jemnym zihanim (strechy ma dekorace)
   vyrob('vzor-mesta', '#EBD4A9', (ctx, torus) => {
     const r = rng(55);
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0; i < kolik(26); i++) {
       const x = r() * S; const y = r() * S;
-      const pr = 30 + r() * 55;
+      const pr = (30 + r() * 55) * k;
       const b = r() < 0.5 ? '#E2C695' : '#F1DDB8';
       torus((ox, oy) => {
         const g = ctx.createRadialGradient(x + ox, y + oy, pr * 0.2,
@@ -1599,22 +1682,37 @@ function pridejAkvarelVzory(vynutit) {
         ctx.fillRect(x + ox - pr, y + oy - pr, pr * 2, pr * 2);
       });
     }
+    // ⭐ engine 261: jemné škrábance v omítce
+    ctx.lineCap = 'round';
+    for (let i = 0; i < kolik(120); i++) {
+      const x = r() * S; const y = r() * S;
+      const d = (5 + r() * 16) * k;
+      const sk = r() * 2 - 1;
+      ctx.strokeStyle = r() < 0.5 ? 'rgba(255,255,255,0.13)' : 'rgba(150,120,80,0.10)';
+      ctx.lineWidth = (0.7 + r() * 0.8) * k;
+      torus((ox, oy) => {
+        ctx.beginPath();
+        ctx.moveTo(x + ox, y + oy);
+        ctx.lineTo(x + ox + d, y + oy + d * sk * 0.35);
+        ctx.stroke();
+      });
+    }
   });
 
   // VODA: tyrkys s dlouhymi vlnkami
   vyrob('vzor-voda', '#2FA7A0', (ctx, torus) => {
     const r = rng(33);
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < kolik(30); i++) {
       const y = r() * S; const x = r() * S;
-      const d = 60 + r() * 95;
+      const d = (60 + r() * 95) * k;
       ctx.strokeStyle = r() < 0.6
         ? 'rgba(118,214,205,0.7)' : 'rgba(14,110,104,0.55)';
-      ctx.lineWidth = 2.6 + r() * 2.6;
+      ctx.lineWidth = (2.6 + r() * 2.6) * k;
       ctx.lineCap = 'round';
       torus((ox, oy) => {
         ctx.beginPath();
         ctx.moveTo(x + ox, y + oy);
-        ctx.quadraticCurveTo(x + ox + d / 2, y + oy - 6,
+        ctx.quadraticCurveTo(x + ox + d / 2, y + oy - 6 * k,
                              x + ox + d, y + oy);
         ctx.stroke();
       });

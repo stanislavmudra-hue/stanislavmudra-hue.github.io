@@ -1962,7 +1962,8 @@ const Dekorace = (() => {
   /// ⭐ 5. 9. noc: PŘESNÉ DEKORACE ZE ZABAGED („dávej pozor, kde jsou
   /// stromy a další objekty"). Osamělé stromy a lesíky, balvany a
   /// stromořadí (aleje) stojí tam, kde skutečně jsou – vrstvy `body`/`cary`
-  /// dlaždic krajina2.pmtiles. Dedup klíčem souřadnic (body) / 8 m buňkou
+  /// dlaždic zdroje `krajina` (dnes krajina7.pmtiles). Dedup klíčem
+  /// souřadnic (body) / 8 m buňkou
   /// (aleje), nic v mlze, nic na střeše ani na silnici; nejvýš 600 kusů na
   /// průchod, aleje až od z14,6 (počet).
   const ALEJ_ROZESTUP = 13;
