@@ -3290,7 +3290,14 @@ function proSvetlo(hex, f) {
 /// zdvojnásobil. ⚠️ Kdykoli se hne `SILNICE_M`, hni i tímhle.
 const MOST_SIRKY = { motorway: 12.5, trunk: 11.5, primary: 10, secondary: 8.5,
                      tertiary: 7.0, minor: 6.0, service: 4.5, track: 4.2,
-                     path: 2.8, rail: 5.0, transit: 5.0 };
+                     path: 2.8 };
+/// ⛔⛔ MOST SE STAVÍ JEN PRO TŘÍDY, KTERÉ MAPA OPRAVDU KRESLÍ. Nejdelší „most"
+/// u Rtyně byl `path_construction` (rozestavěná pěšina, 82 m) – styl ji nekreslí,
+/// takže přes krajinu ležela šedá deska, ke které nevedla žádná cesta („most
+/// nenavazuje"), a ještě v záložní šířce 6 m. Totéž dělaly železniční mosty:
+/// herní styl koleje nekreslí, takže deska visela nad polem.
+/// ⚠️ Když přibude vrstva pro další třídu, přidej ji sem; jinak zůstane bez mostu.
+const MOST_TRIDY = new Set(Object.keys(MOST_SIRKY));
 function nasadMosty3d() {
   if (!mapa || !mapa.getSource('omt')) return false;
   try {
@@ -3397,7 +3404,9 @@ function prepoctiMosty3d() {
       const ka = kr(a), kb = kr(b);
       const klic = ka < kb ? ka + '|' + kb : kb + '|' + ka;
       if (mosty.has(klic)) continue;
-      mosty.set(klic, { cls: p['class'] || 'minor', body: c.slice() });
+      const cls = p['class'] || 'minor';
+      if (!MOST_TRIDY.has(cls)) continue;   // most bez kreslené cesty = deska odnikud nikam
+      mosty.set(klic, { cls: cls, body: c.slice() });
     }
   }
   // barvy 3D dílů podle aktuálního světla (viz `proSvetlo`)
@@ -3470,7 +3479,7 @@ function prepoctiMosty3d() {
     }
     if (odchMax <= 3) cara.splice(0, cara.length, cara[0], cara[cara.length - 1]);
     const zel = m.cls === 'rail' || m.cls === 'transit';
-    const w = MOST_SIRKY[m.cls] || 6;
+    const w = MOST_SIRKY[m.cls] || 3;
     // délka po čáře + pomůcky
     const useky = [];
     let delka = 0;
@@ -3538,7 +3547,20 @@ function prepoctiMosty3d() {
       pridejPlochy(pas(cely2, sirkaD, 0), MOST_BARVY.deska);
       pridejPlochy(pas(cely2, 0.5, (sirkaD - 0.5) / 2), MOST_BARVY.hrana);
       pridejPlochy(pas(cely2, 0.5, -(sirkaD - 0.5) / 2), MOST_BARVY.hrana);
-      podpis += delka + w;
+      // ⭐ engine 254: ZÁBRADLÍ POLOŽENÉ NA TERÉNU. Plochý most je jinak jen
+      // světlejší pruh a jako most se nečte. Zábradlí je vytažené od ZEMĚ
+      // (base 0), takže se s drapérovanou silnicí NEMŮŽE rozejít – a dělí se
+      // po ~6 m, aby každý díl seděl na svém terénu (MapLibre zvedá prvek
+      // o terén v jeho těžišti; dlouhý díl by se od svahu odlepil).
+      const dilu = Math.max(1, Math.min(16, Math.round(delka / 6)));
+      const barvaZ = proSvetlo(ztlumNoci(MOST_CIL.zabradli));
+      for (let d = 0; d < dilu; d++) {
+        const bd = podcara(delka * d / dilu, delka * (d + 1) / dilu);
+        if (bd.length < 2) continue;
+        pridej(pas(bd, 0.3, (sirkaD - 0.3) / 2), 0, zbr, barvaZ);
+        pridej(pas(bd, 0.3, -(sirkaD - 0.3) / 2), 0, zbr, barvaZ);
+      }
+      podpis += delka + w + dilu;
     };
     // výšky: konce mostu (tam dosedá) a nejnižší terén pod ním
     const eA = vyska(cara[0]), eB = vyska(cara[cara.length - 1]);
@@ -4484,11 +4506,13 @@ const NOCNI_KRESBA = [
   // ⚠️ ŠÍŘKA MUSÍ ZŮSTAT VÝRAZEM. Do v1.537 tu byla čtyři čísla,
   // která v noci **přepsala zoomovou křivku ze stylu** na konstantu —
   // cesty se po setmění přestaly s přibližováním rozšiřovat.
+  // engine 254: v noci jen o málo silnější než ve dne (šířka ve stylu klesla
+  // z 3,2 na 2,0 m – noční hodnoty byly proti tomu dvojnásobné)
   ['cesty', 'line-width', [
-    ['interpolate', ['exponential', 1.4], ['zoom'], 12, 1.2, 17, 3.4],
-    ['interpolate', ['exponential', 1.4], ['zoom'], 12, 1.3, 17, 3.6],
-    ['interpolate', ['exponential', 1.4], ['zoom'], 12, 1.5, 17, 4.0],
-    ['interpolate', ['exponential', 1.4], ['zoom'], 12, 1.7, 17, 4.4]]],
+    ['interpolate', ['exponential', 1.4], ['zoom'], 12, 1.1, 17, 2.1],
+    ['interpolate', ['exponential', 1.4], ['zoom'], 12, 1.2, 17, 2.3],
+    ['interpolate', ['exponential', 1.4], ['zoom'], 12, 1.3, 17, 2.5],
+    ['interpolate', ['exponential', 1.4], ['zoom'], 12, 1.4, 17, 2.7]]],
   ['silnice-servisni', 'line-color',
    ['#A98F63', '#C4AE87', '#DFD1B2', '#F3ECDA']],
   ['silnice-mistni', 'line-color',

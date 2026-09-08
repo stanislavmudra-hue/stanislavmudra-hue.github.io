@@ -850,14 +850,14 @@ function stylHerni(ctx) {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#7E6641',
                  'line-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.5, 15, 0.85],
-                 'line-width': sirkaMetry(1.4, 2.8, 13),
+                 'line-width': sirkaMetry(1.3, 2.2, 13),
                  'line-dasharray': [2.4, 1.8] } },
       { id: 'zab-pesiny', type: 'line', source: 'krajina', 'source-layer': 'cesty',
         minzoom: 13.5, filter: ['==', ['get', 't'], 'pesina'],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#8A7350',
                  'line-opacity': ['interpolate', ['linear'], ['zoom'], 13.5, 0.45, 15, 0.8],
-                 'line-width': sirkaMetry(1.1, 1.6, 13.5),
+                 'line-width': sirkaMetry(1.0, 1.2, 13.5),
                  'line-dasharray': [1.4, 1.8] } },
       { id: 'cesty', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 12,
@@ -865,9 +865,10 @@ function stylHerni(ctx) {
         // jsou při náklonu vidět dvě vozovky vedle sebe, viz `NA_MOSTE`)
         filter: ['in', ['get', 'class'], ['literal', ['path', 'track']]],
         layout: { 'line-cap': 'round' },
-        // engine 238: o třetinu širší a světlejší – v noční mapě se tenká
-        // tmavá čárka ztrácela („některé cesty jsou příliš nevýrazné")
-        paint: { 'line-color': '#7E6641', 'line-width': sirkaMetry(1.8, 3.2),
+        // ⛔ engine 254 („proč je vyznačená cesta, když je tam silnice?"):
+        // 3,2 m vedle 5m silnice vypadalo jako druhá vozovka. Engine 238 ji
+        // rozšířil, když se silnice kreslily na 55 %; od 240 jsou v plné.
+        paint: { 'line-color': '#7E6641', 'line-width': sirkaMetry(1.6, 2.0),
                  'line-opacity': 1,
                  'line-dasharray': [2.2, 1.6] } },
       // ⭐ v1.540: ÚČELOVÉ CESTY (`service`) — příjezdy k domům, cesty
