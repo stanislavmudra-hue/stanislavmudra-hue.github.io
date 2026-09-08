@@ -848,17 +848,24 @@ function stylHerni(ctx) {
       { id: 'zab-cesty', type: 'line', source: 'krajina', 'source-layer': 'cesty',
         minzoom: 13, filter: ['==', ['get', 't'], 'cesta'],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#7E6641',
-                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.5, 15, 0.85],
-                 'line-width': sirkaMetry(1.3, 2.2, 13),
-                 'line-dasharray': [2.4, 1.8] } },
+        // ⛔⛔ engine 256: ZABAGED cesta NESMÍ BÝT DRUHÁ ČÁRKOVANÁ ČÁRA. Změřeno
+        // u Rtyně: všech 8 cest ze ZABAGED leží 0,2–0,8 m od TÉŽE cesty z OSM,
+        // takže se kreslily dvě čárkované čáry vedle sebe („cesty jsou zdvojené").
+        // Schovat duplicity přes `feature-state` NELZE – dlaždice `krajina`
+        // nemají u vrstvy `cesty` žádné id (`promoteId: 'fid'` nemá co povýšit,
+        // schéma exportuje jen t/s/p). Řešení bez přegenerování archivu: ZABAGED
+        // cesta je MĚKKÁ PLNÁ linka POD čárkovanou z OSM – kde je obojí, splyne
+        // v jednu; kde OSM nic nemá (les), zůstane vidět sama.
+        // ⚠️ Až bude `krajina8` s `fid`, jde duplicitu skrýt úplně (feature-state).
+        paint: { 'line-color': '#8B7550', 'line-blur': 0.6,
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.3, 15, 0.5],
+                 'line-width': sirkaMetry(1.1, 1.8, 13) } },
       { id: 'zab-pesiny', type: 'line', source: 'krajina', 'source-layer': 'cesty',
         minzoom: 13.5, filter: ['==', ['get', 't'], 'pesina'],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#8A7350',
-                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 13.5, 0.45, 15, 0.8],
-                 'line-width': sirkaMetry(1.0, 1.2, 13.5),
-                 'line-dasharray': [1.4, 1.8] } },
+        paint: { 'line-color': '#96805C', 'line-blur': 0.6,
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 13.5, 0.28, 15, 0.45],
+                 'line-width': sirkaMetry(0.9, 1.1, 13.5) } },
       { id: 'cesty', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 12,
         // ⛔ engine 243: na mostě silnici NEKRESLIT – most ji nese sám (jinak

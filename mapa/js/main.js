@@ -3343,9 +3343,98 @@ window.__mostyPrebarvi = function () {
     prebarviDomyNoci();
   } catch (e) { /* styl se zrovna mění */ }
 };
+/// ⛔⛔ ZDVOJENÉ CESTY. ZABAGED se přidával kvůli LESNÍM cestám, které OSM nemá –
+/// jenže tam, kde OSM cestu má, ji ZABAGED kreslí ZNOVU, o půl metru vedle
+/// (změřeno u Rtyně: všech 8 cest v pohledu 0,2–0,8 m od téže cesty z OSM).
+/// Výsledek je dvojitá čárkovaná čára. Duplicity se proto schovají přes
+/// `feature-state {dup:1}` (zdroj `krajina` má `promoteId: 'fid'`), tedy BEZ
+/// překreslení dat – `setFilter` by nutil znovu parsovat celý zdroj.
+const ZDVOJENA_M = 6;                 // do kolika metrů je ZABAGED cesta duplicita
+let zdvojenePodpis = '';
+let zdvojeneBezId = false;            // dlaždice nemají id → počítat nemá smysl
+const zdvojeneOznaceno = new Set();
+function prepoctiZdvojeneCesty() {
+  if (zdvojeneBezId) return;
+  if (!mapa || !mapa.getSource('krajina') || !mapa.getSource('omt')) return;
+  if (mapa.getZoom() < 13) return;
+  const pp = podpisPohledu();
+  if (pp === zdvojenePodpis) return;
+  zdvojenePodpis = pp;
+  let zab = [], osm = [];
+  try {
+    zab = mapa.querySourceFeatures('krajina', { sourceLayer: 'cesty' });
+    osm = mapa.querySourceFeatures('omt', { sourceLayer: 'transportation' });
+  } catch (e) { return; }
+  const t0 = performance.now();
+  const stred = mapa.getCenter();
+  const kx = 111320 * Math.cos(stred.lat * Math.PI / 180), ky = 110574;
+  // mřížka úseků OSM cest (~60 m), ať se neporovnává každý s každým
+  const MR = 0.0007;
+  const mrizka = new Map();
+  const pridejUsek = (a, b) => {
+    const x0 = Math.floor(Math.min(a[0], b[0]) / MR), x1 = Math.floor(Math.max(a[0], b[0]) / MR);
+    const y0 = Math.floor(Math.min(a[1], b[1]) / MR), y1 = Math.floor(Math.max(a[1], b[1]) / MR);
+    for (let gx = x0 - 1; gx <= x1 + 1; gx++) for (let gy = y0 - 1; gy <= y1 + 1; gy++) {
+      const k = gx + ':' + gy;
+      const t = mrizka.get(k);
+      if (t) t.push([a, b]); else mrizka.set(k, [[a, b]]);
+    }
+  };
+  for (const f of osm) {
+    const p2 = f.properties || {};
+    if (['path', 'track', 'service'].indexOf(p2['class']) < 0) continue;
+    const g = f.geometry; if (!g) continue;
+    const cs = g.type === 'LineString' ? [g.coordinates] : (g.type === 'MultiLineString' ? g.coordinates : []);
+    for (const c of cs) for (let i = 1; i < c.length; i++) pridejUsek(c[i - 1], c[i]);
+  }
+  const dUsek = (P, u) => {
+    const ax = u[0][0] * kx, ay = u[0][1] * ky, bx = u[1][0] * kx, by = u[1][1] * ky;
+    const px = P[0] * kx, py = P[1] * ky;
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-9;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L2));
+    return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+  };
+  const chce = new Set();
+  // ⛔ dlaždice `krajina` nemají u vrstvy `cesty` id, takže feature-state nemá
+  // co označit (viz `zab-cesty` ve styles.js). Dokud nebude `krajina8` s `fid`,
+  // řeší se zdvojení vzhledem (měkká plná linka pod čárkovanou z OSM).
+  if (zab.length && zab[0].id == null) { zdvojeneBezId = true; return; }
+  for (const f of zab) {
+    if (f.id == null) continue;
+    const g = f.geometry; if (!g) continue;
+    const cs = g.type === 'LineString' ? [g.coordinates] : (g.type === 'MultiLineString' ? g.coordinates : []);
+    let bodu = 0, blizko = 0;
+    for (const c of cs) {
+      if (!c || c.length < 2) continue;
+      const krok = Math.max(1, Math.floor(c.length / 6));
+      for (let i = 0; i < c.length; i += krok) {
+        const q = c[i];
+        const useky = mrizka.get(Math.floor(q[0] / MR) + ':' + Math.floor(q[1] / MR));
+        bodu++;
+        if (!useky) continue;
+        let nej = 1e9;
+        for (const u of useky) { const d = dUsek(q, u); if (d < nej) nej = d; }
+        if (nej < ZDVOJENA_M) blizko++;
+      }
+    }
+    if (bodu >= 2 && blizko / bodu >= 0.6) chce.add(f.id);
+  }
+  for (const id of chce) {
+    if (zdvojeneOznaceno.has(id)) continue;
+    try { mapa.setFeatureState({ source: 'krajina', sourceLayer: 'cesty', id: id }, { dup: true }); } catch (e) { /* nic */ }
+    zdvojeneOznaceno.add(id);
+  }
+  try {
+    window.__casy = window.__casy || {};
+    window.__casy.zdvojeneMs = Math.round(performance.now() - t0);
+    window.__casy.zdvojeneN = chce.size;
+    window.__casy.zdvojeneZab = zab.length;
+  } catch (e) { /* nic */ }
+}
 function naplanujMosty3d(zaMs) {
   if (mostyCasovac) return;                       // throttle (idle chodí každých ~500 ms)
-  mostyCasovac = setTimeout(() => { mostyCasovac = null; prepoctiMosty3d(); }, zaMs || 700);
+  mostyCasovac = setTimeout(() => { mostyCasovac = null; prepoctiMosty3d();
+    try { prepoctiZdvojeneCesty(); } catch (e) { console.warn('[cesty] zdvojené', e); } }, zaMs || 700);
 }
 function prepoctiMosty3d() {
   if (!mapa || !nasadMosty3d()) return;
@@ -3547,20 +3636,12 @@ function prepoctiMosty3d() {
       pridejPlochy(pas(cely2, sirkaD, 0), MOST_BARVY.deska);
       pridejPlochy(pas(cely2, 0.5, (sirkaD - 0.5) / 2), MOST_BARVY.hrana);
       pridejPlochy(pas(cely2, 0.5, -(sirkaD - 0.5) / 2), MOST_BARVY.hrana);
-      // ⭐ engine 254: ZÁBRADLÍ POLOŽENÉ NA TERÉNU. Plochý most je jinak jen
-      // světlejší pruh a jako most se nečte. Zábradlí je vytažené od ZEMĚ
-      // (base 0), takže se s drapérovanou silnicí NEMŮŽE rozejít – a dělí se
-      // po ~6 m, aby každý díl seděl na svém terénu (MapLibre zvedá prvek
-      // o terén v jeho těžišti; dlouhý díl by se od svahu odlepil).
-      const dilu = Math.max(1, Math.min(16, Math.round(delka / 6)));
-      const barvaZ = proSvetlo(ztlumNoci(MOST_CIL.zabradli));
-      for (let d = 0; d < dilu; d++) {
-        const bd = podcara(delka * d / dilu, delka * (d + 1) / dilu);
-        if (bd.length < 2) continue;
-        pridej(pas(bd, 0.3, (sirkaD - 0.3) / 2), 0, zbr, barvaZ);
-        pridej(pas(bd, 0.3, -(sirkaD - 0.3) / 2), 0, zbr, barvaZ);
-      }
-      podpis += delka + w + dilu;
+      // ⛔ engine 255: ŽÁDNÉ VYTAŽENÉ ZÁBRADLÍ. Engine 254 ho zkusil (extruze
+      // od země, díly po 6 m) a z ptačí perspektivy z něj byla tmavá „prkna"
+      // napříč silnicí: svislé plochy dostávají od světla málo, díly na svahu
+      // se o kousek míjejí a u úzkých lávek jdou přes vozovku. Plochá deska
+      // s tmavšími okraji se s drapérovanou silnicí rozejít NEMŮŽE.
+      podpis += delka + w;
     };
     // výšky: konce mostu (tam dosedá) a nejnižší terén pod ním
     const eA = vyska(cara[0]), eB = vyska(cara[cara.length - 1]);
