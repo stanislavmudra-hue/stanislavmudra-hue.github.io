@@ -4106,7 +4106,11 @@ function prepoctiMosty3d() {
     // 6 m nad údolím.
     const zdvihM = Math.max(0, (mostovka - Math.min(eA, eB)) / ex);
     const dR = Math.max(4, Math.min(14, delka * 0.25));
-    const najezdy = zdvihM >= 0.8 && delka >= 14 && dR * 2 < delka - 2;
+    // engine 267: NAJEZDY VYPNUTY ("mosty jsi uplne dokopal"): kazdy kus zvedne
+    // MapLibre o teren ve SVEM tezisti a vrsek kazde extruze je vodorovny, takze
+    // z peti kusu byly schody a zuby (DEM sum + jina vyska kazdeho kusu).
+    // Ohnuty most by chtel desitky kusu = jeste vic schodu. Zustava jeden pas.
+    const najezdy = false && zdvihM >= 0.8 && delka >= 14 && dR * 2 < delka - 2;
     const kusy = [];                                  // { bd, top } – top = absolutní vršek
     if (najezdy) {
       const dil = dR / 2;
@@ -4124,7 +4128,7 @@ function prepoctiMosty3d() {
       const tez = [kus.bd.reduce((a, q) => a + q[0], 0) / kus.bd.length,
                    kus.bd.reduce((a, q) => a + q[1], 0) / kus.bd.length];
       const eK = vyska(tez);
-      const bk = eK == null ? b : +Math.max(0.35, Math.min(4.0 * ex, kus.top - eK)).toFixed(2);
+      const bk = (kusy.length === 1 || eK == null) ? b : +Math.max(0.35, Math.min(4.0 * ex, kus.top - eK)).toFixed(2);   // jeden pas = puvodni b
       pridej(pas(kus.bd, w, 0), Math.max(0, bk - 0.95), bk, barvaDesky);
       if (w >= 4) pridej(pas(kus.bd, w * 0.84, 0), Math.max(0, bk - 1.7), Math.max(0.01, bk - 0.8), BARVY3D.nosnik);
       if (zel) {
