@@ -315,11 +315,17 @@ async function start() {
   const demSource = new mlcontour.DemSource({
     url: KONFIG.terenUrl,
     encoding: 'terrarium',
-    // ⭐⭐ engine 249: z13 → z14. Strop 13 znamenal 19,1 m na pixel, ačkoli
-    // archiv `teren_cr_z14.pmtiles` má z14 (9,6 m/px). Změřeno u Rtyně:
-    // vrchol náspu vycházel 9 m VEDLE osy silnice a drapérovaná čára se na
-    // 19m síti lámala („silnice není na vrcholu náspu, ale bokem a pokroucená").
-    maxzoom: KONFIG.terenMaxZoom,
+    // ⛔⛔ engine 253: ZPĚT NA Z13. Engine 249 zvedl DEM na z14 (9,6 m/px)
+    // v domnění, že přesnější terén pomůže silnicím. ZMĚŘENO A/B na TÝCHŽ
+    // 64 úsecích u Rtyně je to PŘESNĚ NAOPAK – jemnější DEM přinese víc
+    // hrbolů pod vozovku a drapérovaný pás se po nich kroutí:
+    //            příčný sklon p90/max   vlnění podél p90/max
+    //   DEM z14:      1,34 / 1,93 m         0,92 / 1,63 m
+    //   DEM z13:      0,92 / 1,32 m         0,39 / 0,89 m   ← 2,4× hladší
+    // Pro DRAPÉROVANOU silnici je hladká podložka důležitější než přesná.
+    // Bonus: 4× míň terénních dlaždic ke stažení a dekódování.
+    // ⚠️ Kdyby se sem někdy vracelo z14, měř `diag_sirka.js`, ne dojem.
+    maxzoom: Math.min(KONFIG.terenMaxZoom, 13),
     worker: true,
     timeoutMs: 30000,   // serverové PMTiles přes proxy jsou línější
   });
@@ -330,7 +336,7 @@ async function start() {
   // Tudy taky vede přednačítání – `predtahniTeren()` níž.
   try {
     KONFIG.terenSdilenaUrl = demSource.sharedDemProtocolUrl;
-    KONFIG.terenSdilenyStrop = KONFIG.terenMaxZoom;
+    KONFIG.terenSdilenyStrop = Math.min(KONFIG.terenMaxZoom, 13);
     window.__okolnikDem = demSource;   // pro přednačítání i ladění
   } catch (e) {
     console.warn('[teren] sdílená keš není k dispozici:', e);
