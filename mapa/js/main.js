@@ -3163,29 +3163,22 @@ const OKNA_SVITI_PRAH = 35;
 /// vrstvě `okolnik-okna-zare` s krytím 0,32. Zhasnutá okna mají auru nulové
 /// výšky (height = base), takže se nekreslí. Aura je prvek `i + N` k oknu `i`
 /// (okna první, aury za nimi, `generateId`), blikání ji přepíná zároveň.
-const OKNA_ZARE_M = 0.5;                 // vnitřní aura (engine 265: 2 aury = měkčí spád)
-const OKNA_ZARE2_M = 0.95;               // vnější aura
-const OKNA_ZARE2_KRYTI = 0.16;
-const OKNA_ZARE2_BARVA = '#FFD37A';
-const OKNA_ZARE_BARVA = '#FFE08A';
-const OKNA_ZARE_KRYTI = 0.45;
+// ⭐ engine 266 („nedělej to tak složité, udělej je jako světla, kolem kterých
+// lítají můry"): záře okna = SYMBOL se spritem `svetlo-zare-0` (pečená záře
+// světel vesnic z dekorace.js) u paty zdi před oknem, kotva dole, takže záře
+// stoupá po fasádě. Průsvitné kvádry (engine 264–265) pryč.
+const OKNA_ZARE_ODSTUP_M = 1.0;          // bod záře před zdí
+const OKNA_ZARE_KRYTI = 0.75;
+const OKNA_ZARE_IKONA = 'svetlo-zare-0';
 const OKNA_ZARE_SVITI = ['any', ['==', ['feature-state', 'sv'], 1],
   ['all', ['!=', ['feature-state', 'sv'], 0], ['<', ['coalesce', ['get', 'r'], 50], OKNA_SVITI_PRAH]]];
-function vyrazVyskyZare(noc) {
-  return noc ? ['case', OKNA_ZARE_SVITI, ['get', 'h'], ['get', 'b']] : ['get', 'b'];
+function vyrazKrytiZare(noc) {
+  return noc ? ['case', OKNA_ZARE_SVITI, OKNA_ZARE_KRYTI, 0] : 0;
 }
 function nastavZariOken(noc) {
-  if (!mapa) return;
-  try {
-    if (mapa.getLayer('okolnik-okna-zare')) {
-      mapa.setPaintProperty('okolnik-okna-zare', 'fill-extrusion-height', vyrazVyskyZare(noc));
-      mapa.setPaintProperty('okolnik-okna-zare', 'fill-extrusion-color', proSvetlo(OKNA_ZARE_BARVA));
-    }
-    if (mapa.getLayer('okolnik-okna-zare2')) {
-      mapa.setPaintProperty('okolnik-okna-zare2', 'fill-extrusion-height', vyrazVyskyZare(noc));
-      mapa.setPaintProperty('okolnik-okna-zare2', 'fill-extrusion-color', proSvetlo(OKNA_ZARE2_BARVA));
-    }
-  } catch (e) { /* styl se zrovna mění */ }
+  if (!mapa || !mapa.getLayer('okolnik-okna-zare')) return;
+  try { mapa.setPaintProperty('okolnik-okna-zare', 'icon-opacity', vyrazKrytiZare(noc)); }
+  catch (e) { /* styl se zrovna mění */ }
 }
 function vyrazBarvyOken(noc, krok) {
   if (!noc) return proSvetlo(ztlumNoci(OKNA_BARVA.den, krok));
@@ -3241,8 +3234,7 @@ function nastavBlikaniOken(noc) {
         const id = Math.floor(Math.random() * n);
         const sv = Math.random() < 0.45 ? 1 : 0;
         mapa.setFeatureState({ source: 'okna-3d', id }, { sv });
-        mapa.setFeatureState({ source: 'okna-3d', id: id + n }, { sv });       // engine 264: vnitřní aura
-        mapa.setFeatureState({ source: 'okna-3d', id: id + 2 * n }, { sv });   // engine 265: vnější aura
+        mapa.setFeatureState({ source: 'okna-3d', id: id + n }, { sv });       // záře okna (engine 266: sprite)
       }
     } catch (e) { /* zdroj se zrovna mění */ }
   }, 4000);
@@ -3265,23 +3257,20 @@ function nasadOkna3d() {
                  'fill-extrusion-opacity': 1,
                  'fill-extrusion-vertical-gradient': false } }, pred);
     }
-    if (!mapa.getLayer('okolnik-okna-zare') && mapa.getLayer('okolnik-okna-3d')) {
+    // engine 266: záře = symbol se spritem světel vesnic; vzniká, až když sprite je
+    // (dekorace.js ho peče při načtení herního stylu), jinak příště
+    if (!mapa.getLayer('okolnik-okna-zare') && mapa.getLayer('okolnik-okna-3d')
+        && mapa.hasImage && mapa.hasImage(OKNA_ZARE_IKONA)) {
       const noc = typeof krokNoci === 'number' && krokNoci >= 2;
-      // engine 265: vnější aura první (je za vnitřní), pak vnitřní, okno navrch
-      mapa.addLayer({ id: 'okolnik-okna-zare2', type: 'fill-extrusion', source: 'okna-3d', minzoom: OKNA_OD_Z,
-        filter: ['==', ['get', 'z'], 2],
-        paint: { 'fill-extrusion-color': proSvetlo(OKNA_ZARE2_BARVA),
-                 'fill-extrusion-height': vyrazVyskyZare(noc),
-                 'fill-extrusion-base': ['get', 'b'],
-                 'fill-extrusion-opacity': OKNA_ZARE2_KRYTI,
-                 'fill-extrusion-vertical-gradient': false } }, 'okolnik-okna-3d');
-      mapa.addLayer({ id: 'okolnik-okna-zare', type: 'fill-extrusion', source: 'okna-3d', minzoom: OKNA_OD_Z,
+      mapa.addLayer({ id: 'okolnik-okna-zare', type: 'symbol', source: 'okna-3d', minzoom: OKNA_OD_Z,
         filter: ['==', ['get', 'z'], 1],
-        paint: { 'fill-extrusion-color': proSvetlo(OKNA_ZARE_BARVA),
-                 'fill-extrusion-height': vyrazVyskyZare(noc),
-                 'fill-extrusion-base': ['get', 'b'],
-                 'fill-extrusion-opacity': OKNA_ZARE_KRYTI,
-                 'fill-extrusion-vertical-gradient': false } }, 'okolnik-okna-3d');
+        layout: { 'icon-image': OKNA_ZARE_IKONA,
+                  'icon-anchor': 'bottom',
+                  'icon-allow-overlap': true,
+                  'icon-ignore-placement': true,
+                  'icon-size': ['interpolate', ['exponential', 1.6], ['zoom'],
+                                16.8, 0.3, 18.0, 0.55, 19.5, 0.95] },
+        paint: { 'icon-opacity': vyrazKrytiZare(noc) } });
     }
   } catch (e) { console.warn('[okna] vrstva', e); return false; }
   return true;
@@ -3341,8 +3330,7 @@ function prepoctiOkna3d() {
   }
   domy.sort((a, b) => a.d - b.d);
   const features = [];
-  const zare = [];                                  // engine 264: aury oken (za okny)
-  const zare2 = [];                                 // engine 265: vnější aury (za nimi)
+  const zare = [];                                  // záře oken (za okny; engine 266 body)
   const klice = [];
   let budov = 0, spocitano = 0;
   for (const dm of domy) {
@@ -3360,18 +3348,17 @@ function prepoctiOkna3d() {
     klice.push(dm.klic);
     for (let i = 0; i < okna.length; i++) {
       const o = okna[i];
-      if (o.properties.z) continue;                 // aury přijdou v trojici s oknem
+      if (o.properties.z) continue;                 // záře přijde v páru s oknem
       features.push(o);
-      const g = okna[i + 1], g2 = okna[i + 2];
+      const g = okna[i + 1];
       zare.push(g && g.properties.z === 1 ? g : o);        // vždy stejný počet (záloha = okno samo)
-      zare2.push(g2 && g2.properties.z === 2 ? g2 : o);
       if (features.length >= OKNA_MAX) break;
     }
   }
   const nov = features.length + '|' + klice.join(';');
   if (nov === oknaPodpis) return;
   oknaPodpis = nov;
-  try { zdroj.setData(features.length ? { type: 'FeatureCollection', features: features.concat(zare, zare2) } : OKNA_PRAZDNE); }
+  try { zdroj.setData(features.length ? { type: 'FeatureCollection', features: features.concat(zare) } : OKNA_PRAZDNE); }
   catch (e) { /* zdroj se zrovna mění */ }
   try {
     window.__casy = window.__casy || {};
@@ -3389,8 +3376,7 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
   if (eDum === null) return null;
   const out = [];
   const patra = [];               // engine 259: okna po PATRECH, ne po kusech
-  const patraZare = [];           // engine 264: aury oken po patrech (týž prvek → týž terén)
-  const patraZare2 = [];          // engine 265: vnější aury
+  const patraZare = [];           // engine 266: body záře (MultiPoint) po patrech
   const ring = dm.ring;
   const n = ring.length - 1;
   let plocha = 0;
@@ -3433,26 +3419,14 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
         r.push([cxo + (ux * a * sirka + nx * d) / kxM, cyo + (uy * a * sirka + ny * d) / kyM]);
       }
       r.push(r[0]);
-      // engine 264: aura – o OKNA_ZARE_M širší, 2–8 cm před zdí (okno 4–10 cm zůstává vpředu)
-      const rz = [];
-      const m = OKNA_ZARE_M / sirka;
-      for (const [a, d] of [[-0.5 - m, 0.02], [0.5 + m, 0.02], [0.5 + m, 0.08], [-0.5 - m, 0.08]]) {
-        rz.push([cxo + (ux * a * sirka + nx * d) / kxM, cyo + (uy * a * sirka + ny * d) / kyM]);
-      }
-      rz.push(rz[0]);
-      const rz2 = [];
-      const m2 = OKNA_ZARE2_M / sirka;
-      for (const [a, d] of [[-0.5 - m2, 0.01], [0.5 + m2, 0.01], [0.5 + m2, 0.06], [-0.5 - m2, 0.06]]) {
-        rz2.push([cxo + (ux * a * sirka + nx * d) / kxM, cyo + (uy * a * sirka + ny * d) / kyM]);
-      }
-      rz2.push(rz2[0]);
+      // engine 266: bod záře na zemi OKNA_ZARE_ODSTUP_M před zdí (sprite stoupá po fasádě)
+      const bz = [cxo + (nx * OKNA_ZARE_ODSTUP_M) / kxM, cyo + (ny * OKNA_ZARE_ODSTUP_M) / kyM];
       for (let f = 0; f < pater; f++) {
         const zb = B + 1.0 + f * OKNA_PATRO_M;
         if (zb + 1.4 > H - 0.75 - 0.25) break;   // pod SPODNÍ hranou střechy
         if (zb < B) continue;                    // ani pod základnu domu
         (patra[f] || (patra[f] = [])).push([r]);
-        (patraZare[f] || (patraZare[f] = [])).push([rz]);
-        (patraZare2[f] || (patraZare2[f] = [])).push([rz2]);
+        (patraZare[f] || (patraZare[f] = [])).push(bz);
       }
     }
   }
@@ -3466,17 +3440,11 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
     out.push({ type: 'Feature',
                properties: { b: +zb.toFixed(2), h: +(zb + 1.4).toFixed(2), r: rnd },
                geometry: { type: 'MultiPolygon', coordinates: kusy } });
-    // engine 264: aura patra hned za oknem (prepoctiOkna3d je řadí za všechna okna)
+    // engine 266: záře patra hned za oknem (prepoctiOkna3d je řadí za všechna okna);
+    // body na zemi před okny – symbolová vrstva, hloubka kotvy přes záplatu bundlu
     out.push({ type: 'Feature',
-               properties: { z: 1, r: rnd,
-                             b: +Math.max(B, zb - OKNA_ZARE_M).toFixed(2),
-                             h: +Math.min(zb + 1.4 + OKNA_ZARE_M, H - 0.6).toFixed(2) },
-               geometry: { type: 'MultiPolygon', coordinates: patraZare[f] } });
-    out.push({ type: 'Feature',                   // engine 265: vnější aura
-               properties: { z: 2, r: rnd,
-                             b: +Math.max(B, zb - OKNA_ZARE2_M).toFixed(2),
-                             h: +Math.min(zb + 1.4 + OKNA_ZARE2_M, H - 0.5).toFixed(2) },
-               geometry: { type: 'MultiPolygon', coordinates: patraZare2[f] } });
+               properties: { z: 1, r: rnd },
+               geometry: { type: 'MultiPoint', coordinates: patraZare[f] } });
   }
   return out;
 }
@@ -4147,7 +4115,7 @@ function prepoctiMosty3d() {
       kusy.push({ bd: podcara(dR, delka - dR), top: mostovka });
       kusy.push({ bd: podcara(delka - dR, delka - dil), top: mostovka - zdvihM * ex * 0.33 });
       kusy.push({ bd: podcara(delka - dil, delka).concat([cely[cely.length - 1]]), top: mostovka - zdvihM * ex * 0.66 });
-      podpis += 'n';
+      podpis += 0.5;   // ⛔ engine 266: ČÍSLO – řetězec ('n') shodil podpis.toFixed a s ním všechny mosty
     } else {
       kusy.push({ bd: cely, top: mostovka });
     }
