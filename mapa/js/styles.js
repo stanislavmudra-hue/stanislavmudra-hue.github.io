@@ -475,11 +475,10 @@ const SILNICE_TRIDY = ['minor', 'tertiary', 'secondary', 'primary',
 // tedy přesně tak, jak roste krajina (domy, pole). Pod z12 drží podlaha
 // čitelnosti 1–3 px jako u každé mapy. Dřív základ 1,6 → silnice rostly
 // 3× pomaleji než mapa a při přiblížení „stály".
-/// ⛔ engine 243: „NENÍ NA MOSTĚ". Most kreslí engine jako 3D těleso i
-/// s vozovkou; kdyby se pod ním kreslila ještě drapérovaná silnice, jsou při
-/// náklonu vidět dvě vozovky vedle sebe (perspektiva vyvýšené desky).
-/// ⚠️ Používat POUZE ve vrstvách herní mapy, kde most staví `prepoctiMosty3d`.
-const NA_MOSTE = ['!=', ['get', 'brunnel'], 'bridge'];
+/// ⛔⛔ POZOR NA POKUŠENÍ „NEKRESLIT SILNICI NA MOSTĚ". Engine 243 to zkusil
+/// (deska měla vozovku nahradit) a rozbilo to mosty na tři kola: každá
+/// nepřesnost výšky desky byla vidět jako USEKNUTÁ SILNICE. Vozovka na mostě
+/// je obyčejná drapérovaná čára – vždycky navazuje. Most je těleso KOLEM ní.
 // ⛔ engine 248 („některé domy lezou do silnice"): změřeno v Přítkově – 14 ze
 // 111 domů zasahovalo do kresleného pásu, nejhorší o 1,6 m. `minor` 5,5 m je
 // městská ulice; vesnická vozovka má 4,5–5 m. ⚠️ Když se tohle hne, hni
@@ -864,7 +863,7 @@ function stylHerni(ctx) {
         'source-layer': 'transportation', minzoom: 12,
         // ⛔ engine 243: na mostě silnici NEKRESLIT – most ji nese sám (jinak
         // jsou při náklonu vidět dvě vozovky vedle sebe, viz `NA_MOSTE`)
-        filter: ['all', NA_MOSTE, ['in', ['get', 'class'], ['literal', ['path', 'track']]]],
+        filter: ['in', ['get', 'class'], ['literal', ['path', 'track']]],
         layout: { 'line-cap': 'round' },
         // engine 238: o třetinu širší a světlejší – v noční mapě se tenká
         // tmavá čárka ztrácela („některé cesty jsou příliš nevýrazné")
@@ -877,7 +876,7 @@ function stylHerni(ctx) {
       // Až od z14,5: níž by z vesnice byla jen změť čárek.
       { id: 'silnice-servisni', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 14.5,
-        filter: ['all', NA_MOSTE, ['==', ['get', 'class'], 'service']],
+        filter: ['==', ['get', 'class'], 'service'],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#A98F63',
                  'line-width': sirkaMetry(0.9, 3.0, 14.5) } },
@@ -886,17 +885,9 @@ function stylHerni(ctx) {
       // lem, šedý asfalt (odstín podle třídy), bílé značení: přerušovaná
       // střední čára na místních a vedlejších, plná na I. třídě, dvě
       // čáry (dva pruhy) na dálnicích a rychlostních + krajnice.
-      // ⭐ engine 243: NÁHRADA ZDÁLKY. Nad z14 nese mosty engine (`mosty-3d`),
-      // pod z14 by v síti zůstala díra – tahle jediná vrstva je zaplní.
-      { id: 'silnice-most-daleko', type: 'line', source: 'omt',
-        'source-layer': 'transportation', minzoom: 8, maxzoom: 14,
-        filter: ['all', ['==', ['get', 'brunnel'], 'bridge'],
-                 ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]]],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#A39D94', 'line-width': SILNICE_SIRKA } },
       { id: 'silnice-lem', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 11,
-        filter: ['all', NA_MOSTE, ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]]],
+        filter: ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         // ⛔ engine 248: LEM PŘI PŘIBLÍŽENÍ TENČÍ. Byl 12 % šířky + 0,8 m,
         // tedy 0,73 m navíc na KAŽDOU stranu – na z18 se o něj rozšířil pás
@@ -905,7 +896,7 @@ function stylHerni(ctx) {
                  'line-width': sirkaSilnic((w, z) => +(w + (z >= 18 ? w * 0.06 + 0.4 : 1.4)).toFixed(2)) } },
       { id: 'silnice-asfalt', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 8,
-        filter: ['all', NA_MOSTE, ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]]],
+        filter: ['in', ['get', 'class'], ['literal', SILNICE_TRIDY]],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': ['match', ['get', 'class'],
                    'motorway', '#87827C', 'trunk', '#87827C',
@@ -913,29 +904,29 @@ function stylHerni(ctx) {
                  'line-width': SILNICE_SIRKA } },
       { id: 'silnice-stred-carkovana', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 13,
-        filter: ['all', NA_MOSTE, ['in', ['get', 'class'],
-                 ['literal', ['minor', 'tertiary', 'secondary']]]],
+        filter: ['in', ['get', 'class'],
+                 ['literal', ['minor', 'tertiary', 'secondary']]],
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.9,
                  'line-width': sirkaMetry(0.5, 0.4, 13),
                  'line-dasharray': [6, 5] } },
       { id: 'silnice-stred-plna', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 12,
-        filter: ['all', NA_MOSTE, ['==', ['get', 'class'], 'primary']],
+        filter: ['==', ['get', 'class'], 'primary'],
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.9,
                  'line-width': sirkaMetry(0.5, 0.4, 12) } },
       { id: 'silnice-dva-pruhy', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 11,
-        filter: ['all', NA_MOSTE, ['in', ['get', 'class'], ['literal', ['motorway', 'trunk']]]],
+        filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk']]],
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.9,
                  'line-width': sirkaMetry(0.5, 0.4, 11),
                  'line-gap-width': sirkaSilnic((w) => +(w * 0.34).toFixed(2)) } },
       { id: 'silnice-krajnice', type: 'line', source: 'omt',
         'source-layer': 'transportation', minzoom: 13.5,
-        filter: ['all', NA_MOSTE, ['in', ['get', 'class'],
-                 ['literal', ['motorway', 'trunk', 'primary']]]],
+        filter: ['in', ['get', 'class'],
+                 ['literal', ['motorway', 'trunk', 'primary']]],
         layout: { 'line-cap': 'butt', 'line-join': 'round' },
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.7,
                  'line-width': sirkaMetry(0.4, 0.35, 13.5),

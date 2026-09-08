@@ -3524,21 +3524,19 @@ function prepoctiMosty3d() {
     };
     // ⛔ engine 249: SILNICE SE NA MOSTĚ NEKRESLÍ, takže vynechaný most = DÍRA
     // v síti. Když chybí výška terénu, nakreslí se aspoň plochý most.
-    const jenPlochy = (m2) => {
+    // engine 251: vozovku kreslí STYL (silnice se na mostě zase kreslí), most
+    // přidá jen betonovou desku pod ní a tmavší hrany = zábradlí shora.
+    const jenPlochy = () => {
       const cely2 = podcara(0, delka);
       const sirkaD = w + 1.2;
       pridejPlochy(pas(cely2, sirkaD, 0), MOST_BARVY.deska);
       pridejPlochy(pas(cely2, 0.5, (sirkaD - 0.5) / 2), MOST_BARVY.hrana);
       pridejPlochy(pas(cely2, 0.5, -(sirkaD - 0.5) / 2), MOST_BARVY.hrana);
-      if (!zel) {
-        pridejPlochy(pas(cely2, w, 0), MOST_SILNICE[m2.cls] || '#A39D94');
-        if (w >= 4.5) pridejPlochy(pas(cely2, 0.4, 0), '#F3EFE4', 0.85);
-      }
       podpis += delka + w;
     };
     // výšky: konce mostu (tam dosedá) a nejnižší terén pod ním
     const eA = vyska(cara[0]), eB = vyska(cara[cara.length - 1]);
-    if (eA == null || eB == null) { jenPlochy(m); continue; }
+    if (eA == null || eB == null) { jenPlochy(); continue; }
     let tMin = Infinity;
     for (let i = 0; i <= 8; i++) {
       const e = vyska(bodNa(delka * i / 8).P);
@@ -3582,21 +3580,23 @@ function prepoctiMosty3d() {
       // ⭐ engine 243: VOZOVKU NESE MOST. Styl ji na mostě nekreslí, takže
       // plochý most musí mít vlastní asfalt i střední čáru, jinak je v silnici
       // díra dlouhá jako most. (engine 249: jedno místo pravdy – `jenPlochy`.)
-      jenPlochy(m);
+      jenPlochy();
       continue;
     }
+    // ⛔⛔ engine 252: JEDNA DESKA, NE DÍLY. Engine 251 zkusil desku po ~6 m
+    // dílech s interpolovanou výškou (jako engine 236) – jenže MapLibre zvedá
+    // KAŽDÝ prvek o terén v JEHO těžišti, takže sousední díly skončily každý
+    // jinde a z mostu byla PILA (ověřeno snímkem nad dálnicí). Deska je proto
+    // jeden vodorovný pás ve výšce NIŽŠÍHO konce (nikde nevisí, viz engine 250)
+    // a strop 4 m ji drží při zemi, kdyby DEM zase lhal.
+    // ⭐ Pojistkou proti všem nepřesnostem je, že se vozovka na mostě KRESLÍ
+    // (engine 251) – silnice je spojitá, i když deska sedí o kus vedle.
     const eStred = vyska([cely.reduce((a, q) => a + q[0], 0) / cely.length,
                           cely.reduce((a, q) => a + q[1], 0) / cely.length]);
-    if (eStred == null) { jenPlochy(m); continue; }
-    // ⛔ POVRCH DESKY MUSÍ BÝT V ÚROVNI SILNICE. Dřív ležela deska NAD ní
-    // (base = mostovka), takže na most vedl schod vysoký jako deska.
-    const b = +Math.max(1.0, mostovka - eStred).toFixed(1);
+    if (eStred == null) { jenPlochy(); continue; }
+    const b = +Math.max(0.4, Math.min(4.0 * ex, mostovka - eStred)).toFixed(2);
     podpis += b + delka + w;
     const barvaDesky = zel ? BARVY3D.zel : asfaltPro(m.cls);
-    // ⭐ engine 242: VRŽENÝ STÍN. Deska ve výšce 2 m se z ptačí perspektivy
-    // od ploché silnice nijak neliší – teprve stín vedle ní řekne „tohle je
-    // nad zemí". Směr a délku bere ze `stinSvetlo` (týž zdroj jako stíny
-    // domů), takže sedí ke zbytku mapy; v noci `sila` = 0 a stín se nekreslí.
     if (stinSvetlo.sila > 0) {
       const smerS = (stinSvetlo.az + 180) * Math.PI / 180;
       const dS = Math.min(24, b / Math.tan(Math.max(12, stinSvetlo.el) * Math.PI / 180));
@@ -3604,33 +3604,28 @@ function prepoctiMosty3d() {
       pridejPlochy(pas(cely, w, 0).map((q) => [q[0] + oLon, q[1] + oLat]),
                    MOST_BARVY.stin, +(0.30 * Math.min(1, stinSvetlo.sila / 0.35)).toFixed(2));
     }
-    pridej(pas(cely, w, 0), b - 0.8, b, barvaDesky);                           // deska (povrch v úrovni silnice)
-    // nosník jen u vozovek – u lávky a polní cesty by z mostu byla bedna
-    if (w >= 4) pridej(pas(cely, w * 0.84, 0), b - 1.7, b - 0.8, BARVY3D.nosnik);
+    pridej(pas(cely, w, 0), Math.max(0, b - 0.8), b, barvaDesky);
+    if (w >= 4) pridej(pas(cely, w * 0.84, 0), Math.max(0, b - 1.7), Math.max(0.01, b - 0.8), BARVY3D.nosnik);
     if (zel) {
       pridej(pas(cely, 0.3, 0.72), b, b + 0.15, BARVY3D.kolej);
       pridej(pas(cely, 0.3, -0.72), b, b + 0.15, BARVY3D.kolej);
-    } else if (w >= 4.5) {
-      pridej(pas(cely, 0.3, 0), b, b + 0.1, BARVY3D.pruh);                           // střední čára
     }
-    // zábradlí: světlejší než vozovka, ať je z ptačí perspektivy vidět obrys
     pridej(pas(cely, 0.3, (w - 0.3) / 2), b, b + zbr, BARVY3D.zabradli);
     pridej(pas(cely, 0.3, -(w - 0.3) / 2), b, b + zbr, BARVY3D.zabradli);
     // opěry na koncích – most dosedá i tam, kde DEM zapomněl násep
     for (const kraj of [0, 1]) {
-      const dO = Math.max(2.5, Math.min(5, delka * 0.14));   // engine 242: krátký most = krátká opěra
+      const dO = Math.max(2.5, Math.min(5, delka * 0.14));
       const s0 = kraj ? Math.max(0, delka - dO) : 0;
       const s1 = kraj ? delka : Math.min(delka, dO);
-      const bd = podcara(s0, s1);
-      if (bd.length < 2) continue;
+      const bdO = podcara(s0, s1);
+      if (bdO.length < 2) continue;
       let ox = 0, oy = 0;
-      for (const q of bd) { ox += q[0]; oy += q[1]; }
-      const eO = vyska([ox / bd.length, oy / bd.length]);
+      for (const q of bdO) { ox += q[0]; oy += q[1]; }
+      const eO = vyska([ox / bdO.length, oy / bdO.length]);
       if (eO == null) continue;
       const hO = mostovka - 1.7 - eO;
-      if (hO < 0.5) continue;   // engine 249: i nízká opěra ať konec dorovná
-      pridejPlochy(pas(bd, w + 0.6, 0), MOST_SILNICE[m.cls] || '#A39D94');   // nájezd na terénu (navazuje na silnici)
-      pridej(pas(bd, w * 0.92, 0), 0, +hO.toFixed(1), BARVY3D.opera);
+      if (hO < 0.5) continue;
+      pridej(pas(bdO, w * 0.92, 0), 0, +hO.toFixed(1), BARVY3D.opera);
     }
     // pilíře uvnitř po ~30 m
     const pocetP = Math.max(1, Math.round(delka / MOST_USEK_M));
