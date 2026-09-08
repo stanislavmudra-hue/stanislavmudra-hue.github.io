@@ -118,8 +118,10 @@ function zdroje(ctx, extra) {
     // strop 13 i pro 3D síť: tím jde `teren` přes SDÍLENOU keš (viz výš).
     // Ztráta detailu reliéfu je při stropu náklonu 42° nepostřehnutelná,
     // zato dlaždice dorazí často už načtená kvůli vrstevnicím/stínování.
-    teren: zdrojTerenu(13),
-    stinovani: zdrojTerenu(13),
+    // ⭐⭐ engine 249: z13 → z14 (19,1 → 9,6 m na pixel). Viz `DemSource`
+    // v main.js: archiv `teren_cr_z14.pmtiles` z14 má, jen se nepoužíval.
+    teren: zdrojTerenu(14),
+    stinovani: zdrojTerenu(14),
   };
   if (ctx && ctx.konturyUrl) {
     zaklad.kontury = { type: 'vector', tiles: [ctx.konturyUrl], maxzoom: 15 };
