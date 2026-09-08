@@ -3742,7 +3742,10 @@ function prepoctiMosty3d() {
     // se zvedá nejvýš o metr.
     const krizeni = svetlaPodleKrizeni(cara, kxM, kyM);
     const poklesM = Math.max(0, (Math.min(eA, eB) - tMin) / ex);
-    const stropZdvihu = Math.min(delka < 12 ? 1.0 : 2.0, 0.6 + poklesM);
+    // engine 260: o kousek výš („teď jsou zase moc utopené"). V rovině vyjde
+    // 1,2 m – deska je vidět, ale nestojí na silnici jako stůl; nad údolím
+    // se přidá skutečný pokles terénu.
+    const stropZdvihu = Math.min(delka < 12 ? 1.5 : 2.6, 1.2 + poklesM);
     const dno = krizeni > 0 ? Math.min(tMin, vyska(bodNa(delka / 2).P) || tMin) : tMin;
     const zKrizeni = krizeni > 0 ? dno + krizeni * ex : -Infinity;
     const mostovka = Math.max(Math.min(eA, eB), tMin + 1.0 * ex,
@@ -3821,7 +3824,7 @@ function prepoctiMosty3d() {
       pridejPlochy(pas(cely, w, 0).map((q) => [q[0] + oLon, q[1] + oLat]),
                    MOST_BARVY.stin, +(0.30 * Math.min(1, stinSvetlo.sila / 0.35)).toFixed(2));
     }
-    pridej(pas(cely, w, 0), Math.max(0, b - 0.8), b, barvaDesky);
+    pridej(pas(cely, w, 0), Math.max(0, b - 0.95), b, barvaDesky);
     if (w >= 4) pridej(pas(cely, w * 0.84, 0), Math.max(0, b - 1.7), Math.max(0.01, b - 0.8), BARVY3D.nosnik);
     if (zel) {
       pridej(pas(cely, 0.3, 0.72), b, b + 0.15, BARVY3D.kolej);
