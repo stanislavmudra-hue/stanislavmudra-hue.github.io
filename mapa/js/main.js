@@ -7605,6 +7605,10 @@ window.OkolnikMost = {
   /// dat — kdyby kamera jela nepřetržitě, už by se nikdy nespustily.
   letNa(lat, lng, zoom, plynule, vynutit) {
     try {
+      // engine 276: během snímku trasy pro sdílenou kartu se nelétá NIKAM
+      // (ani vynuceně) – sledování polohy vracelo kameru na hráče a karta
+      // dostala meze Sezemic, i když plátno ukazovalo výlet
+      if (typeof snimekBezi !== 'undefined' && snimekBezi) return;
       // prst na mapě = žádné přelety (v1.250, „při zoomu 3D zamrzá":
       // sledování polohy létalo kamerou každý fix a rvalo gesta z ruky)
       registrujPrsty();
