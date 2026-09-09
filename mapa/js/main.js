@@ -6468,8 +6468,14 @@ function zapniDynamickeRozliseni() {
 /// uprostřed plátna, (4) počkat na dlaždice (`areTilesLoaded`, strop 9 s),
 /// (5) výřez plátna do JPEG + kontrola, že není černý, (6) VŠE VRÁTIT
 /// (kamera, styl, linka pryč) – i při chybě.
+/// ⛔ Během snímku NESMÍ kamerou hýbat sledování hráče (`letNa`) ani kotva
+/// startu (`kotviNaHrace`) – při prvním ostrém testu karta ukázala Sezemice
+/// (poloha hráče) místo výletu v Českém ráji.
+let snimekBezi = false;
+
 async function snimekTrasy(cfg) {
   if (!mapa || !cfg || !Array.isArray(cfg.body) || !cfg.body.length) return null;
+  snimekBezi = true;
   const puv = { styl: aktualniKod, center: mapa.getCenter(), zoom: mapa.getZoom(),
                 pitch: mapa.getPitch(), bearing: mapa.getBearing() };
   const cekej = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -6528,6 +6534,7 @@ async function snimekTrasy(cfg) {
                  left: x0 + okraj, right: W - x0 - w + okraj },
       duration: 0, pitch: 0, bearing: 0, maxZoom: 16.8,
     });
+    const cil = { center: mapa.getCenter(), zoom: mapa.getZoom(), pitch: 0, bearing: 0 };
     const gj = { type: 'FeatureCollection', features: souradnice.length < 2 ? [] : [{
       type: 'Feature', properties: {},
       geometry: { type: 'LineString', coordinates: souradnice } }] };
@@ -6553,6 +6560,14 @@ async function snimekTrasy(cfg) {
       }
     }
     if (denVynucen) await cekej(1700);   // doznění přechodu nočního překryvu
+    // pojistka: kdyby přesto někdo kamerou pohnul, vrátit ji na trasu
+    const ted = mapa.getCenter();
+    if (Math.abs(ted.lng - cil.center.lng) > 1e-5 || Math.abs(ted.lat - cil.center.lat) > 1e-5
+        || Math.abs(mapa.getZoom() - cil.zoom) > 0.01 || mapa.getPitch() > 0.5) {
+      console.warn('[most] snimekTrasy: kamera ujela, vracím na trasu');
+      mapa.jumpTo(cil);
+      await cekej(600);
+    }
     mapa.triggerRepaint();
     await new Promise(snimek);
     await new Promise(snimek);
@@ -6578,6 +6593,7 @@ async function snimekTrasy(cfg) {
     console.warn('[most] snimekTrasy', e);
     return null;
   } finally {
+    snimekBezi = false;
     try {
       for (const id of [ZDROJ, ZDROJ + '-lem']) if (mapa.getLayer(id)) mapa.removeLayer(id);
       if (mapa.getSource(ZDROJ)) mapa.removeSource(ZDROJ);
@@ -7016,6 +7032,7 @@ function zrusKotvu(duvod) {
 /// Srovná kameru na hráče, pokud kotva běží. Vrací true, když skočila.
 function kotviNaHrace(lng, lat) {
   if (!kotvaBezi()) return false;
+  if (typeof snimekBezi !== 'undefined' && snimekBezi) return false;   // engine 276: snímek trasy
   // ⛔ PRST NA MAPĚ = KONEC KOTVY. `jumpTo` volá uvnitř `stop()`, takže
   // by uživateli sebral rozjeté gesto (past „náklon krade gesto").
   if (typeof prstuNaMape !== 'undefined' && prstuNaMape) {
@@ -8268,6 +8285,8 @@ let prstyDoleMs = 0;   // engine 268: kdy naposled přišel prst
 function kameruNechatByt() {
   // engine 268: zaseknuté počítadlo (ztracené zvednutí) nesmí blokovat navěky
   if (prstyDole > 0 && Date.now() - prstyDoleMs > 30000) prstyDole = 0;
+  // engine 276: během snímku trasy pro sdílenou kartu se za hráčem nelétá
+  if (typeof snimekBezi !== 'undefined' && snimekBezi) return true;
   return prstyDole > 0 || Date.now() - prstyMs < 1200;
 }
 
