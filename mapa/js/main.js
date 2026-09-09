@@ -346,8 +346,9 @@ const VRSTVY_3D = ['okolnik-budovy-herni-zdi', 'okolnik-budovy-herni-strecha', '
 // engine 269 („když vypnu kresby míst, tak je stále vidím"): kresby míst jsou
 // i MALOVANÉ IKONY míst z appky (`okolnik-mista-ikona`, shluky), ne jen velké
 // kresby Kroniky; stuhy se jmény zůstávají
-const VRSTVY_ILUSTRACE = ['ink-ilustrace', 'ink-ilustrace-pata', 'ink-ilustrace-stin',
-  'okolnik-mista-ikona', 'okolnik-mista-pata', 'okolnik-mista-shluk-ikona'];
+// engine 272: zpet jen kresby Kroniky – uzivatel: "jinde tyto malby nejsou",
+// ikony mist k tomu nepocita (prepinac je v appce jen v Objeviteli)
+const VRSTVY_ILUSTRACE = ['ink-ilustrace', 'ink-ilustrace-pata', 'ink-ilustrace-stin'];
 let nastaveniMapyPosluchac = null;
 function nastaveniMapyNeniVychozi() {
   const n = NASTAVENI_MAPY;
@@ -2499,10 +2500,14 @@ let stinyPosluchacMapy = null;
 function publikujStiny() {
   if (!mapa || !mapa.getSource('stiny-domu')) return;
   const ted = performance.now();
-  if (stinyNacitaOd && ted - stinyNacitaOd < 2500) {
+  // engine 272: brana 2,5 s -> 0,9 s. Po skoku jinam se predchozi nacitani uz
+  // nedokonci (dlazdice stareho vyrezu se zrusi), takze 'isSourceLoaded'
+  // neprijde a nova publikace cekala na zalozni casovac – stiny nastupovaly
+  // az za 2,7-3,9 s. S ImageBitmap protokolem trva nacteni sady ~0,1 s.
+  if (stinyNacitaOd && ted - stinyNacitaOd < 900) {
     stinyZnovu = true;
     if (!stinyZnovuCasovac) {
-      stinyZnovuCasovac = setTimeout(() => { stinyZnovuCasovac = null; if (stinyZnovu) publikujStiny(); }, 2600);
+      stinyZnovuCasovac = setTimeout(() => { stinyZnovuCasovac = null; if (stinyZnovu) publikujStiny(); }, 1000);
     }
     return;
   }
@@ -2585,6 +2590,14 @@ function registrujProtokolStinu() {
     const c = document.createElement('canvas');
     c.width = STINY_DLAZDICE; c.height = STINY_DLAZDICE;
     c.getContext('2d').drawImage(stinyPlatno, sx, sy, sw, sh, dx, dy, dw, dh);
+    // engine 272 ("stiny domu se nacitaji hrozne pomalu"): misto PNG (toBlob
+    // + dekodovani, ~60 ms na dlazdici, 17 dlazdic = 1,1 s) rovnou ImageBitmap –
+    // MapLibre v6 ho v odpovedi protokolu bere (kontrola isImageBitmap).
+    // Zmereno 9. 9. na RMX2155: 27 dlazdic za 82 ms; stiny po skoku do 0,9 s
+    // misto 2,7-3,9 s (spolu s kratsi branou v publikujStiny).
+    if (typeof createImageBitmap === 'function') {
+      try { return { data: await createImageBitmap(c) }; } catch (e) { /* zaloha PNG nize */ }
+    }
     const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
     return { data: await blob.arrayBuffer() };
   });

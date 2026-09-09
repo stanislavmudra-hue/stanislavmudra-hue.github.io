@@ -926,68 +926,50 @@ const Dekorace = (() => {
   // takhle stačí, aby byl pruh UžŠÍ než tělo v té výšce — dovnitř
   // nakreslený tvar z něj nemůže vylézt a `clipPath` není potřeba
   // (sdílené `id` by po recyklaci značky ukazovalo do prázdna).
+  // ⭐ engine 272: ROZTOMILÁ VČELA (přání 9. 9. „ty nové včelky dej i do
+  // Objevitele") – táž kresba jako na načítací obrazovce (nacitani_sveta.dart):
+  // baculaté tělo s pruhy, velká hlava s očima, odlesky a tvářičkami, úsměv,
+  // tykadla s kuličkami, průsvitná křidélka. Plátno 18×18, hlava nahoře,
+  // křídla cvakají třídami vk-a/vk-b/vk-r jako dřív (mění se jen opacity).
+  // Souřadnice = kresba z Flutteru posunutá o (9, 10) a ×0,78.
   const VCELA_SVG = '<svg viewBox="0 0 18 18" width="13" height="13">'
-    // nožky (pod vším)
-    + '<g stroke="#241B08" stroke-width="0.5" fill="none" '
-    + 'stroke-linecap="round" opacity="0.85">'
-    + '<path d="M7.1 6.0 L4.8 4.3"/><path d="M6.5 7.3 L3.9 7.2"/>'
-    + '<path d="M6.9 8.6 L4.6 11.0"/>'
-    + '<path d="M10.9 6.0 L13.2 4.3"/><path d="M11.5 7.3 L14.1 7.2"/>'
-    + '<path d="M11.1 8.6 L13.4 11.0"/></g>'
-    // tykadla (lomená, jako na předloze)
-    + '<g stroke="#241B08" stroke-width="0.5" fill="none" '
-    + 'stroke-linecap="round" stroke-linejoin="round">'
-    + '<path d="M8.2 2.4 L7.0 1.3 L5.5 1.5"/>'
-    + '<path d="M9.8 2.4 L11.0 1.3 L12.5 1.5"/></g>'
-    // zadeček: tmavá kapka zužující se do špičky
-    + '<path d="M9 7.3 C10.95 7.3 11.8 9.3 11.8 11.5 '
-    + 'C11.8 13.9 10.3 16.5 9 16.5 C7.7 16.5 6.2 13.9 6.2 11.5 '
-    + 'C6.2 9.3 7.05 7.3 9 7.3 Z" fill="#241B08"/>'
-    // amberové pruhy (užší než tělo, takže nemohou vylézt)
-    + '<g fill="#E8A72B">'
-    + '<ellipse cx="9" cy="8.7" rx="2.25" ry="0.62" opacity="0.98"/>'
-    + '<ellipse cx="9" cy="10.5" rx="2.5" ry="0.66"/>'
-    + '<ellipse cx="9" cy="12.3" rx="2.35" ry="0.62"/>'
-    + '<ellipse cx="9" cy="13.95" rx="1.8" ry="0.5" opacity="0.9"/></g>'
-    // hruď: ryšavá a chlupatá
-    + '<ellipse cx="9" cy="6.7" rx="2.85" ry="2.45" fill="#8E5C1E"/>'
-    + '<ellipse cx="9" cy="6.6" rx="2.35" ry="1.95" fill="#C98A32"/>'
-    + '<ellipse cx="8.8" cy="6.2" rx="1.35" ry="1.05" fill="#E0A445" '
-    + 'opacity="0.75"/>'
-    // hlava s okem
-    + '<ellipse cx="9" cy="3.7" rx="2.05" ry="1.85" fill="#241B08"/>'
-    + '<ellipse cx="7.9" cy="3.5" rx="0.62" ry="0.85" fill="#4A3A18"/>'
-    + '<ellipse cx="10.1" cy="3.5" rx="0.62" ry="0.85" fill="#4A3A18"/>'
-    // ⭐ KŘÍDLA AŽ NAKONEC A PRŮSVITNĚ — na předloze jimi jsou
-    // pruhy zadečku vidět. Na každé straně přední (dlouhé) a zadní
-    // (kratší, víc rozevřené) křídlo.
-    // ⭐ v1.532: KŘÍDLA SE MIHOTAJÍ (výtka „nehýbají křídly, vypadá
-    // to, jako by běhaly“). Statická pohybová skvrna nestačila — oko
-    // čeká POHYB, ne rozmazaný tvar.
-    //
-    // Každá strana má TŘI prvky: široký bílý **rozmaz** (opsaný oblouk
-    // mávnutí) a dvě **polohy křídla**, které se střídají v protifázi.
-    // Běží to na CSS a mění se **jen `opacity`** — nikdy `transform`,
-    // protože CSS transform by přebil atribut `rotate(...)` a křídla by
-    // se srovnala do jedné osy.
-    //
-    // ⚠️ `steps(1,end)` je záměr: křídlo má CVAKAT mezi dvěma
-    // polohami, ne se plynule prolínat — plynulé prolínání vypadá
-    // jako dýchání, ne jako mávnutí.
-    + '<g fill="#F4F9F7" stroke="rgba(90,105,98,0.28)" '
-    + 'stroke-width="0.16">'
-    + '<ellipse class="vk-r" cx="5.9" cy="10.4" rx="4.9" ry="2.3" '
-    + 'stroke="none" transform="rotate(120 5.9 10.4)"/>'
-    + '<ellipse class="vk-r" cx="12.1" cy="10.4" rx="4.9" ry="2.3" '
-    + 'stroke="none" transform="rotate(60 12.1 10.4)"/>'
-    + '<ellipse class="vk-a" cx="6.31" cy="10.97" rx="4.5" ry="1.5" '
-    + 'transform="rotate(112 6.31 10.97)"/>'
-    + '<ellipse class="vk-a" cx="11.69" cy="10.97" rx="4.5" ry="1.5" '
-    + 'transform="rotate(68 11.69 10.97)"/>'
-    + '<ellipse class="vk-b" cx="5.35" cy="9.5" rx="4.3" ry="1.25" '
-    + 'transform="rotate(134 5.35 9.5)"/>'
-    + '<ellipse class="vk-b" cx="12.65" cy="9.5" rx="4.3" ry="1.25" '
-    + 'transform="rotate(46 12.65 9.5)"/></g></svg>';
+    // křidélka vzadu: rozmaz + dvě polohy v protifázi
+    + '<g fill="#DDF3FF">'
+    + '<ellipse class="vk-r" cx="5.6" cy="9.5" rx="3.1" ry="1.7" transform="rotate(-45 5.6 9.5)"/>'
+    + '<ellipse class="vk-r" cx="12.4" cy="9.5" rx="3.1" ry="1.7" transform="rotate(45 12.4 9.5)"/>'
+    + '<ellipse class="vk-a" cx="5.6" cy="9.5" rx="2.95" ry="1.4" transform="rotate(-32 5.6 9.5)"/>'
+    + '<ellipse class="vk-a" cx="12.4" cy="9.5" rx="2.95" ry="1.4" transform="rotate(32 12.4 9.5)"/>'
+    + '<ellipse class="vk-b" cx="5.6" cy="9.5" rx="2.95" ry="1.4" transform="rotate(-55 5.6 9.5)"/>'
+    + '<ellipse class="vk-b" cx="12.4" cy="9.5" rx="2.95" ry="1.4" transform="rotate(55 12.4 9.5)"/>'
+    + '</g>'
+    // žihadlo
+    + '<path fill="#3B2B12" d="M8.3 15.6 L9 17.2 L9.7 15.6 Z"/>'
+    // tělo s pruhy (pruhy uvnitř těla – clipPath by po recyklaci ukazoval do prázdna,
+    // proto jsou pruhy užší než tělo v dané výšce)
+    + '<ellipse cx="9" cy="12" rx="3.35" ry="3.9" fill="#F5B942"/>'
+    + '<rect x="6.15" y="9.6" width="5.7" height="1.1" rx="0.55" fill="#3B2B12"/>'
+    + '<rect x="5.7" y="11.45" width="6.6" height="1.15" rx="0.55" fill="#3B2B12"/>'
+    + '<rect x="6.2" y="13.5" width="5.6" height="1.05" rx="0.5" fill="#3B2B12"/>'
+    // hlava
+    + '<circle cx="9" cy="6.4" r="2.9" fill="#3B2B12"/>'
+    // tykadla s kuličkami
+    + '<g stroke="#3B2B12" stroke-width="0.5" stroke-linecap="round" fill="none">'
+    + '<path d="M8 3.9 L6.95 1.9"/><path d="M10 3.9 L11.05 1.9"/></g>'
+    + '<circle cx="6.85" cy="1.75" r="0.6" fill="#3B2B12"/>'
+    + '<circle cx="11.15" cy="1.75" r="0.6" fill="#3B2B12"/>'
+    // oči s odleskem a tvářičky
+    + '<circle cx="7.85" cy="6.1" r="1.15" fill="#FFFFFF"/>'
+    + '<circle cx="10.15" cy="6.1" r="1.15" fill="#FFFFFF"/>'
+    + '<circle cx="7.75" cy="6.2" r="0.6" fill="#1A1208"/>'
+    + '<circle cx="10.25" cy="6.2" r="0.6" fill="#1A1208"/>'
+    + '<circle cx="8.0" cy="5.8" r="0.24" fill="#FFFFFF"/>'
+    + '<circle cx="10.0" cy="5.8" r="0.24" fill="#FFFFFF"/>'
+    + '<circle cx="6.95" cy="7.35" r="0.55" fill="#F08A7A" opacity="0.75"/>'
+    + '<circle cx="11.05" cy="7.35" r="0.55" fill="#F08A7A" opacity="0.75"/>'
+    // úsměv
+    + '<path d="M8.15 7.5 Q9 8.25 9.85 7.5" stroke="#F5B942" stroke-width="0.35" '
+    + 'stroke-linecap="round" fill="none"/>'
+    + '</svg>';
 
   // ⭐ MŮRA (v1.592): bledá nenápadná křídla, mihotají týmž cvakáním
   // jako včela (třídy vk-a/vk-b s vlastní fází).
