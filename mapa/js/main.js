@@ -6122,6 +6122,7 @@ function nasadPametVysek() {
 /// až dosedne DEM. Nepříjemné, ale mapa ŽIJE.
 
 function nastavTeren() {
+  if (typeof snimekBezi !== 'undefined' && snimekBezi) return;   // engine 276: snímek trasy bez terénu
   // ⚠️ STYL SE MŮŽE PRÁVĚ VYMĚŇOVAT. `Map.setTerrain` začíná
   // `style._checkLoaded()` a hodí „Style is not done loading" – a protože
   // sem vede i obsluha `pitchend`, dala se ta výjimka trefit prstem.
@@ -6492,6 +6493,7 @@ async function snimekTrasy(cfg) {
   };
   const ZDROJ = 'okolnik-snimek-trasa';
   let denVynucen = false;
+  let terenPuv = null;
   try {
     if (!(await stylHotov())) return null;
     if (cfg.styl && STYLY[cfg.styl] && cfg.styl !== aktualniKod) {
@@ -6523,6 +6525,12 @@ async function snimekTrasy(cfg) {
       const cl = (j + sv) / 2, cg = (z + v) / 2;
       j = cl - 0.0024; sv = cl + 0.0024; z = cg - 0.0042; v = cg + 0.0042;
     }
+    // ⛔⛔ TERÉN PRYČ: `unproject` s terénem čte z coords-framebufferu a vracel
+    // meze POLOHY HRÁČE, i když plátno ukazovalo výlet (23:20 – trace ukázal
+    // unproject se středem v Českém ráji a výsledkem u Sezemic). Bez terénu je
+    // pohled shora čistá Mercatorova rovina a meze se spočítají přesně ručně.
+    terenPuv = mapa.getTerrain ? mapa.getTerrain() : null;
+    if (terenPuv) { try { mapa.setTerrain(null); } catch (e) { /* nic */ } }
     const W = mapa.getContainer().clientWidth, H = mapa.getContainer().clientHeight;
     const pomer = cfg.pomer > 0 ? cfg.pomer : 0.8;
     let w = W, h = W / pomer;
@@ -6586,9 +6594,25 @@ async function snimekTrasy(cfg) {
       if (q < mn) mn = q; if (q > mv) mv = q;
     }
     if (mv - mn <= 12) { console.warn('[most] snimekTrasy: prázdné plátno'); return null; }
-    const sz = mapa.unproject([x0, y0]), jv = mapa.unproject([x0 + w, y0 + h]);
-    return { url: t.toDataURL('image/jpeg', 0.9), s: sz.lat, z: sz.lng,
-             j: jv.lat, v: jv.lng, styl: aktualniKod };
+    // meze výřezu: pitch 0, bearing 0, bez terénu → rovina Mercatoru,
+    // svět = 512·2^zoom CSS px, střed mapy = střed plátna
+    const svet = 512 * Math.pow(2, mapa.getZoom());
+    const cen = mapa.getCenter();
+    const mxF = (lng) => (lng + 180) / 360;
+    const myF = (lat) => {
+      const r = lat * Math.PI / 180;
+      return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2;
+    };
+    const lngOf = (X) => X / svet * 360 - 180;
+    const latOf = (Y) => {
+      const n = Math.PI - 2 * Math.PI * (Y / svet);
+      return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+    };
+    const cx = mxF(cen.lng) * svet, cy = myF(cen.lat) * svet;
+    return { url: t.toDataURL('image/jpeg', 0.9),
+             s: latOf(cy + (y0 - H / 2)), j: latOf(cy + (y0 + h - H / 2)),
+             z: lngOf(cx + (x0 - W / 2)), v: lngOf(cx + (x0 + w - W / 2)),
+             styl: aktualniKod };
   } catch (e) {
     console.warn('[most] snimekTrasy', e);
     return null;
@@ -6598,6 +6622,7 @@ async function snimekTrasy(cfg) {
       for (const id of [ZDROJ, ZDROJ + '-lem']) if (mapa.getLayer(id)) mapa.removeLayer(id);
       if (mapa.getSource(ZDROJ)) mapa.removeSource(ZDROJ);
     } catch (e) { /* styl se zrovna mění */ }
+    if (terenPuv) { try { mapa.setTerrain(terenPuv); } catch (e) { /* nic */ } }
     try { mapa.jumpTo({ center: puv.center, zoom: puv.zoom, pitch: puv.pitch, bearing: puv.bearing }); }
     catch (e) { /* nic */ }
     if (denVynucen) {
@@ -8027,6 +8052,8 @@ window.OkolnikMost = {
   /// Automatika náklonu zoom NEPOSÍLÁ – ta jen srovnává náklon s tím,
   /// kam se uživatel přiblížil sám.
   naklon(stupne, zoom) {
+    // engine 276: během snímku trasy (pitch 0) automatika náklonu mlčí
+    if (typeof snimekBezi !== 'undefined' && snimekBezi) return;
     // ⛔ PRST NA MAPĚ = NEHÝBAT KAMEROU (viz `prstuNaMape` u deklarace).
     // Uloží se poslední přání; dožene ho `dokoncCekajiciNaklon()`, až
     // uživatel pustí displej a doběhne setrvačnost.
