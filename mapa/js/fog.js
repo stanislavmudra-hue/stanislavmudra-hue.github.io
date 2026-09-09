@@ -415,7 +415,7 @@ const Mlha = (() => {
     // buněk nedojela, kreslí se kroužky jako záloha, ať mapa není
     // celá v mlze.
     if (bunkyData) {
-      zpracujBunky();
+      if (zpracujBunky().length) zapomenNeobjevene();   // engine 275: nové buňky
       for (const idx of bunkyOdkryte) {
         const tvar = bunkaTvar(idx);
         if (tvar) vygumujBunku(tvar, 1, true);
@@ -734,6 +734,16 @@ const Mlha = (() => {
         if (dx * dx + dy * dy <= o.r * o.r) { vysledek = true; break; }
       }
     }
+    if (!vysledek && bunkyData) {
+      // ⭐⭐ engine 275 („obec je odkrytá a domy vidím jen částečně"): mlha
+      // se od 26. 8. gumuje po BUŇKÁCH vlajek, ale tenhle dotaz znal jen
+      // kruhy stopy (232 m) a dokončené obce → odkrytá ves měla 3D domy,
+      // kresby i dekorace jen podél stopy (Brozánky). Co je na plátně
+      // vygumované, je objevené i tady: bod v odkryté buňce = objeveno.
+      if (bunkyZpracovano < objevene.length) zpracujBunky();
+      const idx = najdiBunku(lng, lat);
+      if (idx >= 0 && bunkyOdkryte.has(idx)) vysledek = true;
+    }
     if (!vysledek) {
       // obcí jsou desítky a mají obálku, takže lineárně stačí
       for (const ob of obce) {
@@ -910,10 +920,16 @@ const Mlha = (() => {
         bunkyData = { body, oblasti, mrizka };
         // keš plátna mohla vzniknout dřív, než data dojela — dovodit
         // buňky ze všech dosavadních objevů a překreslit
-        if (pripraveno && objevene.length) {
+        if (objevene.length) {
           const pred = bunkyOdkryte.size;
           zpracujBunky();
-          if (bunkyOdkryte.size > pred) prekresliPlatno();
+          if (bunkyOdkryte.size > pred) {
+            if (pripraveno) prekresliPlatno();
+            // engine 275: buňky rozšířily objevené území – zapamatovaná
+            // `false` neplatí a domy/kresby/dekorace se přepočítají
+            zapomenNeobjevene();
+            for (const cb of posluchaci) { try { cb(null); } catch (e) {} }
+          }
         }
       } catch (e) { /* bez dat prostě zůstanou jen kruhy */ }
     })();
