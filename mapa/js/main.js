@@ -6473,14 +6473,26 @@ async function snimekTrasy(cfg) {
   const puv = { styl: aktualniKod, center: mapa.getCenter(), zoom: mapa.getZoom(),
                 pitch: mapa.getPitch(), bearing: mapa.getBearing() };
   const cekej = (ms) => new Promise((r) => setTimeout(r, ms));
-  const snimek = (r) => requestAnimationFrame(() => r());
+  // ⛔ rAF v neviditelné WebView nikdy nepřijde – vždy s pojistkou
+  const snimek = (r) => { const t = setTimeout(r, 250); requestAnimationFrame(() => { clearTimeout(t); r(); }); };
+  // `addSource` hází „Style is not done loading" – počkat, až styl doběhne
+  const stylHotov = async () => {
+    const t0 = performance.now();
+    while (performance.now() - t0 < 9000) {
+      if (mapa.style && mapa.style._loaded && mapa.getStyle()) return true;
+      await cekej(120);
+    }
+    return false;
+  };
   const ZDROJ = 'okolnik-snimek-trasa';
   try {
+    if (!(await stylHotov())) return null;
     if (cfg.styl && STYLY[cfg.styl] && cfg.styl !== aktualniKod) {
       const nacteno = new Promise((r) => mapa.once('style.load', r));
       prepniStyl(cfg.styl);
       await Promise.race([nacteno, cekej(9000)]);
       await cekej(150);   // obnovitelé vrstev běží přes setTimeout 0
+      if (!(await stylHotov())) return null;
     }
     const souradnice = cfg.body
         .filter((b) => Array.isArray(b) && b.length >= 2)
