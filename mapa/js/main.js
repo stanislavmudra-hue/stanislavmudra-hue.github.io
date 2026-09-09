@@ -2497,7 +2497,16 @@ let stinyNacitaOd = 0;
 let stinyZnovu = false;
 let stinyZnovuCasovac = null;
 let stinyPosluchacMapy = null;
+let stinyOdklad = null;
+// engine 272: SLOUCENI DVOU PUBLIKACI (domy hned, kopce z workeru o 30-150 ms
+// pozdeji) do jedne - trailing debounce 220 ms. Zmereno sadou gest: s branou
+// 0,9 s bez slouceni 215-251 snimku nad 33 ms, se sloucenim 173-207 (zaklad
+// pred zmenou 145-164, sum +-20); stiny po skoku presto do ~0,5 s.
 function publikujStiny() {
+  if (stinyOdklad) clearTimeout(stinyOdklad);
+  stinyOdklad = setTimeout(() => { stinyOdklad = null; publikujStinyHned(); }, 220);
+}
+function publikujStinyHned() {
   if (!mapa || !mapa.getSource('stiny-domu')) return;
   const ted = performance.now();
   // engine 272: brana 2,5 s -> 0,9 s. Po skoku jinam se predchozi nacitani uz
@@ -2507,7 +2516,7 @@ function publikujStiny() {
   if (stinyNacitaOd && ted - stinyNacitaOd < 900) {
     stinyZnovu = true;
     if (!stinyZnovuCasovac) {
-      stinyZnovuCasovac = setTimeout(() => { stinyZnovuCasovac = null; if (stinyZnovu) publikujStiny(); }, 1000);
+      stinyZnovuCasovac = setTimeout(() => { stinyZnovuCasovac = null; if (stinyZnovu) publikujStinyHned(); }, 1000);
     }
     return;
   }
@@ -2519,7 +2528,7 @@ function publikujStiny() {
       // tam bylo true (změřeno 8. 9. večer - časový filtr 60 ms nestačil)
       if (!e || e.sourceId !== 'stiny-domu' || !e.tile || !e.isSourceLoaded || !stinyNacitaOd) return;
       stinyNacitaOd = 0;
-      if (stinyZnovu) publikujStiny();
+      if (stinyZnovu) publikujStinyHned();
     });
   }
   stinyZnovu = false;
