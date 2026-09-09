@@ -6485,6 +6485,7 @@ async function snimekTrasy(cfg) {
     return false;
   };
   const ZDROJ = 'okolnik-snimek-trasa';
+  let denVynucen = false;
   try {
     if (!(await stylHotov())) return null;
     if (cfg.styl && STYLY[cfg.styl] && cfg.styl !== aktualniKod) {
@@ -6493,6 +6494,15 @@ async function snimekTrasy(cfg) {
       await Promise.race([nacteno, cekej(9000)]);
       await cekej(150);   // obnovitelé vrstev běží přes setTimeout 0
       if (!(await stylHotov())) return null;
+    }
+    // ⭐ denní výlet = denní mapa, i když se sdílí večer (noční překryv má
+    // přechod 1,5 s – počká se; ve `finally` se vrátí skutečné světlo)
+    if (cfg.den === true) {
+      denVynucen = true;
+      window.__vynutKrokNoci = 0;
+      window.__vynutSvetlo = { slunceEl: 38, oblacnost: 0, snih: 0 };
+      try { aplikujNoc(); } catch (e) { /* nic */ }
+      try { Svetlo.aktualizuj(); } catch (e) { /* nic */ }
     }
     const souradnice = cfg.body
         .filter((b) => Array.isArray(b) && b.length >= 2)
@@ -6542,6 +6552,7 @@ async function snimekTrasy(cfg) {
         if (mapa.areTilesLoaded()) break;
       }
     }
+    if (denVynucen) await cekej(1700);   // doznění přechodu nočního překryvu
     mapa.triggerRepaint();
     await new Promise(snimek);
     await new Promise(snimek);
@@ -6573,6 +6584,12 @@ async function snimekTrasy(cfg) {
     } catch (e) { /* styl se zrovna mění */ }
     try { mapa.jumpTo({ center: puv.center, zoom: puv.zoom, pitch: puv.pitch, bearing: puv.bearing }); }
     catch (e) { /* nic */ }
+    if (denVynucen) {
+      delete window.__vynutKrokNoci;
+      delete window.__vynutSvetlo;
+      try { aplikujNoc(); } catch (e) { /* nic */ }
+      try { Svetlo.aktualizuj(); } catch (e) { /* nic */ }
+    }
     if (puv.styl !== aktualniKod) { try { prepniStyl(puv.styl); } catch (e) { /* nic */ } }
   }
 }
