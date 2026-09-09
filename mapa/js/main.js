@@ -6462,6 +6462,109 @@ function zapniDynamickeRozliseni() {
       + plne + ', aktivni=' + dynRozliseniAktivni);
 }
 
+/// ⭐ engine 276: snímek trasy ve zvoleném stylu – viz OkolnikMost.snimekTrasy.
+/// Postup: (1) přepnout styl a počkat na `style.load`, (2) trasa jako
+/// dočasná linka nad vším, (3) `fitBounds` do výřezu ve tvaru karty
+/// uprostřed plátna, (4) počkat na dlaždice (`areTilesLoaded`, strop 9 s),
+/// (5) výřez plátna do JPEG + kontrola, že není černý, (6) VŠE VRÁTIT
+/// (kamera, styl, linka pryč) – i při chybě.
+async function snimekTrasy(cfg) {
+  if (!mapa || !cfg || !Array.isArray(cfg.body) || !cfg.body.length) return null;
+  const puv = { styl: aktualniKod, center: mapa.getCenter(), zoom: mapa.getZoom(),
+                pitch: mapa.getPitch(), bearing: mapa.getBearing() };
+  const cekej = (ms) => new Promise((r) => setTimeout(r, ms));
+  const snimek = (r) => requestAnimationFrame(() => r());
+  const ZDROJ = 'okolnik-snimek-trasa';
+  try {
+    if (cfg.styl && STYLY[cfg.styl] && cfg.styl !== aktualniKod) {
+      const nacteno = new Promise((r) => mapa.once('style.load', r));
+      prepniStyl(cfg.styl);
+      await Promise.race([nacteno, cekej(9000)]);
+      await cekej(150);   // obnovitelé vrstev běží přes setTimeout 0
+    }
+    const souradnice = cfg.body
+        .filter((b) => Array.isArray(b) && b.length >= 2)
+        .map((b) => [+b[1], +b[0]]);
+    if (!souradnice.length) return null;
+    let j = 90, sv = -90, z = 180, v = -180;
+    for (const [lng, lat] of souradnice) {
+      if (lat < j) j = lat; if (lat > sv) sv = lat;
+      if (lng < z) z = lng; if (lng > v) v = lng;
+    }
+    if (sv - j < 0.0009 && v - z < 0.0009) {   // stání na místě → umělé okolí
+      const cl = (j + sv) / 2, cg = (z + v) / 2;
+      j = cl - 0.0024; sv = cl + 0.0024; z = cg - 0.0042; v = cg + 0.0042;
+    }
+    const W = mapa.getContainer().clientWidth, H = mapa.getContainer().clientHeight;
+    const pomer = cfg.pomer > 0 ? cfg.pomer : 0.8;
+    let w = W, h = W / pomer;
+    if (h > H) { h = H; w = H * pomer; }
+    const x0 = (W - w) / 2, y0 = (H - h) / 2;
+    const okraj = Math.round(Math.min(w, h) * 0.12);
+    mapa.fitBounds([[z, j], [v, sv]], {
+      padding: { top: y0 + okraj, bottom: H - y0 - h + okraj,
+                 left: x0 + okraj, right: W - x0 - w + okraj },
+      duration: 0, pitch: 0, bearing: 0, maxZoom: 16.8,
+    });
+    const gj = { type: 'FeatureCollection', features: souradnice.length < 2 ? [] : [{
+      type: 'Feature', properties: {},
+      geometry: { type: 'LineString', coordinates: souradnice } }] };
+    if (mapa.getSource(ZDROJ)) mapa.getSource(ZDROJ).setData(gj);
+    else mapa.addSource(ZDROJ, { type: 'geojson', data: gj });
+    if (!mapa.getLayer(ZDROJ + '-lem')) {
+      mapa.addLayer({ id: ZDROJ + '-lem', type: 'line', source: ZDROJ,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.9 } });
+    }
+    if (!mapa.getLayer(ZDROJ)) {
+      mapa.addLayer({ id: ZDROJ, type: 'line', source: ZDROJ,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#F5A623', 'line-width': 5 } });
+    }
+    await new Promise(snimek);
+    const t0 = performance.now();
+    while (performance.now() - t0 < 9000) {
+      await cekej(150);
+      if (mapa.areTilesLoaded() && !mapa.isMoving()) {
+        await cekej(450);
+        if (mapa.areTilesLoaded()) break;
+      }
+    }
+    mapa.triggerRepaint();
+    await new Promise(snimek);
+    await new Promise(snimek);
+    const c = mapa.getCanvas();
+    const k = c.width / W;
+    const t = document.createElement('canvas');
+    t.width = Math.round(w * k); t.height = Math.round(h * k);
+    t.getContext('2d').drawImage(c, Math.round(x0 * k), Math.round(y0 * k),
+        t.width, t.height, 0, 0, t.width, t.height);
+    const m = document.createElement('canvas'); m.width = 16; m.height = 16;
+    const mx = m.getContext('2d'); mx.drawImage(t, 0, 0, 16, 16);
+    const d = mx.getImageData(0, 0, 16, 16).data;
+    let mn = 255, mv = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const q = (d[i] + d[i + 1] + d[i + 2]) / 3;
+      if (q < mn) mn = q; if (q > mv) mv = q;
+    }
+    if (mv - mn <= 12) { console.warn('[most] snimekTrasy: prázdné plátno'); return null; }
+    const sz = mapa.unproject([x0, y0]), jv = mapa.unproject([x0 + w, y0 + h]);
+    return { url: t.toDataURL('image/jpeg', 0.9), s: sz.lat, z: sz.lng,
+             j: jv.lat, v: jv.lng, styl: aktualniKod };
+  } catch (e) {
+    console.warn('[most] snimekTrasy', e);
+    return null;
+  } finally {
+    try {
+      for (const id of [ZDROJ, ZDROJ + '-lem']) if (mapa.getLayer(id)) mapa.removeLayer(id);
+      if (mapa.getSource(ZDROJ)) mapa.removeSource(ZDROJ);
+    } catch (e) { /* styl se zrovna mění */ }
+    try { mapa.jumpTo({ center: puv.center, zoom: puv.zoom, pitch: puv.pitch, bearing: puv.bearing }); }
+    catch (e) { /* nic */ }
+    if (puv.styl !== aktualniKod) { try { prepniStyl(puv.styl); } catch (e) { /* nic */ } }
+  }
+}
+
 function prepniStyl(kod) {
   if (kod === aktualniKod || !STYLY[kod]) return;
   // ⭐ v1.394 (OBRAT proti v1.379): v HERNÍM režimu se terén DRŽÍ
@@ -7434,6 +7537,14 @@ window.OkolnikMost = {
       prepniStyl(kod);
     } catch (e) { console.warn('[most] styl', e); }
   },
+
+  /// ⭐ engine 276: SNÍMEK TRASY PRO SDÍLENOU KARTU (přání 9. 9. 2026: „máme
+  /// takovou krásnou malovanou"). `cfg` = {body: [[lat,lng]…], styl, pomer
+  /// (šířka/výška výřezu)}. Vrátí Promise<{url, j, s, z, v, styl}> – JPEG
+  /// data-URL výřezu plátna a jeho zeměpisné meze (pitch 0 → Mercator je
+  /// v něm lineární, appka si dokreslí fotky). Mapa MUSÍ být vidět
+  /// (překrytá WebView nekreslí – vrátí se null a karta spadne na OSM).
+  snimekTrasy(cfg) { return snimekTrasy(cfg); },
 
   /// Přelet kamery na místo.
   /// [plynule] = sledování za jízdy: lineární `easeTo` místo `flyTo`.
