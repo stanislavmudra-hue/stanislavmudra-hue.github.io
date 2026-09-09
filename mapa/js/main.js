@@ -4412,25 +4412,35 @@ function prepoctiBudovyHerni() {
   naplanujOkna3d(150);            // engine 231/232: okna hned po domech
   const ids = [];
   const videno = new Set();
+  // ⛔⛔ engine 274 („odkrytá oblast, ale 3D domy se tam nenačítají"): v OMT
+  // dlaždicích sdílí JEDNO id celá skupina domů (sloučený multipolygon
+  // rozřezaný na kusy – v Brozánkách 11 domů se dvěma id). Dřív rozhodl
+  // PRVNÍ kus a `videno` zbytek přeskočilo: když jeho těžiště leželo mimo
+  // odkryté kruhy, zůstala „neodkrytá" celá ves, i když hráč stál uprostřed
+  // (ověřeno v prohlížeči: jeObjeveno true u všech kusů, označeny 2 z 11).
+  // Teď je id odkryté, jakmile je odkrytý KTERÝKOLI jeho kus.
   for (const f of prvky) {
     const id = f.id;
-    if (id == null || videno.has(id)) continue;
-    videno.add(id);
+    if (id == null) continue;
     let o = budovyHerniStav.get(id);
     if (o !== true) {
       const g = f.geometry;
-      let ring = null;
-      if (g && g.type === 'Polygon') ring = g.coordinates[0];
-      else if (g && g.type === 'MultiPolygon') ring = g.coordinates[0] && g.coordinates[0][0];
-      if (!ring || !ring.length) continue;
-      let sx = 0;
-      let sy = 0;
-      for (const q of ring) { sx += q[0]; sy += q[1]; }
-      try { o = !!Mlha.jeObjeveno(sx / ring.length, sy / ring.length); }
-      catch (e) { o = true; }
+      const kusy = g && g.type === 'Polygon' ? [g.coordinates]
+        : (g && g.type === 'MultiPolygon' ? g.coordinates : []);
+      o = false;
+      for (const poly of kusy) {
+        const ring = poly && poly[0];
+        if (!ring || !ring.length) continue;
+        let sx = 0;
+        let sy = 0;
+        for (const q of ring) { sx += q[0]; sy += q[1]; }
+        try { o = !!Mlha.jeObjeveno(sx / ring.length, sy / ring.length); }
+        catch (e) { o = true; }
+        if (o) break;
+      }
       budovyHerniStav.set(id, o);
     }
-    if (o) ids.push(id);
+    if (o && !videno.has(id)) { videno.add(id); ids.push(id); }
   }
   // engine 234: odkrytí přes feature-state {o: true} – ⛔ setFilter = reload
   // CELÉHO zdroje omt po každém posunu (viz nasadBudovyHerni)
