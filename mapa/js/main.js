@@ -3900,7 +3900,12 @@ function prepoctiMosty3d() {
     prvky = mapa.querySourceFeatures('omt', { sourceLayer: 'transportation',
                                               filter: ['==', ['get', 'brunnel'], 'bridge'] });
   } catch (e) { return; }
-  const ppM = podpisPohledu() + '|' + prvky.length + '|' + krokNoci + '|'
+  // engine 272 (optimalizace): podpis podle MOSTU v pohledu, ne podle kamery.
+  // Kazdy posun mapy driv spustil cely prepocet (tri querySourceFeatures pres
+  // vodu a vsechny silnice + teren) – v sade gest 18 volani, az 61 ms. Kdyz
+  // jsou v pohledu tytez mosty (a totez svetlo), vysledek je stejny.
+  const idsM = prvky.map((f) => f.id).sort((a, b) => a - b).join(',');
+  const ppM = idsM + '|' + krokNoci + '|'
             + faktorSvetla().map((x) => x.toFixed(2)).join(',');
   if (ppM === pohledPodpisMosty) return;          // engine 232: v klidu nic
   pohledPodpisMosty = ppM;
