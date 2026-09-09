@@ -324,14 +324,17 @@ const NASTAVENI_MAPY = { vrstevnice: null, objekty3d: true, ilustrace: true, sti
 window.__nastaveniMapy = NASTAVENI_MAPY;
 const VRSTEVNICE_VYCHOZI = { 11: [200, 1000], 12: [100, 500], 13: [50, 250], 14: [50, 250], 15: [20, 100] };
 const KONTURY_VOLBY = { multiplier: 1, elevationKey: 'ele', levelKey: 'level', contourLayer: 'contours' };
-function prahyVrstevnic(interval) {
-  const i = Number(interval);
+function prahyVrstevnic(interval, mimoHru) {
+  let i = Number(interval);
   if (!isFinite(i) || i <= 0) return VRSTEVNICE_VYCHOZI;
+  // engine 269 („Turistická mapa + vrstevnice po 1 m = přehuštěný had"): mimo
+  // herní styl jsou vrstevnice tmavé a silné, nejméně po 5 m (z14 po 20 m)
+  if (mimoHru) i = Math.max(i, 5);
   const out = {};
   for (const z of [11, 12, 13, 14, 15]) {
     let m = i * Math.pow(2, 15 - z);
     if (z <= 13) m = Math.max(m, VRSTEVNICE_VYCHOZI[z][0]);
-    else if (z === 14) m = Math.max(m, 10);
+    else if (z === 14) m = Math.max(m, mimoHru ? 20 : 10);
     m = Math.round(m * 100) / 100;
     out[z] = [m, m * 5];
   }
@@ -339,7 +342,11 @@ function prahyVrstevnic(interval) {
 }
 const VRSTVY_3D = ['okolnik-budovy-herni-zdi', 'okolnik-budovy-herni-strecha', 'okolnik-stavby-3d',
   'okolnik-vertikaly-3d', 'okolnik-okna-3d', 'okolnik-okna-zare', 'okolnik-mosty-3d', 'modely3d'];
-const VRSTVY_ILUSTRACE = ['ink-ilustrace', 'ink-ilustrace-pata', 'ink-ilustrace-stin'];
+// engine 269 („když vypnu kresby míst, tak je stále vidím"): kresby míst jsou
+// i MALOVANÉ IKONY míst z appky (`okolnik-mista-ikona`, shluky), ne jen velké
+// kresby Kroniky; stuhy se jmény zůstávají
+const VRSTVY_ILUSTRACE = ['ink-ilustrace', 'ink-ilustrace-pata', 'ink-ilustrace-stin',
+  'okolnik-mista-ikona', 'okolnik-mista-pata', 'okolnik-mista-shluk-ikona'];
 let nastaveniMapyPosluchac = null;
 function nastaveniMapyNeniVychozi() {
   const n = NASTAVENI_MAPY;
@@ -367,7 +374,8 @@ function aplikujNastaveniMapy(jenSkryt) {
       const zdroj = mapa.getSource('kontury');
       const dem = window.__okolnikDem;
       if (zdroj && dem && zdroj.setTiles) {
-        const url = dem.contourProtocolUrl(Object.assign({ thresholds: prahyVrstevnic(n.vrstevnice) }, KONTURY_VOLBY));
+        const url = dem.contourProtocolUrl(Object.assign(
+            { thresholds: prahyVrstevnic(n.vrstevnice, aktualniKod !== 'herni') }, KONTURY_VOLBY));
         const ted = (zdroj.tiles && zdroj.tiles[0]) || '';
         if (ted !== url) zdroj.setTiles([url]);
       }
@@ -496,7 +504,17 @@ async function start() {
     // ⭐ v1.421: větší keš dlaždic — „drhne především načítání“:
     // návraty při hraní (tam a zpět po vsi) už dlaždice neparsují
     // znovu; výchozí strop se počítá z viewportu a byl těsný.
-    maxTileCacheSize: 320,
+    // engine 269 („šel by zvětšit keš?"): strop naparsovaných dlaždic NA ZDROJ
+    // podle paměti telefonu (`deviceMemory` 4 → 240, 8 → 400; méně → 160).
+    // ⛔ `maxTileCacheSize` je jen HORNÍ mez: MapLibre keš počítá z výřezu
+    // (dlaždice ve výřezu × `maxTileCacheZoomLevels`, výchozí 5) – na telefonu
+    // to bylo ~30 dlaždic na zdroj, takže 320 nikdy neplatilo a návrat po 3 km
+    // stahoval všechno znovu (změřeno 9. 9.: 37 dlaždic omt tam i zpět).
+    // Proto i `maxTileCacheZoomLevels: 40` – teprve pak strop podle paměti platí.
+    // Stažené bajty drží appka (64 MB v paměti + 256 MB na disku), tohle je
+    // keš HOTOVÝCH dlaždic po odjetí z výřezu.
+    maxTileCacheSize: (navigator.deviceMemory || 4) >= 8 ? 400 : ((navigator.deviceMemory || 4) >= 4 ? 240 : 160),
+    maxTileCacheZoomLevels: 40,
     container: 'mapa',
     style: STYLY[aktualniKod].podklad,
     center: [15.34, 49.82],   // střed ČR
@@ -742,6 +760,12 @@ mapa.on('error', (e) => {
       try { nasadDomalovani(); } catch (e) { }
       try { aplikujNastaveniMapy(false); } catch (e) { }   // engine 268: nastavení mapy z appky
       try { Svetlo.pripoj(mapa); } catch (e) { }
+      // engine 269 ("po prepnuti rezimu jsem musel pohnout mapou, aby se vykreslila"):
+      // po vymene stylu par postrcenych snimku - kdyz posledni dlazdice dorazi bez
+      // dalsi udalosti, WebView jinak muze drzet stary obraz az do prvniho gesta
+      for (const ms of [800, 2000, 4000]) {
+        setTimeout(() => { try { mapa.triggerRepaint(); } catch (e) { /* nic */ } }, ms);
+      }
     // ⭐ v1.521: odznaky návštěvy patří ke každému novému stylu
     try { nasadOdznakNavstevy(); } catch (e) { /* zkusí to časovač */ }
     nasadLovce();   // zapečený záznamník skoků (v1.392) — od 1. snímku
@@ -767,6 +791,12 @@ mapa.on('error', (e) => {
       try { nasadDomalovani(); } catch (e) { }
       try { aplikujNastaveniMapy(false); } catch (e) { }   // engine 268: nastavení mapy z appky
       try { Svetlo.pripoj(mapa); } catch (e) { }
+      // engine 269 ("po prepnuti rezimu jsem musel pohnout mapou, aby se vykreslila"):
+      // po vymene stylu par postrcenych snimku - kdyz posledni dlazdice dorazi bez
+      // dalsi udalosti, WebView jinak muze drzet stary obraz az do prvniho gesta
+      for (const ms of [800, 2000, 4000]) {
+        setTimeout(() => { try { mapa.triggerRepaint(); } catch (e) { /* nic */ } }, ms);
+      }
       // v1.439: skrýt cizí POI dřív, než se poprvé vykreslí
       try { potlacDuplicity(); } catch (e) { /* doběhne z vykresliMista */ }
       // po usazení ještě překopnout terén (viz v1.378 idle-kick)
@@ -4125,10 +4155,11 @@ function prepoctiMosty3d() {
     // engine 268 („ty mosty ještě malinko níž"): 1,4 → 1,2 m nad nižším koncem,
     // stropy 1,5/2,6 m, dno nad terénem 1,0 m; práh 3D 1,1 → 0,9 m, ať nižší
     // zdvih neshodí mosty v rovině na plochou desku
-    const stropZdvihu = Math.min(delka < 12 ? 1.5 : 2.6, 1.2 + poklesM);
+    // engine 269 („ještě malinko níž"): 1,2 → 1,0 m, stropy 1,3/2,4, dno 0,9, práh 0,75
+    const stropZdvihu = Math.min(delka < 12 ? 1.3 : 2.4, 1.0 + poklesM);
     const dno = krizeni > 0 ? Math.min(tMin, vyska(bodNa(delka / 2).P) || tMin) : tMin;
     const zKrizeni = krizeni > 0 ? dno + krizeni * ex : -Infinity;
-    const mostovka = Math.max(Math.min(eA, eB), tMin + 1.0 * ex,
+    const mostovka = Math.max(Math.min(eA, eB), tMin + 0.9 * ex,
                               Math.min(zKrizeni, Math.min(eA, eB) + stropZdvihu * ex));
     const svetlaM = (mostovka - tMin) / ex;       // světlá výška ve skutečných metrech
     // ⛔⛔ engine 247: KDYŽ SE KONCE NESEJDOU, DEM LŽE. MapLibre staví extruzi
@@ -4151,7 +4182,7 @@ function prepoctiMosty3d() {
     // (kreslí se vždy) a na koncích stojí opěry.
     // engine 265: prah 1,5 -> 1,1 m, jinak by nizsi zdvih (1,4 m + pokles) shodil
     // vetsinu mostu na plochou desku ("ty 3D mosty byly fajn")
-    if (svetlaM < 0.9 || rozdilKoncu > 12) {
+    if (svetlaM < 0.75 || rozdilKoncu > 12) {
       // ⭐ engine 239: DESKA POD SILNICÍ v betonovém odstínu, o kus širší než
       // vozovka (1,9×), s tmavšími okraji = zábradlí při pohledu shora. Bílé
       // pruhy NAD vozovkou (engine 238) vypadaly „nehezky"; takhle je most
