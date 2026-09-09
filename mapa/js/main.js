@@ -324,19 +324,20 @@ const NASTAVENI_MAPY = { vrstevnice: null, objekty3d: true, ilustrace: true, sti
 window.__nastaveniMapy = NASTAVENI_MAPY;
 const VRSTEVNICE_VYCHOZI = { 11: [200, 1000], 12: [100, 500], 13: [50, 250], 14: [50, 250], 15: [20, 100] };
 const KONTURY_VOLBY = { multiplier: 1, elevationKey: 'ele', levelKey: 'level', contourLayer: 'contours' };
-function prahyVrstevnic(interval, mimoHru) {
-  let i = Number(interval);
+function prahyVrstevnic(interval) {
+  const i = Number(interval);
   if (!isFinite(i) || i <= 0) return VRSTEVNICE_VYCHOZI;
-  // engine 269 („Turistická mapa + vrstevnice po 1 m = přehuštěný had"): mimo
-  // herní styl jsou vrstevnice tmavé a silné, nejméně po 5 m (z14 po 20 m)
-  if (mimoHru) i = Math.max(i, 5);
+  // engine 270: po 1 m i v Turistické („chtěl jsem jen, aby se popisky ukazovaly
+  // rozumně"). HLAVNÍ vrstevnice (ta s kótou) je nejméně po 20 m: u jemných
+  // intervalů se tak popisky výšek řídnou (1 m → kóta každých 20 m, 5 m → 25 m,
+  // 10 m → 50 m, 20 m → 100 m jako výchozí).
   const out = {};
   for (const z of [11, 12, 13, 14, 15]) {
     let m = i * Math.pow(2, 15 - z);
     if (z <= 13) m = Math.max(m, VRSTEVNICE_VYCHOZI[z][0]);
-    else if (z === 14) m = Math.max(m, mimoHru ? 20 : 10);
+    else if (z === 14) m = Math.max(m, 10);
     m = Math.round(m * 100) / 100;
-    out[z] = [m, m * 5];
+    out[z] = [m, Math.max(m * 5, 20)];
   }
   return out;
 }
@@ -375,11 +376,23 @@ function aplikujNastaveniMapy(jenSkryt) {
       const dem = window.__okolnikDem;
       if (zdroj && dem && zdroj.setTiles) {
         const url = dem.contourProtocolUrl(Object.assign(
-            { thresholds: prahyVrstevnic(n.vrstevnice, aktualniKod !== 'herni') }, KONTURY_VOLBY));
+            { thresholds: prahyVrstevnic(n.vrstevnice) }, KONTURY_VOLBY));
         const ted = (zdroj.tiles && zdroj.tiles[0]) || '';
         if (ted !== url) zdroj.setTiles([url]);
       }
     } catch (e) { console.warn('[nastaveni] vrstevnice', e); }
+    // engine 270: u jemných vrstevnic (pod 20 m) kóty ŘÍDCE – větší odstup
+    // podél čáry i kolizní okraj mezi sousedními čarami (na svahu jsou pár px
+    // od sebe) a kóty vedlejších vrstevnic (Základní) vůbec
+    const jemne = n.vrstevnice !== null && n.vrstevnice > 0 && n.vrstevnice < 20;
+    for (const id of ['vrstevnice-koty', 'ink-vrstevnice-koty']) {
+      if (!mapa.getLayer(id)) continue;
+      try {
+        mapa.setLayoutProperty(id, 'symbol-spacing', jemne ? 420 : 250);
+        mapa.setLayoutProperty(id, 'text-padding', jemne ? 40 : 2);
+      } catch (e) { /* vrstva bez layoutu */ }
+    }
+    vid('vrstevnice-koty-vedlejsi', !jemne);
   }
   // 2) 3D objekty (vypnuté = ploché půdorysy odkrytých domů)
   for (const id of VRSTVY_3D) vid(id, n.objekty3d);
