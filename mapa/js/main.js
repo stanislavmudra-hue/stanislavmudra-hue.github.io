@@ -305,6 +305,98 @@ function pridejMaskuZahranici() {
     paint: { 'fill-color': barva, 'fill-opacity': 1 } }, prvniSymbol);
 }
 
+// ---------------------------------------------------------------------------
+// ⭐ engine 268: NASTAVENÍ MAPY z appky (tlačítko „Mapa" na 3D mapě).
+//   vrstevnice: null = výchozí hustota, 0 = vypnuté, N = po N metrech od z15.
+//               Z dálky se ředí samy (z14 nejméně 2N a 10 m, z13 a dál nikdy
+//               hustší než výchozí), protože vrstevnice se počítají v telefonu
+//               a jsou nejdražší vrstva vůbec (viz `konturyUrl` níž).
+//   objekty3d:  vytažené domy, stavby, vertikály, okna, mosty a modely;
+//               vypnuto = ploché půdorysy domů (`okolnik-budovy-ploche`).
+//   ilustrace:  kresby míst; stuhy se jmény a odznaky zůstávají.
+//   stiny:      vržené stíny domů, stromů a kopců na plátně (`stin-domu`).
+// Vrstvy vznikají průběžně (okna, mosty, kresby až po dlaždicích), proto se
+// po každém `idle` dorovnají SKRYTÍ – `setLayoutProperty` na touž hodnotu se
+// nevolá, takže to nic nestojí. Odkrytí se dělá jen při změně nastavení, aby
+// se nepřebíjely vrstvy, které si schoval někdo jiný (balast při terénu…).
+// ---------------------------------------------------------------------------
+const NASTAVENI_MAPY = { vrstevnice: null, objekty3d: true, ilustrace: true, stiny: true };
+window.__nastaveniMapy = NASTAVENI_MAPY;
+const VRSTEVNICE_VYCHOZI = { 11: [200, 1000], 12: [100, 500], 13: [50, 250], 14: [50, 250], 15: [20, 100] };
+const KONTURY_VOLBY = { multiplier: 1, elevationKey: 'ele', levelKey: 'level', contourLayer: 'contours' };
+function prahyVrstevnic(interval) {
+  const i = Number(interval);
+  if (!isFinite(i) || i <= 0) return VRSTEVNICE_VYCHOZI;
+  const out = {};
+  for (const z of [11, 12, 13, 14, 15]) {
+    let m = i * Math.pow(2, 15 - z);
+    if (z <= 13) m = Math.max(m, VRSTEVNICE_VYCHOZI[z][0]);
+    else if (z === 14) m = Math.max(m, 10);
+    m = Math.round(m * 100) / 100;
+    out[z] = [m, m * 5];
+  }
+  return out;
+}
+const VRSTVY_3D = ['okolnik-budovy-herni-zdi', 'okolnik-budovy-herni-strecha', 'okolnik-stavby-3d',
+  'okolnik-vertikaly-3d', 'okolnik-okna-3d', 'okolnik-okna-zare', 'okolnik-mosty-3d', 'modely3d'];
+const VRSTVY_ILUSTRACE = ['ink-ilustrace', 'ink-ilustrace-pata', 'ink-ilustrace-stin'];
+let nastaveniMapyPosluchac = null;
+function nastaveniMapyNeniVychozi() {
+  const n = NASTAVENI_MAPY;
+  return n.vrstevnice !== null || !n.objekty3d || !n.ilustrace || !n.stiny;
+}
+function aplikujNastaveniMapy(jenSkryt) {
+  if (!mapa) return;
+  let styl = null;
+  try { styl = mapa.getStyle(); } catch (e) { return; }
+  if (!styl || !styl.layers) return;
+  const n = NASTAVENI_MAPY;
+  const vid = (id, chci) => {
+    if (!mapa.getLayer(id)) return;
+    if (chci && jenSkryt) return;
+    const v = chci ? 'visible' : 'none';
+    try {
+      if ((mapa.getLayoutProperty(id, 'visibility') || 'visible') !== v) mapa.setLayoutProperty(id, 'visibility', v);
+    } catch (e) { /* vrstva se zrovna mění */ }
+  };
+  // 1) vrstevnice: všechny vrstvy zdroje `kontury` + hustota přes nový URL protokolu
+  const bezVrstevnic = n.vrstevnice === 0;
+  for (const v of styl.layers) if (v.source === 'kontury') vid(v.id, !bezVrstevnic);
+  if (!bezVrstevnic) {
+    try {
+      const zdroj = mapa.getSource('kontury');
+      const dem = window.__okolnikDem;
+      if (zdroj && dem && zdroj.setTiles) {
+        const url = dem.contourProtocolUrl(Object.assign({ thresholds: prahyVrstevnic(n.vrstevnice) }, KONTURY_VOLBY));
+        const ted = (zdroj.tiles && zdroj.tiles[0]) || '';
+        if (ted !== url) zdroj.setTiles([url]);
+      }
+    } catch (e) { console.warn('[nastaveni] vrstevnice', e); }
+  }
+  // 2) 3D objekty (vypnuté = ploché půdorysy odkrytých domů)
+  for (const id of VRSTVY_3D) vid(id, n.objekty3d);
+  if (!n.objekty3d && !mapa.getLayer('okolnik-budovy-ploche') && mapa.getLayer('okolnik-budovy-herni-zdi')) {
+    try {
+      const H = ['coalesce', ['get', 'render_height'], 6];
+      const ODK = ['boolean', ['feature-state', 'o'], false];
+      mapa.addLayer({ id: 'okolnik-budovy-ploche', type: 'fill', source: 'omt', 'source-layer': 'building', minzoom: 14.5,
+        paint: { 'fill-color': ['case', ODK, ['case', ['<=', H, 9.5],
+                   ['match', ['%', ['id'], 3], 0, '#B9684A', 1, '#AE6045', '#C0745A'], '#8E8478'], 'rgba(0,0,0,0)'],
+                 'fill-outline-color': ['case', ODK, '#5A4632', 'rgba(0,0,0,0)'],
+                 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, 0.9] } }, 'okolnik-budovy-herni-zdi');
+    } catch (e) { console.warn('[nastaveni] ploché domy', e); }
+  }
+  vid('okolnik-budovy-ploche', !n.objekty3d);
+  // 3) kresby míst (stuhy se jmény a odznaky zůstávají)
+  for (const id of VRSTVY_ILUSTRACE) vid(id, n.ilustrace);
+  // 4) stíny na plátně
+  vid('stin-domu', n.stiny);
+  if (nastaveniMapyPosluchac !== mapa) {
+    nastaveniMapyPosluchac = mapa;
+    mapa.on('idle', () => { try { if (nastaveniMapyNeniVychozi()) aplikujNastaveniMapy(true); } catch (e) { /* nic */ } });
+  }
+}
+
 async function start() {
   await Promise.all([zjistiVlastniZdroje(), nactiHranici()]);
   aplikujStropTerenu();
@@ -363,13 +455,9 @@ async function start() {
     // protože cenu nedělá počet čar, ale samotné generování dlaždic.
     // Hustota je proto zpátky původní a řeší se to jinak – vrstevnice se
     // při zapnutém terénu VYPÍNAJÍ, viz `vrstevniceProTeren` níž.
-    thresholds: {          // zoom: [vedlejší, hlavní] po metrech
-      11: [200, 1000],
-      12: [100, 500],
-      13: [50, 250],
-      14: [50, 250],
-      15: [20, 100],
-    },
+    // zoom: [vedlejší, hlavní] po metrech – tabulka `VRSTEVNICE_VYCHOZI`;
+    // engine 268: hustotu si umí přenastavit appka (`prahyVrstevnic`)
+    thresholds: prahyVrstevnic(NASTAVENI_MAPY.vrstevnice),
     elevationKey: 'ele',
     levelKey: 'level',
     contourLayer: 'contours',
@@ -652,6 +740,7 @@ mapa.on('error', (e) => {
       // v1.607: nový styl smaže vrstvy třpytu, šrafy i světlo
       try { if (aktualniKod === 'herni') Trpyt.nasad(); } catch (e) { }
       try { nasadDomalovani(); } catch (e) { }
+      try { aplikujNastaveniMapy(false); } catch (e) { }   // engine 268: nastavení mapy z appky
       try { Svetlo.pripoj(mapa); } catch (e) { }
     // ⭐ v1.521: odznaky návštěvy patří ke každému novému stylu
     try { nasadOdznakNavstevy(); } catch (e) { /* zkusí to časovač */ }
@@ -676,6 +765,7 @@ mapa.on('error', (e) => {
       // v1.607: nový styl smaže vrstvy třpytu, šrafy i světlo
       try { if (aktualniKod === 'herni') Trpyt.nasad(); } catch (e) { }
       try { nasadDomalovani(); } catch (e) { }
+      try { aplikujNastaveniMapy(false); } catch (e) { }   // engine 268: nastavení mapy z appky
       try { Svetlo.pripoj(mapa); } catch (e) { }
       // v1.439: skrýt cizí POI dřív, než se poprvé vykreslí
       try { potlacDuplicity(); } catch (e) { /* doběhne z vykresliMista */ }
@@ -2765,6 +2855,7 @@ function kresliStinyTerenu(ctx, r, W, H, mpu, stredLat, ex) {
 }
 function prepoctiStinyDomu() {
   if (!mapa || !zajistiVrstvuStinu()) return;
+  if (!NASTAVENI_MAPY.stiny) { stinyPodpis = ''; return; }   // engine 268: stíny vypnuté v nastavení mapy
   // během gesta nepřepočítávat (50 ms v hustém městě = trhnutí) – až po něm
   if (mapa.isMoving && mapa.isMoving()) { naplanujStinyDomu(400); return; }
   const z = mapa.getZoom();
@@ -3156,7 +3247,13 @@ const NOC_DOMY_TLUM = 0.62;   // engine 265: zdi o kousek tmavší, ať okna vyn
 /// okno má náhodné `r` (0–99); v noci svítí ta pod prahem `OKNA_SVITI_PRAH`,
 /// jednotlivá okna pak přepíná časovač přes `feature-state` (`sv` 1/0), takže
 /// se nepřekresluje geometrie, jen paint dlaždice.
-const OKNA_SVITI_PRAH = 35;
+const OKNA_SVITI_PRAH = 45;   // engine 268: v ROZSVÍCENÉM domě svítí 45 % pater
+/// ⭐ engine 268 („světla z domů jsou skoro na všech barácích"): 35 % pater
+/// znamenalo, že dům se 3 patry svítil ze 73 % a panelák skoro vždy. Teď má
+/// každý DŮM vlastní los (`OKNA_DUM_PRAH` %); kdo prohraje, dostane všem
+/// patrům `r` ≥ 100 – práh ho nikdy nerozsvítí a časovač blikání ho přeskočí
+/// (`window.__oknaR`). Výsledek: 1 patro 18 %, 3 patra 33 %, panelák 40 %.
+const OKNA_DUM_PRAH = 40;
 /// ⭐ engine 264: ZÁŘE OKEN („svítící okna skoro nesvítí, není glow záře").
 /// Rozsvícené okno má průsvitnou AURU – druhý prvek o `OKNA_ZARE_M` větší
 /// (2–8 cm před zdí, okno samo je 4–10 cm, takže zůstává vpředu) ve vlastní
@@ -3233,6 +3330,8 @@ function nastavBlikaniOken(noc) {
       for (let i = 0; i < kolik; i++) {
         const id = Math.floor(Math.random() * n);
         const sv = Math.random() < 0.45 ? 1 : 0;
+        // engine 268: tmavý dům (r ≥ 100) se blikáním nikdy nerozsvítí
+        if (sv === 1 && window.__oknaR && window.__oknaR[id] >= 100) continue;
         mapa.setFeatureState({ source: 'okna-3d', id }, { sv });
         mapa.setFeatureState({ source: 'okna-3d', id: id + n }, { sv });       // záře okna (engine 266: sprite)
       }
@@ -3285,6 +3384,10 @@ function prepoctiOkna3d() {
   if (!nasadOkna3d()) return;
   const zdroj = mapa.getSource('okna-3d');
   if (!zdroj) return;
+  if (!NASTAVENI_MAPY.objekty3d) {   // engine 268: 3D objekty vypnuté – okna se nepočítají
+    if (oknaPodpis) { oknaPodpis = ''; pohledPodpisOkna = ''; try { zdroj.setData(OKNA_PRAZDNE); } catch (e) { /* nic */ } }
+    return;
+  }
   const z = mapa.getZoom();
   if (z < OKNA_OD_Z - 0.3) {
     if (oknaPodpis) { oknaPodpis = ''; pohledPodpisOkna = ''; try { zdroj.setData(OKNA_PRAZDNE); } catch (e) { /* nic */ } }
@@ -3358,6 +3461,7 @@ function prepoctiOkna3d() {
   const nov = features.length + '|' + klice.join(';');
   if (nov === oknaPodpis) return;
   oknaPodpis = nov;
+  try { window.__oknaR = features.map((f) => f.properties.r); } catch (e) { /* nic */ }   // engine 268: pro blikání
   try { zdroj.setData(features.length ? { type: 'FeatureCollection', features: features.concat(zare) } : OKNA_PRAZDNE); }
   catch (e) { /* zdroj se zrovna mění */ }
   try {
@@ -3432,11 +3536,12 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
   }
   // ⭐ engine 259: jedno patro = JEDEN prvek (MultiPolygon všech jeho oken).
   // Společné těžiště leží uprostřed domu, takže se okna zvednou s ním.
+  const domSviti = Math.random() * 100 < OKNA_DUM_PRAH;   // engine 268: los domu
   for (let f = 0; f < patra.length; f++) {
     const kusy = patra[f];
     if (!kusy || !kusy.length) continue;
     const zb = B + 1.0 + f * OKNA_PATRO_M;
-    const rnd = Math.floor(Math.random() * 100);
+    const rnd = Math.floor(Math.random() * 100) + (domSviti ? 0 : 100);
     out.push({ type: 'Feature',
                properties: { b: +zb.toFixed(2), h: +(zb + 1.4).toFixed(2), r: rnd },
                geometry: { type: 'MultiPolygon', coordinates: kusy } });
@@ -4017,10 +4122,13 @@ function prepoctiMosty3d() {
     // stropy 1,5/2,6 → 1,9/3,0 m; minimum nad terénem 1,0 → 1,3 m
     // engine 265 („teď zase moc"): 1,6 → 1,4 m, stropy 1,7/2,8; konce navíc
     // klesají nájezdy (viz kusy desky níž)
-    const stropZdvihu = Math.min(delka < 12 ? 1.7 : 2.8, 1.4 + poklesM);
+    // engine 268 („ty mosty ještě malinko níž"): 1,4 → 1,2 m nad nižším koncem,
+    // stropy 1,5/2,6 m, dno nad terénem 1,0 m; práh 3D 1,1 → 0,9 m, ať nižší
+    // zdvih neshodí mosty v rovině na plochou desku
+    const stropZdvihu = Math.min(delka < 12 ? 1.5 : 2.6, 1.2 + poklesM);
     const dno = krizeni > 0 ? Math.min(tMin, vyska(bodNa(delka / 2).P) || tMin) : tMin;
     const zKrizeni = krizeni > 0 ? dno + krizeni * ex : -Infinity;
-    const mostovka = Math.max(Math.min(eA, eB), tMin + 1.15 * ex,
+    const mostovka = Math.max(Math.min(eA, eB), tMin + 1.0 * ex,
                               Math.min(zKrizeni, Math.min(eA, eB) + stropZdvihu * ex));
     const svetlaM = (mostovka - tMin) / ex;       // světlá výška ve skutečných metrech
     // ⛔⛔ engine 247: KDYŽ SE KONCE NESEJDOU, DEM LŽE. MapLibre staví extruzi
@@ -4043,7 +4151,7 @@ function prepoctiMosty3d() {
     // (kreslí se vždy) a na koncích stojí opěry.
     // engine 265: prah 1,5 -> 1,1 m, jinak by nizsi zdvih (1,4 m + pokles) shodil
     // vetsinu mostu na plochou desku ("ty 3D mosty byly fajn")
-    if (svetlaM < 1.1 || rozdilKoncu > 12) {
+    if (svetlaM < 0.9 || rozdilKoncu > 12) {
       // ⭐ engine 239: DESKA POD SILNICÍ v betonovém odstínu, o kus širší než
       // vozovka (1,9×), s tmavšími okraji = zábradlí při pohledu shora. Bílé
       // pruhy NAD vozovkou (engine 238) vypadaly „nehezky"; takhle je most
@@ -6839,6 +6947,23 @@ window.OkolnikMost = {
       return dynRozliseniAktivni;
     } catch (e) { return false; }
   },
+  /// ⭐ engine 268: nastavení mapy z appky – {vrstevnice: null|0|N, objekty3d,
+  /// ilustrace, stiny}; chybějící klíče se nemění. Vrací platný stav.
+  nastaveniMapy(cfg) {
+    try {
+      const c = cfg || {};
+      if ('vrstevnice' in c) {
+        const v = c.vrstevnice;
+        NASTAVENI_MAPY.vrstevnice = (v === null || v === undefined || Number(v) < 0)
+            ? null : Math.max(0, Math.min(1000, Number(v) || 0));
+      }
+      for (const k of ['objekty3d', 'ilustrace', 'stiny']) if (k in c) NASTAVENI_MAPY[k] = !!c[k];
+      aplikujNastaveniMapy(false);
+      if (NASTAVENI_MAPY.stiny) { stinyPodpis = ''; naplanujStinyDomu(50); }
+      if (NASTAVENI_MAPY.objekty3d) { pohledPodpisOkna = ''; naplanujOkna3d(50); }
+      return Object.assign({}, NASTAVENI_MAPY);
+    } catch (e) { console.warn('[most] nastaveniMapy', e); return null; }
+  },
   /// v1.601: cyklotrasy (dlaždice ve Filtrech, všechny režimy).
   cyklo(zap) {
     try { zapniCyklotrasy(!!zap); } catch (e) { }
@@ -7231,7 +7356,8 @@ window.OkolnikMost = {
       // brána 1,2 s po zvednutí prstu jinak žrala právě to klepnutí,
       // které po odsunutí mapy přijde („musím mačkat 2×; teď nefunguje").
       // Prst FYZICKY na mapě má přednost vždy.
-      if (vynutit ? prstyDole > 0 : kameruNechatByt()) return;
+      // engine 268: vynucené klepnutí nevěří prstu staršímu než 2,5 s (zaseknuté počítadlo)
+      if (vynutit ? (prstyDole > 0 && Date.now() - prstyDoleMs < 2500) : kameruNechatByt()) return;
       // ⭐ v1.509: pod kotvou startu se ZA HRÁČEM NELÉTÁ, skáče se.
       // `flyTo` dělá švih s oddálením a přiblížením — to je to
       // „ošklivé poskakování" hned po načtení. Cíl je přitom týž bod,
@@ -7245,8 +7371,13 @@ window.OkolnikMost = {
             && Postavicka.poslednPoloha()) || poslednPolohaUziv;
         const naHrace = P && Math.hypot((lat - P.lat) * 111320,
             (lng - P.lng) * 111320 * Math.cos(lat * Math.PI / 180)) < 30;
-        if (naHrace) { kotviNaHrace(lng, lat); return; }
-        zrusKotvu('jinam');
+        // engine 268: vedome klepnuti na tlacitko polohy Z DALEKA (pod z12):
+        // kotva by jen skocila stredem BEZ zoomu a pohled sevreny `maxBounds`
+        // by se nehnul (zmereno 108 s po startu: z6,4, stred zustal na 49,83 N).
+        // Kotva konci a leti se s priblizenim (viz strop zoomu niz).
+        const zDaleka = vynutit && mapa.getZoom() < 12;
+        if (naHrace && !zDaleka) { kotviNaHrace(lng, lat); return; }
+        zrusKotvu(naHrace ? 'tlacitko' : 'jinam');
       }
       // ⚠️ `essential: true` je POVINNÉ. Bez něj MapLibre animaci přeskočí,
       // když má systém zapnuté omezení pohybu – a mapa se prostě nehne
@@ -7260,6 +7391,10 @@ window.OkolnikMost = {
       const cil = { center: [lng, lat], duration: 900, essential: true };
       const z = Number(zoom);
       if (isFinite(z) && z > 0) cil.zoom = z;
+      // engine 268: z daleka (pod z12) je pohled sevreny `maxBounds` uprostred
+      // republiky a prelet bez zoomu se NEHNE (zmereno: z6,4 -> stred zustal na
+      // 49,83 N). Vedome klepnuti na tlacitko polohy proto priblizi na okoli.
+      if (vynutit && !cil.zoom && mapa.getZoom() < 12) cil.zoom = 15.6;
       if (plynule && !cil.zoom) {
         mapa.easeTo({ center: [lng, lat], duration: 800,
           easing: (x) => x, essential: true, noMoveStart: true });
@@ -7889,22 +8024,41 @@ let smerHook = false;
 // gesto přerušila a `moveend` hned spustil další.
 let prstyDole = 0;
 let prstyMs = 0;
+let prstyDoleMs = 0;   // engine 268: kdy naposled přišel prst
 
 function kameruNechatByt() {
+  // engine 268: zaseknuté počítadlo (ztracené zvednutí) nesmí blokovat navěky
+  if (prstyDole > 0 && Date.now() - prstyDoleMs > 30000) prstyDole = 0;
   return prstyDole > 0 || Date.now() - prstyMs < 1200;
 }
 
+// ⭐ engine 268 („tlačítko na mou polohu ne vždy funguje, někdy nepomůže ani
+// druhé klepnutí"): počítadlo prstů se zvedalo na `pointerdown` plátna, ale
+// `pointerup` se poslouchal JEN NA PLÁTNĚ – když prst sjel na tlačítko appky,
+// WebView se mezitím schovalo (1×1 px) nebo appka odešla do pozadí, zvednutí
+// nepřišlo, počítadlo zůstalo > 0 a `letNa` (i s vynutit) všechno zahazoval.
+// Zvednutí se proto poslouchá na OKNĚ, dotyky se srovnávají podle
+// `touches.length` (kolik prstů OPRAVDU zbývá), schování stránky nuluje a
+// vynucený přelet nevěří prstu staršímu než 2,5 s.
 function registrujPrsty() {
   const el = mapa && mapa.getCanvas();
   if (!el || el.dataset.prsty) return;
   el.dataset.prsty = '1';
-  el.addEventListener('pointerdown', () => { prstyDole++; }, true);
+  el.addEventListener('pointerdown', () => { prstyDole++; prstyDoleMs = Date.now(); }, true);
   const pust = () => {
     prstyDole = Math.max(0, prstyDole - 1);
     prstyMs = Date.now();
   };
-  el.addEventListener('pointerup', pust, true);
-  el.addEventListener('pointercancel', pust, true);
+  window.addEventListener('pointerup', pust, true);
+  window.addEventListener('pointercancel', pust, true);
+  const dotyky = (e) => {
+    const n = e.touches ? e.touches.length : 0;
+    if (n < prstyDole) { prstyDole = n; prstyMs = Date.now(); }
+  };
+  el.addEventListener('touchend', dotyky, true);
+  el.addEventListener('touchcancel', dotyky, true);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) prstyDole = 0; });
+  window.addEventListener('blur', () => { prstyDole = 0; });
 }
 
 function aplikujSmer() {
