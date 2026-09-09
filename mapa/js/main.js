@@ -554,9 +554,10 @@ async function start() {
     // `preserveDrawingBuffer` nahoře v6 tiše ignoruje (ověřeno: plátno
     // četlo černě, rozptyl 0). powerPreference nahoře v6 bere dál.
     canvasContextAttributes: { preserveDrawingBuffer: true },
-    // 3 (výchozí MapLibre je 5): při 2 odtékaly PŘEDNAČTENÉ výškové
-    // dlaždice dřív, než je terén stihl použít. Paměť hlídat na telefonu.
-    maxTileCacheZoomLevels: 3,
+    // (`maxTileCacheZoomLevels` je NAHOŘE u `maxTileCacheSize`: bylo tu 3,
+    //  protože při 2 odtékaly přednačtené výškové dlaždice dřív, než je terén
+    //  stihl použít – jenže pozdější klíč v témž objektu přebil hodnotu 40
+    //  z engine 269 a keš zůstala na 18 dlaždicích; ověřeno CDP 9. 9.)
     powerPreference: 'high-performance',
     hash: true,
     // ⭐⭐ NULA TU BYLA A STÁLA 19 FPS (přeměřeno 8. 8. 2026 večer).
