@@ -390,6 +390,10 @@ function aplikujNastaveniMapy(jenSkryt) {
       try {
         mapa.setLayoutProperty(id, 'symbol-spacing', jemne ? 420 : 250);
         mapa.setLayoutProperty(id, 'text-padding', jemne ? 40 : 2);
+        // engine 271: kolize kot vzdy (zjednoduseni pri terenu je drive
+        // vypinalo a koty se vrsily)
+        mapa.setLayoutProperty(id, 'text-allow-overlap', false);
+        mapa.setLayoutProperty(id, 'text-ignore-placement', false);
       } catch (e) { /* vrstva bez layoutu */ }
     }
     vid('vrstevnice-koty-vedlejsi', !jemne);
@@ -4745,6 +4749,10 @@ function zjednodusSymbolyProTeren(zapnout) {
         // to popsal jako *„ta mapa mi připadá nějaká taková prázdná"*.
         if (aktualniKod === 'herni' && BALAST_PRI_TERENU.test(v.id)) {
           mapa.setLayoutProperty(v.id, 'visibility', 'none');
+        } else if (/vrstevnice-koty/.test(v.id)) {
+          // engine 271: koty vrstevnic si kolize NECHAJI - bez nich se u
+          // jemnych vrstevnic (po 1 m) vrsily do sloupcu ("silene namackane";
+          // zmereno na Milesovce, Turisticka z15,6)
         } else {
           mapa.setLayoutProperty(v.id, 'text-allow-overlap', true);
           mapa.setLayoutProperty(v.id, 'icon-allow-overlap', true);
