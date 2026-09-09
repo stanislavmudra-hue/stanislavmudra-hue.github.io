@@ -2301,6 +2301,15 @@ function nasadBudovyHerni() {
   // po každém posunu znovu parsovat CELÝ zdroj); neodkryté = výška 0 + průhledné
   const ODK = ['boolean', ['feature-state', 'o'], false];
   const PRUHLEDNA = 'rgba(0,0,0,0)';
+  // ⛔⛔ engine 272 („na webu se domy vykreslují jen v některých obcích"):
+  // NEODKRYTÝ DŮM NEJDE SCHOVAT PRŮHLEDNOU BARVOU. Vertex shader
+  // fill-extrusion má natvrdo `v_color = vec4(0,0,0,1)` (alfa barvy ignoruje),
+  // takže rgba(0,0,0,0) kreslí ČERNÝ (světlem přibarvený) plochý polygon ve
+  // výšce 0 – na webu byly v neodkrytých vsích tmavé kvádry přes celou obec
+  // (ověřeno CDP: queryRenderedFeatures vracel zdi + střechu, po skrytí vrstev
+  // zmizely). Skrývá se proto GEOMETRIÍ: základna i výška 1 000 km – kvádr
+  // je nad kamerou a ořízne ho blízká rovina (ověřeno s terénem i bez něj).
+  const SKRYTO = 1000000;
   const nastup = ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, 1];
   const pred = prvniSymbolovaVrstva();
   budovyFiltrKlic = ''; zabagedFiltrKlice.clear(); pohledPodpisBudovy = ''; pohledPodpisOkna = '';   // nový styl → filtry znovu
@@ -2313,16 +2322,16 @@ function nasadBudovyHerni() {
       // šikmém pohledu nevěděla, která je blíž, a kreslila je po proužcích –
       // to jsou ty „deformace" (moaré a pruh střešní barvy přes zeď).
       paint: { 'fill-extrusion-color': ['case', ODK, '#EAD9B6', PRUHLEDNA],
-               'fill-extrusion-height': ['case', ODK, ['-', H, 0.6], 0],
-               'fill-extrusion-base': ['case', ODK, B, 0],
+               'fill-extrusion-height': ['case', ODK, ['-', H, 0.6], SKRYTO],
+               'fill-extrusion-base': ['case', ODK, B, SKRYTO],
                'fill-extrusion-opacity': nastup } }, pred);
     mapa.addLayer({ id: 'okolnik-budovy-herni-strecha', type: 'fill-extrusion',
       source: 'omt', 'source-layer': 'building', minzoom: 14.5,
       paint: { 'fill-extrusion-color': ['case', ODK, ['case', NIZKY,
                  ['match', ['%', ['id'], 3], 0, '#B9684A', 1, '#AE6045', '#C0745A'],
                  '#8E8478'], PRUHLEDNA],
-               'fill-extrusion-height': ['case', ODK, H, 0],
-               'fill-extrusion-base': ['case', ODK, ['-', H, 0.75], 0],   // engine 248: o 15 cm níž než končí zeď
+               'fill-extrusion-height': ['case', ODK, H, SKRYTO],
+               'fill-extrusion-base': ['case', ODK, ['-', H, 0.75], SKRYTO],   // engine 248: o 15 cm níž než končí zeď
                'fill-extrusion-opacity': nastup,
                'fill-extrusion-vertical-gradient': false } }, pred);
     // ⭐ engine 214: ZABAGED v3 – kůlny, skleníky, přístřešky a věžovité
@@ -2338,8 +2347,8 @@ function nasadBudovyHerni() {
                  'kulna', '#A78F6B', 'sklenik', '#D6E8EC', 'vezstavba', '#A89C8C',
                  // engine 218 (ZABAGED v4): lávky (dřevo), jezy (beton s pěnou), hráze
                  'lavka', '#C9B38A', 'jez', '#B9C4C6', 'hraz', '#9A9A94', '#B9A98F'], PRUHLEDNA],
-               'fill-extrusion-height': ['case', ODK, ['coalesce', ['get', 'h'], 3], 0],
-               'fill-extrusion-base': 0,
+               'fill-extrusion-height': ['case', ODK, ['coalesce', ['get', 'h'], 3], SKRYTO],
+               'fill-extrusion-base': ['case', ODK, 0, SKRYTO],
                'fill-extrusion-opacity': nastup } }, pred);
     mapa.addLayer({ id: 'okolnik-vertikaly-3d', type: 'fill-extrusion',
       source: 'krajina', 'source-layer': 'vertikaly', minzoom: 14,
@@ -2347,8 +2356,8 @@ function nasadBudovyHerni() {
                  'komin', '#8B5A46', 'vez_kostel', '#E2D2B2', 'vez_kaple', '#E6D8BC',
                  'vysilac', '#C9CCCF', 'rozhledna', '#9E7B55', 'vodojem', '#8C9AA0',
                  'vetrnik', '#EFEFEF', 'tezni', '#5B5B5B', 'silo', '#B8B0A0', '#A09890'], PRUHLEDNA],
-               'fill-extrusion-height': ['case', ODK, ['coalesce', ['get', 'h'], 20], 0],
-               'fill-extrusion-base': 0,
+               'fill-extrusion-height': ['case', ODK, ['coalesce', ['get', 'h'], 20], SKRYTO],
+               'fill-extrusion-base': ['case', ODK, 0, SKRYTO],
                'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.6, 1] } }, pred);
   } catch (e) { console.warn('[budovy herní]', e); return; }
   naplanujBudovyHerni();
