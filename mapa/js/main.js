@@ -9103,6 +9103,32 @@ const NAZVY_NAHORU = ['ink-mesta', 'ink-mestyse', 'ink-vesnice', 'ink-obce'];
 const NAZVY_Z_NAHORU = 15.3;
 const NAZVY_Z_DOLU = 15.7;
 let nazvyPuvodniNasledovnik = null;      // id vrstvy, před kterou se názvy vracejí
+// engine 280: ikona schovaná kolizí nesmí nechat na mapě samotnou patu
+// a záři („duch"). Placement MapLibre nehlásí, ale queryRenderedFeatures
+// vrací jen UMÍSTĚNÉ symboly – po idle se rozdíl zapíše do feature-state
+// `skryt` (zdroj má promoteId 'id'); pata i záře na něj reagují v paint.
+const skryteMista = new Map();
+function synchronizujSkryteMista() {
+  if (!mapa || !posledniMistaGj || !mapa.getLayer('okolnik-mista-ikona')) return;
+  let vidim;
+  try {
+    vidim = new Set(mapa.queryRenderedFeatures({ layers: ['okolnik-mista-ikona'] })
+      .map((f) => String(f.properties.id)));
+  } catch (e) { return; }
+  let pohled = null;
+  try { pohled = mapa.getBounds(); } catch (e) { /* bez ořezu */ }
+  for (const f of posledniMistaGj.features) {
+    const id = String(f.properties.id);
+    const c = f.geometry && f.geometry.coordinates;
+    if (pohled && c && !pohled.contains(c)) continue;   // mimo výřez neřešit
+    const skryt = !vidim.has(id);
+    if (skryteMista.get(id) === skryt) continue;
+    skryteMista.set(id, skryt);
+    try { mapa.setFeatureState({ source: 'okolnik-mista', id }, { skryt }); }
+    catch (e) { /* zdroj v přestavbě */ }
+  }
+}
+
 function poradiNazvuObci() {
   if (!mapa || !mapa.style) return;
   srovnejNocPodMlhu();
@@ -9158,6 +9184,7 @@ function registrujKlikMista() {
   hookKlikuMist = true;
   mapa.on('zoomend', poradiNazvuObci);
   mapa.on('idle', poradiNazvuObci);
+  mapa.on('idle', synchronizujSkryteMista);   // engine 280: pata/záře schované ikony
   mapa.on('idle', () => naplanujStinyDomu(600));
   // engine 265: animátory (mihotání světel, blikání oken) čekají 1,5 s po pohybu
   mapa.on('move', () => { window.__posledniPohybMs = performance.now(); });
@@ -9702,6 +9729,10 @@ function vykresliMista() {
   // (bez obce v názvu, druh + jméno, strop 40 znaků), web totéž ve
   // web-ui.js `jmenoProStuhu`; engine nic nezkracuje (212 zkracoval jen
   // zastávky a rozcházel se s appkou).
+  // engine 280 (3b): PRIORITA = pořadí, v jakém appka místa poslala
+  // (důležitost > sláva > navštívení > placené, viz _posliMistaDo3d).
+  // Řídí kolize ikon (symbol-sort-key) i obrázek shluku (první člen).
+  const poradiMist = new Map(viditelnaVse.map((m, i) => [String(m.id), i]));
   const naFeature = (m) => {
       const bublina = typeof m.ik === 'string'
           && (m.ik.startsWith('emoji|') || m.ik.startsWith('brand|'));
@@ -9712,6 +9743,7 @@ function vykresliMista() {
         type: 'Feature',
         properties: m.ik
             ? { id: m.id, b: m.b || '#E07B39', ...stitek,
+                srt: poradiMist.has(String(m.id)) ? poradiMist.get(String(m.id)) : 999,
                 // 5. 9. noc: výšková třída skutečného objektu (A–D) pro
                 // realistický růst obrázku s mapou (viz velikostMist)
                 vt: tridaVyskyMista(m.ik),
@@ -9729,8 +9761,9 @@ function vykresliMista() {
         geometry: { type: 'Point', coordinates: [m.lng, m.lat] },
       };
   };
-  // ⭐ 5. 9. noc: největší objekt první – shluk pak nese JEHO obrázek
-  // (clusterProperties berou prvního člena)
+  // ⭐ 5. 9. noc: první člen dává shluku obrázek i velikost
+  // (clusterProperties berou prvního člena); engine 280: první =
+  // NEJDŮLEŽITĚJŠÍ (`srt`), ne největší – kostel před halou
   const featury = viditelna.map(naFeature);
   const gj = { type: 'FeatureCollection', features: featury };
   // ⭐ engine 201: velikosti z půdorysů HNED (dlaždice bývají načtené), aby
@@ -9738,7 +9771,7 @@ function vykresliMista() {
   // Řazení (největší první = obrázek shluku) až PO doplnění.
   doplnVelikostiMist(gj);
   featury.sort((a, b) =>
-    ((b.properties && b.properties.sm) || 0) - ((a.properties && a.properties.sm) || 0));
+    ((a.properties && a.properties.srt) || 0) - ((b.properties && b.properties.srt) || 0));
   rozestupStejnychMist(featury);
   posledniMistaGj = gj;
   naplanujVelikostiMist();
@@ -9771,6 +9804,8 @@ function vykresliMista() {
     // přiblížení“. Zdroj má po rozpočtu ≤24 prvků — přeřezávání
     // do z17 je zadarmo.
     type: 'geojson', data: gj, maxzoom: 17,
+    // engine 280: feature-state `skryt` (pata a záře ikony schované kolizí)
+    promoteId: 'id',
     // ⭐ v1.405 (bod C): shluky drží do z14 — jednotlivé obrázky
     // nevyskočí všechny už na z13; rozpad dobíhá do z16 (v1.415)
     // ⭐ 5. 9. noc: shluky i při plném přiblížení („pokud by obrázky opravdu
@@ -9884,7 +9919,7 @@ function vykresliMista() {
                           13, 14, 16, 42],
         'circle-color': '#FFF4D6',
         'circle-opacity': ['interpolate', ['linear'], ['zoom'],
-                           13, 0, 14.5, 0.22],
+                           13, 0, 14.5, ['case', ['boolean', ['feature-state', 'skryt'], false], 0, 0.22]],
         'circle-blur': 1,
         'circle-pitch-alignment': 'map',
       },
@@ -9914,7 +9949,8 @@ function vykresliMista() {
       'icon-rotation-alignment': 'map',
       'icon-size': velikostMist(false),
     },
-    paint: { 'icon-opacity': sZanikemMist(['*', ['case', ['has', 'tl'], TLUM, 1], 0.32], 0) },
+    paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'skryt'], false], 0,
+               sZanikemMist(['*', ['case', ['has', 'tl'], TLUM, 1], 0.32], 0)] },
   });
   // ⛔ 5. 9. noc: VRŽENÝ STÍN obrázků míst (`okolnik-mista-stin`) ZRUŠEN –
   // posunutá zploštělá kopie pod billboardem vypadala, „jako by obrázek
@@ -9928,8 +9964,13 @@ function vykresliMista() {
       'icon-image': ['get', 'ik'],
       // ⚠️ BEZ POPISKŮ: `text-font`, který ve stylu chybí, shodí celou
       // vrstvu potichu (stejná past jako u kreseb Kroniky).
-      'icon-allow-overlap': true,
-      'icon-ignore-placement': true,
+      // engine 280 (3b, „detekce kolizí"): ikona, která by se překryla
+      // s důležitější (nebo se jménem sídla, ta se rozmisťují dřív), se
+      // SCHOVÁ, dokud uživatel nepřiblíží. Dřív allow-overlap → změť
+      // 15 soch přes sebe. Stužka schované ikony smí zůstat (jako u kreseb).
+      'icon-allow-overlap': false,
+      'icon-ignore-placement': false,
+      'symbol-sort-key': ['get', 'srt'],
       // engine 279: `an` = kotva rozestupu míst na stejných souřadnicích
       'icon-anchor': ['coalesce', ['get', 'an'], 'bottom'],
       // Bubliny 2D značek (b2d) jsou menší a při přiblížení NEROSTOU

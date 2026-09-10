@@ -55,6 +55,16 @@ const Ilustrace = (() => {
   // od 6. 8. WebP (65 MB PNG → ~15 MB, rychlejší stažení i dekódování)
   const ILUS_PRIPONA = ILUS_PAR.get('ilusext') || '.webp';
   const cestaKresby = (slug) => ILUS_ZAKLAD + slug + ILUS_PRIPONA;
+  // engine 280: kresba ve DVOJNÁSOBNÉM rozlišení (560 px, přípona `@l`) pro
+  // velké vykreslení (města na stropu, listy nad z16). Na webu
+  // `assets/ilustrace_l/`, v appce z webu (APK ji nenese, bylo by +27 MB);
+  // když soubor není (offline, ještě nenahráno), zůstane 280 px (`bezL`).
+  const ILUS_ZAKLAD_L = ILUS_PAR.get('ilusl')
+    || (ILUS_PAR.get('app') === '1'
+        ? 'https://okolnik.cz/mapa/assets/ilustrace_l/' : 'assets/ilustrace_l/');
+  const cestaKresbyL = (slug) => ILUS_ZAKLAD_L + slug + '.webp';
+  const bezL = new Set();
+  try { window.addEventListener('online', () => bezL.clear()); } catch (e) { /* nic */ }
 
   // ——— konstanty ———
   const MIN_PX = 58;             // velikost při narození
@@ -298,8 +308,19 @@ const Ilustrace = (() => {
     return Math.min(16, Math.ceil(Math.log2(stropPx(p, sw) / p.g0)));
   }
 
+  // engine 280 („obrázky velkých oblastí, třeba Ústí, mizí"): město na
+  // stropu se dřív rozplynulo hned po dosednutí (Ústí z≈11,2–12,5) a děti
+  // (Střekov…) ho nahradily jen bodově. Rodič úrovně ≥ 1 teď předává až
+  // od z13 (nástup ikon míst je 13,4); oblasti úrovně 0 (Krkonoše…) dál
+  // předávají po dosednutí – jejich děti jsou celá města.
+  const PREDAVKA_MEST_Z = 13.0;
+  function predavkaZ(q, sw) {
+    const z = Math.max(zStrop(q, sw), q.zInEff + 1.2);
+    return (q.maPotomky && q.lv >= 1) ? Math.max(z, PREDAVKA_MEST_Z) : z;
+  }
+
   function fadeStart(p, sw) {
-    const strop = Math.max(zStrop(p, sw), p.zInEff + 1.2);
+    const strop = predavkaZ(p, sw);
     // LIST (nikdo ho nestřídá) zůstává připnutý na stropu až do nástupu
     // POI vrstvy aplikace (13,4 jako v 2D) — jinak by malá místa mizela,
     // dokud je zoom daleko od jejich skutečné velikosti
@@ -334,7 +355,7 @@ const Ilustrace = (() => {
       for (const zdroj of [p.rodicIdx, p.vudceIdx]) {
         if (zdroj === null || zdroj === undefined) continue;
         const q = seznam[zdroj];
-        const predavka = Math.max(zStrop(q, sw), q.zInEff + 1.2);
+        const predavka = predavkaZ(q, sw);
         p.zInEff = Math.max(p.zInEff, predavka - 0.4);
       }
     }
@@ -685,13 +706,18 @@ const Ilustrace = (() => {
   // (20–40× za gesto, viz memory atlas ilustrací) zlevní ~3×.
   // Kresby se tam kreslí 58–80 CSS px, měkké natažení je nepoznat.
   const MINI_SIRKA = 120;
+  // engine 280: `@l` 560 px, když by se 280 px na displeji natahovala
+  // (kresba ≥ 128 CSS px = na stropu; hystereze 116)
+  const VELKA_SIRKA = 560;
+  const L_OD_PX = 128;
+  const L_DO_PX = 116;
   const MALA_DO_PX = 100;     // pod tuhle šířku na obrazovce stačí menší
   const VELKA_OD_PX = 112;    // nad tuhle se přepne na plnou (hystereze)
   const velikostniTrida = new Map();   // slug → 's' | 'm' | 'v'
 
   function pripona(varianta) {
     return varianta.endsWith('@m') ? '@m'
-      : (varianta.endsWith('@s') ? '@s' : '');
+      : (varianta.endsWith('@s') ? '@s' : (varianta.endsWith('@l') ? '@l' : ''));
   }
   function jeMala(varianta) { return pripona(varianta) !== ''; }
   function zakladVarianty(varianta) {
@@ -723,16 +749,19 @@ const Ilustrace = (() => {
       velikostniTrida.set(slug, 's');
       return '@s';
     }
-    if (prehledAtlasu) {
-      velikostniTrida.set(slug, 'm');
-      return '@m';
-    }
+    // engine 280 („velké kresby nemají kvalitní vzhled"): pásmo z11,6–13 už
+    // zmenšeninu NEVYNUCUJE – město na stropu (150 CSS px, DPR 3 = 450 px)
+    // se kreslilo z 200 px. Rozhoduje jen šířka na obrazovce; nad 128 px `@l`.
+    void prehledAtlasu;
     let t = velikostniTrida.get(slug);
     if (t === undefined) t = sirkaNaObrazovce < MALA_DO_PX ? 'm' : 'v';
     else if (t === 'm' && sirkaNaObrazovce >= VELKA_OD_PX) t = 'v';
-    else if (t === 'v' && sirkaNaObrazovce < MALA_DO_PX) t = 'm';
+    else if ((t === 'v' || t === 'l') && sirkaNaObrazovce < MALA_DO_PX) t = 'm';
+    if (t === 'v' && sirkaNaObrazovce >= L_OD_PX) t = 'l';
+    else if (t === 'l' && sirkaNaObrazovce < L_DO_PX) t = 'v';
+    if (t === 'l' && bezL.has(slug)) t = 'v';
     velikostniTrida.set(slug, t);
-    return t === 'm' ? '@m' : '';
+    return t === 'm' ? '@m' : (t === 'l' ? '@l' : '');
   }
 
   function zaradVlozeni(id, bitmapa, varianta) {
@@ -776,7 +805,8 @@ const Ilustrace = (() => {
           // zmenšeninu vykreslilo o třetinu menší.
           mapa.addImage(u.id, data,
               { pixelRatio: prip === '@s' ? MINI_SIRKA / ZAKLAD_CSS
-                : (prip === '@m' ? MALA_SIRKA / ZAKLAD_CSS : 2) });
+                : (prip === '@m' ? MALA_SIRKA / ZAKLAD_CSS
+                : (prip === '@l' ? VELKA_SIRKA / ZAKLAD_CSS : 2)) });
         }
         u.res(true);
       } catch (e) {
@@ -839,14 +869,14 @@ const Ilustrace = (() => {
     const prip = pripona(varianta);
     const prace = (async () => {
       try {
-        const odpoved = await fetch(cestaKresby(slug));
+        const odpoved = await fetch(prip === '@l' ? cestaKresbyL(slug) : cestaKresby(slug));
         if (!odpoved.ok) throw new Error('HTTP ' + odpoved.status);
         const blob = await odpoved.blob();
         // ⭐ Zmenšuje se UŽ PŘI DEKÓDOVÁNÍ (`resizeWidth`), ne přes canvas:
         // je to práce dekodéru mimo hlavní vlákno a rovnou ušetří i paměť.
         // Výška se dopočítá poměrem, takže kresby s jinými proporcemi
         // (jsou všechny 280 px široké, ale různě vysoké) zůstanou celé.
-        const bitmapa = prip
+        const bitmapa = (prip && prip !== '@l')
           ? await createImageBitmap(blob,
               { resizeWidth: prip === '@s' ? MINI_SIRKA : MALA_SIRKA,
                 resizeQuality: 'high' })
@@ -854,6 +884,13 @@ const Ilustrace = (() => {
         // do atlasu přes frontu (≤2 na snímek) — bez zadrhnutí
         return (await zaradVlozeni(id, bitmapa, varianta)) ? 'nove' : false;
       } catch (e) {
+        if (prip === '@l') {
+          // @l není (offline, web ještě bez souborů) → příští pas vezme 280 px
+          bezL.add(slug);
+          velikostniTrida.set(slug, 'v');
+          setTimeout(() => { try { prepocitej(); } catch (e2) { /* příště */ } }, 0);
+          return false;
+        }
         selhane.add(slug);
         console.warn('[Ilustrace] nejde načíst kresba', slug, e);
         return false;
@@ -1391,15 +1428,17 @@ const Ilustrace = (() => {
       const potreba = [...new Set(fO.map((f) => f.properties.ik)
         .concat(fO.map((f) => f.properties.st).filter(Boolean)))];
       Promise.all(potreba.map((ik) => {
-        // `ilus:<slug>[#bw|#sil][@m]` — odloupnout obojí, ať se dotáhne
-        // právě ta varianta, kterou sestava opravdu žádá
-        const male = ik.endsWith('@m');
-        const bezM = male ? ik.slice(0, -2) : ik;
-        const zaklad = bezM.endsWith('#bw') ? '#bw'
-          : (bezM.endsWith('#sil') ? '#sil'
-          : (bezM.endsWith('#stin') ? '#stin' : ''));
-        const slug = bezM.slice(5, zaklad ? -zaklad.length : undefined);
-        return zajisti(slug, zaklad + (male ? '@m' : ''));
+        // `ilus:<slug>[#bw|#sil|#stin][@m|@s|@l]` — odloupnout obojí, ať se
+        // dotáhne právě ta varianta, kterou sestava opravdu žádá.
+        // ⛔ engine 280: dřív se loupalo JEN `@m` – `…#bw@l` (i `@s`) prošlo
+        // jako slug, fetch 404 a kresba se nikdy neukázala (Ústí bez obrázku)
+        const prip = pripona(ik);
+        const bezP = prip ? ik.slice(0, -2) : ik;
+        const zaklad = bezP.endsWith('#bw') ? '#bw'
+          : (bezP.endsWith('#sil') ? '#sil'
+          : (bezP.endsWith('#stin') ? '#stin' : ''));
+        const slug = bezP.slice(5, zaklad ? -zaklad.length : undefined);
+        return zajisti(slug, zaklad + prip);
       })).then((vysledky) => {
         if (posledniPodpis !== podpis) return;   // už platí novější
         // ⭐⭐ PŘEPOSLAT JEN KDYŽ OPRAVDU PŘIBYLA KRESBA (10. 8. 2026).
