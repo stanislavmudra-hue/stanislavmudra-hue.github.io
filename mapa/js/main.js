@@ -3329,13 +3329,15 @@ function prepoctiSidlaPopisky() {
 /// a uniform na dlaždici – proto nejdřív geometrie.
 let oknaCasovac = null;
 let oknaPodpis = '';
-const OKNA_OD_Z = 16.8, OKNA_MAX = 3000, OKNA_ROZESTUP_M = 4.4, OKNA_PATRO_M = 3.0, OKNA_DOSAH_M = 420;
+// engine 282 („okna z dálky nejsou vidět"): od z16,2 (bylo 16,8), okna
+// 1,5 × 1,6 m (bylo 1,2 × 1,4) a tmavší ve dne
+const OKNA_OD_Z = 16.2, OKNA_MAX = 3000, OKNA_ROZESTUP_M = 4.4, OKNA_PATRO_M = 3.0, OKNA_DOSAH_M = 420;
 const oknaKes = new Map();          // engine 232: klíč domu → hotová okna (b/h i s opravou terénu)
 /// ⛔ Rozsvícené okno vycházelo TMAVŠÍ než zeď (128,116,79 proti 143,149,148):
 /// světlo stylu barvu ztlumí (viz `proSvetlo`) a 3D domy v noci netmavly vůbec.
 /// Barvy proto jdou přes `proSvetlo` (rozsvícené okno BEZ nočního ztlumení –
 /// svítí samo) a `NOC_DOMY_TLUM` ztmaví v noci zdi a střechy.
-const OKNA_BARVA = { den: '#4F5D6B', noc: '#FFF7D0', zhasle: '#1A1F27' };   // engine 264: noc svetlejsi (svetlo styl srazi na ~0,82)
+const OKNA_BARVA = { den: '#37424F', noc: '#FFF7D0', zhasle: '#1A1F27' };   // engine 264: noc svetlejsi (svetlo styl srazi na ~0,82)
 /// Kolik z nočního překryvu dostanou 3D domy (1 = jako zem). Půlka: dům
 /// zůstane čitelný, ale rozsvícené okno je proti němu jasně vidět.
 const NOC_DOMY_TLUM = 0.62;   // engine 265: zdi o kousek tmavší, ať okna vyniknou
@@ -3343,13 +3345,13 @@ const NOC_DOMY_TLUM = 0.62;   // engine 265: zdi o kousek tmavší, ať okna vyn
 /// okno má náhodné `r` (0–99); v noci svítí ta pod prahem `OKNA_SVITI_PRAH`,
 /// jednotlivá okna pak přepíná časovač přes `feature-state` (`sv` 1/0), takže
 /// se nepřekresluje geometrie, jen paint dlaždice.
-const OKNA_SVITI_PRAH = 45;   // engine 268: v ROZSVÍCENÉM domě svítí 45 % pater
+const OKNA_SVITI_PRAH = 35;   // engine 268: 45 % pater; engine 282: 35 („svítících oken je příliš")
 /// ⭐ engine 268 („světla z domů jsou skoro na všech barácích"): 35 % pater
 /// znamenalo, že dům se 3 patry svítil ze 73 % a panelák skoro vždy. Teď má
 /// každý DŮM vlastní los (`OKNA_DUM_PRAH` %); kdo prohraje, dostane všem
 /// patrům `r` ≥ 100 – práh ho nikdy nerozsvítí a časovač blikání ho přeskočí
 /// (`window.__oknaR`). Výsledek: 1 patro 18 %, 3 patra 33 %, panelák 40 %.
-const OKNA_DUM_PRAH = 40;
+const OKNA_DUM_PRAH = 25;   // engine 282: 40 → 25 % domů
 /// ⭐ engine 264: ZÁŘE OKEN („svítící okna skoro nesvítí, není glow záře").
 /// Rozsvícené okno má průsvitnou AURU – druhý prvek o `OKNA_ZARE_M` větší
 /// (2–8 cm před zdí, okno samo je 4–10 cm, takže zůstává vpředu) ve vlastní
@@ -3622,7 +3624,7 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
     // terénu (engine 235–258) byl boj s vlastním ocasem: každé okno bylo
     // vlastní prvek a MapLibre ho zvedal o terén v JEHO těžišti.
     const pocet = Math.max(1, Math.floor(L / OKNA_ROZESTUP_M));
-    const sirka = L < 4 ? 0.9 : 1.2;
+    const sirka = L < 4 ? 1.1 : 1.5;   // engine 282: širší okna
     // ⛔⛔ engine 235: KOREKCE MUSÍ BÝT MALÁ A OKNO SE MUSÍ VEJÍT POD STŘECHU.
     // MapLibre zvedá extruzi o terén ve středu prvku, takže okno je potřeba
     // posunout o rozdíl terénu (dům vs. okno) – jenže při velkém rozdílu
@@ -3661,7 +3663,7 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
     const zb = B + 1.0 + f * OKNA_PATRO_M;
     const rnd = Math.floor(Math.random() * 100) + (domSviti ? 0 : 100);
     out.push({ type: 'Feature',
-               properties: { b: +zb.toFixed(2), h: +(zb + 1.4).toFixed(2), r: rnd },
+               properties: { b: +zb.toFixed(2), h: +(zb + 1.6).toFixed(2), r: rnd },
                geometry: { type: 'MultiPolygon', coordinates: kusy } });
     // engine 266: záře patra hned za oknem (prepoctiOkna3d je řadí za všechna okna);
     // body na zemi před okny – symbolová vrstva, hloubka kotvy přes záplatu bundlu
@@ -6882,6 +6884,9 @@ function mostHlas(jmeno, data) {
   try {
     if (window.flutter_inappwebview) {
       window.flutter_inappwebview.callHandler(jmeno, data);
+    } else if (window.OkolnikWeb && typeof window.OkolnikWeb[jmeno] === 'function') {
+      // engine 282: na webu (bez Flutteru) klik na místo/shluk otevře detail (web.js)
+      window.OkolnikWeb[jmeno](data);
     }
   } catch (e) { /* mimo appku se prostě nic nestane */ }
 }
@@ -9858,6 +9863,9 @@ function vykresliMista() {
       kbH: [['coalesce', ['accumulated'], ['get', 'kbH']], ['coalesce', ['get', 'kb'], 1]],
       vtH: [['coalesce', ['accumulated'], ['get', 'vtH']], ['get', 'vt']],
       tlH: ['min', ['case', ['has', 'tl'], 1, 0]],
+      // engine 282: jméno NEJDŮLEŽITĚJŠÍHO člena → stužka i u shluku („stužky
+      // u menších míst se téměř neukazují" – pod z16,5 byla místa ve shlucích beze jmen)
+      tH: [['coalesce', ['accumulated'], ['get', 'tH']], ['get', 't']],
     },
   });
   // ⭐ v1.555: VYBLEDLÉ MÍSTO = KOMUNITA HLÁSÍ ZÁNIK.
@@ -10036,8 +10044,9 @@ function vykresliMista() {
         type: 'symbol',
         source: 'okolnik-mista',
         minzoom: 13.0,
-        filter: ['all', ['has', 't'], ['has', 'ik'],
-                 ['!', ['has', 'point_count']]],
+        // engine 282: i shluky (jméno prvního = nejdůležitějšího člena)
+        filter: ['all', ['any', ['has', 't'], ['has', 'tH']],
+                 ['any', ['has', 'ik'], ['has', 'ikH']]],
         layout: {
           'icon-image': 'ilus-stuha',
           // ⚠️ `width`, NE `both` — stuha roste jen do šířky. Svislé
@@ -10057,7 +10066,7 @@ function vykresliMista() {
           // s prolnutím schová — „nejdou vidět popisky“.
           'icon-allow-overlap': false,
           'icon-ignore-placement': false,
-          'text-field': ['get', 't'],
+          'text-field': ['coalesce', ['get', 't'], ['get', 'tH']],
           'text-font': ['Noto Sans Bold'],
           // ⭐ TOHLE je jediný knoflík na velikost stuhy (viz výš).
           // ⛔⛔ v1.428: ZOOMOVÝ VÝRAZ SEM NEDÁVAT — icon-text-fit
@@ -10114,9 +10123,9 @@ function vykresliMista() {
         type: 'symbol',
         source: 'okolnik-mista',
         minzoom: 14,
-        filter: ['all', ['has', 't'], ['!', ['has', 'point_count']]],
+        filter: ['any', ['has', 't'], ['has', 'tH']],   // engine 282: i shluky
         layout: {
-          'text-field': ['get', 't'],
+          'text-field': ['coalesce', ['get', 't'], ['get', 'tH']],
           'text-font': font || ['Noto Sans Regular'],
           'text-size': 11 * TEXT_SKALA,
           'text-anchor': 'top',

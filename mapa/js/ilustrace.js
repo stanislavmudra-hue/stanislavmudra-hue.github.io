@@ -105,9 +105,13 @@ const Ilustrace = (() => {
   // růstu — kresba prakticky celý život STÁLA na místě, zatímco krajina
   // rostla. Nově ≈ 150–180 px, což je 1,4–1,6 zoomu skutečného růstu.
   // Kdyby začaly zakrývat mapu, snižovat TENHLE podíl (ne podlahu).
+  // engine 282 (web: „velké obrázky zůstávají příliš dlouho, překrývají
+  // oblast"): na monitoru dával podíl šířky 460–640 px; absolutní strop
+  // 260 px – telefon (150–180) beze změny
+  const STROP_ABS_PX = 260;
   function stropPx(p, sw) {
     const podil = p.lv === 0 ? 0.50 : (p.d === 'mesta' ? 0.42 : 0.36);
-    return Math.min(0.50 * sw, Math.max(150, podil * sw));
+    return Math.min(STROP_ABS_PX, 0.50 * sw, Math.max(150, podil * sw));
   }
 
   const DRUHY = {
@@ -315,7 +319,7 @@ const Ilustrace = (() => {
   // (Střekov…) ho nahradily jen bodově. Rodič úrovně ≥ 1 teď předává až
   // od z13 (nástup ikon míst je 13,4); oblasti úrovně 0 (Krkonoše…) dál
   // předávají po dosednutí – jejich děti jsou celá města.
-  const PREDAVKA_MEST_Z = 13.0;
+  const PREDAVKA_MEST_Z = 12.6;   // engine 282: 13,0 → 12,6 („zůstávají příliš dlouho")
   function predavkaZ(q, sw) {
     const z = Math.max(zStrop(q, sw), q.zInEff + 1.2);
     return (q.maPotomky && q.lv >= 1) ? Math.max(z, PREDAVKA_MEST_Z) : z;

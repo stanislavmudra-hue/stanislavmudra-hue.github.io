@@ -33,6 +33,14 @@
   var relace = null;
   // sdílený stav pro web-ui.js (kresby, stav ze synchronizace, posluchači)
   var W = window.OkolnikWeb = window.OkolnikWeb || {};
+  /* engine 282: klik na místo (bod) nebo shluk na mapě → detail kresby
+     (dřív se hlášení posílala jen do Flutteru a na webu klik nic neudělal) */
+  W.onBod = function (id) {
+    try { if (typeof Ilustrace !== 'undefined' && Ilustrace.detail) Ilustrace.detail(String(id)); } catch (e) { }
+  };
+  W.onShluk = function (ids) {
+    try { if (ids && ids.length && typeof Ilustrace !== 'undefined' && Ilustrace.detail) Ilustrace.detail(String(ids[0])); } catch (e) { }
+  };
   W.kresby = W.kresby || [];
   W.stav = W.stav || null;
   W.naStav = W.naStav || [];

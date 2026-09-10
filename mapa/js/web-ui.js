@@ -666,7 +666,8 @@
     try { mapa.jumpTo({ center: [m.lng, m.lat], zoom: Math.max(mapa.getZoom(), 14) }); } catch (e) { }
     if (m.d === 'kresba') {
       setTimeout(function () {
-        try { if (typeof Ilustrace !== 'undefined' && Ilustrace.ukazDetail) Ilustrace.ukazDetail(m.id); } catch (e) { }
+        // engine 282: API se jmenuje `detail` (ukazDetail nikdy neexistovalo → seznam neotvíral detail)
+        try { var det = typeof Ilustrace !== 'undefined' && (Ilustrace.detail || Ilustrace.ukazDetail); if (det) det(m.id); } catch (e) { }
       }, 400);
     }
   }
