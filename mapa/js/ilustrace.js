@@ -71,6 +71,13 @@ const Ilustrace = (() => {
   // ——— konstanty ———
   const MIN_PX = 58;             // velikost při narození
   const FADE_SPAN = 1.3;         // rozplynutí po přerůstu stropu (zoom)
+  // engine 284 (web: „stále pomalu mizící velké obrázky"): nad z16 kresba
+  // rostla ×2 na zoom a rozplývala se až širší než obrazovka (monitor z≈18,3–19,
+  // zámek přes celou obrazovku). Teď růst nejvýš 1,5× stropu a rozplynutí
+  // z17,4 → 18,4, kdy scénu nesou 3D domy a ikony míst.
+  const RUST_NAD_16 = 1.5;
+  const KONEC_OD_Z = 17.4;
+  const KONEC_SPAN = 1.0;
   const BANNER_BIAS = 0.07;      // stará zapečená cedule (dnes 1 kresba)
   const LABEL_W_FRAC = 0.94;
   const LABEL_OVERLAP_PX = 4;    // stužka těsně pod spodkem kresby
@@ -299,7 +306,7 @@ const Ilustrace = (() => {
     const ohran = (zz) =>
       Math.min(mx, Math.max(podlahaPx(p, zz, mx), p.g0 * Math.pow(2, zz)));
     // 5. 9. večer: nad z16 roste s mapou (viz vyrazVelikosti)
-    if (z > 16) return ohran(16) * Math.pow(2, z - 16);
+    if (z > 16) return ohran(16) * Math.min(Math.pow(2, z - 16), RUST_NAD_16);
     const z0 = Math.max(4, Math.min(15, Math.floor(z)));
     const t = Math.max(0, Math.min(1, Math.pow(2, z - z0) - 1));
     return ohran(z0) + t * (ohran(z0 + 1) - ohran(z0));
@@ -418,6 +425,8 @@ const Ilustrace = (() => {
       const w = sirkaPx(p, z, sw);
       if (w > sw) op = Math.min(op, 1 - (w - sw) / (0.6 * sw));
     }
+    // engine 284: každá kresba se rozplyne z17,4 → 18,4 (viz KONEC_OD_Z)
+    if (z > KONEC_OD_Z) op = Math.min(op, 1 - (z - KONEC_OD_Z) / KONEC_SPAN);
     return op <= 0.02 ? null : op;
   }
 
@@ -444,7 +453,7 @@ const Ilustrace = (() => {
     // kresba roste PŘESNĚ S MAPOU (×2 na zoom) z velikosti na stropu –
     // jako malba. ⚠️ Totéž musí dělat `sirkaPx` (JS) níž.
     for (let z = 17; z <= 22; z++) {
-      v.push(z, ['/', ['*', ohran(16), Math.pow(2, z - 16), sc], ZAKLAD_CSS]);
+      v.push(z, ['/', ['*', ohran(16), Math.min(Math.pow(2, z - 16), RUST_NAD_16), sc], ZAKLAD_CSS]);
     }
     return v;
   }
