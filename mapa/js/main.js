@@ -88,6 +88,9 @@ const GH_PORT = new URLSearchParams(location.search).get('ghport') || '8138';
 // R2 pustíme, druhé a další spuštění už nestahuje nic.
 // ⚠️ Mimo appku (engine bokem) žádná proxy neběží → jede se napřímo.
 const R2_PRES_PROXY = new URLSearchParams(location.search).get('app') === '1';
+// engine 281 (web: „názvy a stužky nečitelné"): na monitoru s DPR 1 je 10,5px
+// stužka drobná; telefon (DPR 3) nechat. Totéž TEXT_SKALA v ilustrace.js a styles.js.
+const TEXT_SKALA = (window.devicePixelRatio || 1) < 1.5 ? 1.2 : 1;
 const r2 = (soubor) => 'pmtiles://' + (R2_PRES_PROXY
   ? `http://localhost:${GH_PORT}/r2/${soubor}`
   : R2_ZAKLAD + soubor);
@@ -620,7 +623,15 @@ async function start() {
   mapa.on('load', () => {
     if (!window.__casy.load) window.__casy.load = Math.round(performance.now());
   });
-  mapa.setMaxBounds(CR_BOUNDS);   // kamera se drží u ČR
+  // engine 281 („když mám oddáleno, nedá se posouvat"): setMaxBounds hlídá
+  // VÝŘEZ – na širokém monitoru se celá ČR vejde do okna už kolem z7,5 a mapa
+  // pak nemá kam uhnout (změřeno: panBy 300 px = 0,13° místo 1,65°). Meze se
+  // proto přepočítávají podle zoomu tak, aby uvnitř ČR musel zůstat STŘED:
+  // ČR ± 0,75 výřezu (rezerva nad půlku, ať kolečko myši při oddalování
+  // nezadrhává o meze z předchozího kroku). Přiblížení to nemění.
+  srovnejHranice();
+  mapa.on('zoom', srovnejHranice);
+  mapa.on('resize', srovnejHranice);
 
   // ⭐⭐⭐ POJISTKA OSIŘELÉHO SNÍMKU ANIMACE (11. 8. 2026 večer — jiskra
   // všech „šedých map" konečně chycená ZA RUKU, se zásobníkem):
@@ -4545,6 +4556,23 @@ function nasadDomalovani() {
                  14, 0, 15.5, 0.45] },
     }, prvniSymbolovaVrstva());
   }
+}
+
+let hraniceZoom = -99;
+function srovnejHranice() {
+  if (!mapa) return;
+  try {
+    const z = mapa.getZoom();
+    if (Math.abs(z - hraniceZoom) < 0.15) return;
+    hraniceZoom = z;
+    const el = mapa.getContainer();
+    const stupnuNaPx = 360 / Math.pow(2, z) / 512;         // zeměpisná délka na CSS px
+    const lat = mapa.getCenter().lat * Math.PI / 180;
+    const dLon = 0.75 * stupnuNaPx * (el.clientWidth || 360);
+    const dLat = 0.75 * stupnuNaPx * (el.clientHeight || 640) * Math.cos(lat);
+    mapa.setMaxBounds([[CR_BOUNDS[0][0] - dLon, CR_BOUNDS[0][1] - dLat],
+                       [CR_BOUNDS[1][0] + dLon, CR_BOUNDS[1][1] + dLat]]);
+  } catch (e) { /* mapa v přestavbě */ }
 }
 
 function prvniSymbolovaVrstva() {
@@ -10036,7 +10064,7 @@ function vykresliMista() {
           // v kombinaci se zoom-interpolate text-size TIŠE přestane
           // kreslit CELOU vrstvu (vrstva žije, výraz uložen, symbolů
           // nula i tam, kde konstanta kreslila; ověřeno na zařízení).
-          'text-size': 10.5,   // 5. 9. noc: 8,5 → 10,5 („text je mnohdy nečitelný")
+          'text-size': 10.5 * TEXT_SKALA,   // 5. 9. noc: 8,5 → 10,5; engine 281: monitor ×1,2
           // ⚠️ ZÁMĚRNĚ VELKÉ = text se NIKDY nezalomí. Stuha má pevnou
           // výšku (roste jen do šířky), takže druhý řádek by z ní vylezl.
           // Dlouhý název tedy udělá delší stuhu, ne vyšší.
@@ -10090,7 +10118,7 @@ function vykresliMista() {
         layout: {
           'text-field': ['get', 't'],
           'text-font': font || ['Noto Sans Regular'],
-          'text-size': 11,
+          'text-size': 11 * TEXT_SKALA,
           'text-anchor': 'top',
           'text-offset': [0, 0.4],
           'text-max-width': 9,

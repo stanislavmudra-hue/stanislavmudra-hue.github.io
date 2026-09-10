@@ -345,7 +345,7 @@ function stylTuristicka(ctx) {
             NAZEV, { 'text-font': ['literal', FONT_B] },
             '\n', {},
             ['concat', ['get', 'ele'], ' m'], { 'font-scale': 0.85 }],
-          'text-font': FONT, 'text-size': 12, 'text-anchor': 'top',
+          'text-font': FONT, 'text-size': skalujText(12), 'text-anchor': 'top',
           'text-offset': [0, 0.2],
         },
         paint: { 'text-color': '#5c452a', 'text-halo-color': '#f4efe3',
@@ -432,8 +432,21 @@ const KRONIKA = {
 //   3. větší skoky velikostí (poměr ~1,35), méně stupňů,
 //   4. tučné JEN pro nejvyšší stupeň, zbytek nese kontrast barvy.
 // engine 204: velikost může být i zoomový výraz (názvy po oddálení větší)
+// engine 281 (web: „názvy nečitelné"): na monitoru (DPR < 1,5) písmo názvů
+// ×1,2; telefon beze změny. Zoomový výraz musí zůstat NAHOŘE, proto se
+// násobí jednotlivé zastávky, ne celý výraz.
+const TEXT_SKALA_WEB = (window.devicePixelRatio || 1) < 1.5 ? 1.2 : 1;
+const skalujText = (v) => {
+  if (TEXT_SKALA_WEB === 1) return v;
+  if (typeof v === 'number') return +(v * TEXT_SKALA_WEB).toFixed(2);
+  if (Array.isArray(v) && v[0] === 'interpolate') {
+    return v.map((x, i) => (i >= 4 && i % 2 === 0 && typeof x === 'number')
+      ? +(x * TEXT_SKALA_WEB).toFixed(2) : x);
+  }
+  return v;
+};
 const obceLayout = (font, velikost, verzalky) => ({
-  'text-field': NAZEV, 'text-font': font, 'text-size': velikost,
+  'text-field': NAZEV, 'text-font': font, 'text-size': skalujText(velikost),
   'text-anchor': 'top', 'text-offset': [0, 0.45],
   'text-transform': verzalky ? 'uppercase' : 'none',
   'text-letter-spacing': verzalky ? 0.08 : 0,
@@ -1083,7 +1096,7 @@ function stylHerni(ctx) {
              ['concat', '\n', ['get', 'ele'], ' m'], ''],
             { 'font-scale': 0.72 }],
           // kurzíva + sépie = „přírodní jev", odliší kopec od vsi
-          'text-font': FONT_I, 'text-size': 13, 'text-anchor': 'center',
+          'text-font': FONT_I, 'text-size': skalujText(13), 'text-anchor': 'center',
         },
         paint: { 'text-color': KRONIKA.inkSvetla, 'text-halo-color': KRONIKA.halo,
                  'text-halo-width': 1.6 } },

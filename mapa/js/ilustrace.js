@@ -55,6 +55,8 @@ const Ilustrace = (() => {
   // od 6. 8. WebP (65 MB PNG → ~15 MB, rychlejší stažení i dekódování)
   const ILUS_PRIPONA = ILUS_PAR.get('ilusext') || '.webp';
   const cestaKresby = (slug) => ILUS_ZAKLAD + slug + ILUS_PRIPONA;
+  // engine 281: na monitoru (DPR 1) stužky ×1,2 (7–12px text byl nečitelný)
+  const TEXT_SKALA = (window.devicePixelRatio || 1) < 1.5 ? 1.2 : 1;
   // engine 280: kresba ve DVOJNÁSOBNÉM rozlišení (560 px, přípona `@l`) pro
   // velké vykreslení (města na stropu, listy nad z16). Na webu
   // `assets/ilustrace_l/`, v appce z webu (APK ji nenese, bylo by +27 MB);
@@ -73,10 +75,10 @@ const Ilustrace = (() => {
   const LABEL_W_FRAC = 0.94;
   const LABEL_OVERLAP_PX = 4;    // stužka těsně pod spodkem kresby
   const FADE_KROK = 0.11;        // opacity za snímek
-  const MIN_LABEL_W = 66.0;
-  const MAX_LABEL_W = 168.0;
+  const MIN_LABEL_W = 66.0 * TEXT_SKALA;
+  const MAX_LABEL_W = 168.0 * TEXT_SKALA;
   // 104 px místo 84 z 2D — jména na samotných stužkách byla nečitelná
-  const RIBBON_ONLY_W = 104.0;
+  const RIBBON_ONLY_W = 104.0 * TEXT_SKALA;
   const RIB_ASPECT = 57.0 / 300.0;
   const ZAKLAD_CSS = 140;        // kresby 280 px / pixelRatio 2
   const PRODLEVA_MS = 650;       // režim se nesmí měnit častěji…
@@ -711,6 +713,12 @@ const Ilustrace = (() => {
   const VELKA_SIRKA = 560;
   const L_OD_PX = 128;
   const L_DO_PX = 116;
+  // engine 281: rozpočet @l – na monitoru je strop kreseb 460–640 px, takže by
+  // @l dostala KAŽDÁ kresba v přehledu a atlas (přestavby při posunu) by
+  // narostl 4×; @l jen od z11,6 a nejvýš 8 kreseb na jeden pas kaskády
+  const L_OD_Z = 11.6;
+  const L_MAX_NA_PAS = 8;
+  let pocetL = 0;
   const MALA_DO_PX = 100;     // pod tuhle šířku na obrazovce stačí menší
   const VELKA_OD_PX = 112;    // nad tuhle se přepne na plnou (hystereze)
   const velikostniTrida = new Map();   // slug → 's' | 'm' | 'v'
@@ -735,8 +743,10 @@ const Ilustrace = (() => {
   let prehledAtlasu = false;
   let miniAtlas = false;
   function priponaVelikosti(slug, sirkaNaObrazovce) {
+    let zL = 99;
     try {
       const z = mapa.getZoom();
+      zL = z;
       // ⭐ v1.404: strop rozšířen z 11,5 na 13 (schváleno 13. 8.) —
       // i v pásmu 11,5–13 stačí zmenšenina 200 px (nad 100 CSS px se
       // měkce natáhne); atlas regionálního přehledu je menší a třídy
@@ -759,7 +769,8 @@ const Ilustrace = (() => {
     else if ((t === 'v' || t === 'l') && sirkaNaObrazovce < MALA_DO_PX) t = 'm';
     if (t === 'v' && sirkaNaObrazovce >= L_OD_PX) t = 'l';
     else if (t === 'l' && sirkaNaObrazovce < L_DO_PX) t = 'v';
-    if (t === 'l' && bezL.has(slug)) t = 'v';
+    if (t === 'l' && (bezL.has(slug) || zL < L_OD_Z || pocetL >= L_MAX_NA_PAS)) t = 'v';
+    if (t === 'l') pocetL++;
     velikostniTrida.set(slug, t);
     return t === 'm' ? '@m' : (t === 'l' ? '@l' : '');
   }
@@ -1164,6 +1175,7 @@ const Ilustrace = (() => {
 
   function prepocitej() {
     if (!mapa || !seznam) return;
+    pocetL = 0;   // engine 281: rozpočet @l na pas
     const zdrojO = mapa.getSource('ilus-obrazky');
     if (!zdrojO) return;
     const tStart = performance.now();
