@@ -8849,6 +8849,12 @@ function velikostMist(sBublinou, klic) {
   const sm = ['coalesce', ['get', shluk ? 'smH' : 'sm'], 12];
   const kb = ['coalesce', ['get', shluk ? 'kbH' : 'kb'], 1];
   const podlahaPx = (z) => (z <= 16 ? 48 : z >= 22 ? 90 : 48 + (z - 16) * 7);
+  // engine 285 („velké obrázky zůstávají viditelné příliš dlouho, překrývají
+  // oblast"): obrázek roste se skutečnou velikostí BEZ STROPU (engine 208) –
+  // zámek s půdorysem 80 m měl na z18,5 přes 900 px a zakryl celou obrazovku.
+  // Strop 260 CSS px, na telefonu 45 % šířky obrazovky (≈ 162 px).
+  const sw = (mapa && mapa.getContainer && mapa.getContainer().clientWidth) || 360;
+  const STROP_IKONY = +(Math.min(260, 0.45 * sw) / 224).toFixed(4);
   // engine 279 („obrázky menších míst by mohly být menší, aby se vešly na
   // svá místa"): podlaha čitelnosti podle třídy – drobnosti (A) 72 %,
   // obchody a služby (S) 80 %, budovy a krajina 100 %
@@ -8856,7 +8862,7 @@ function velikostMist(sBublinou, klic) {
   const dilPodlahy = ['match', vt, 'A', 0.72, 'S', 0.80, 1];
   const stop = (z) => {
     const c = Math.pow(2, z - 18) / (0.19 * 224);       // icon-size na metr
-    const o = ['*', kb, ['min', 3.0, ['max', ['*', +(podlahaPx(z) / 224).toFixed(4), dilPodlahy],
+    const o = ['min', STROP_IKONY, ['*', kb, ['max', ['*', +(podlahaPx(z) / 224).toFixed(4), dilPodlahy],
                                       ['*', sm, +c.toFixed(7)]]]];
     return sBublinou
       ? ['case', ['has', 'fv'], 0.30, ['has', 'b2d'], 0.24, o]
