@@ -1256,6 +1256,7 @@ const Ilustrace = (() => {
     // 2) důležitější má přednost (velikost se rozmístěním NEMĚNÍ)
     cand.sort((a, b) => (b.imp - a.imp) || (b.w - a.w));
     const obsazene = [];
+    const obsazeneStuhy = [];   // engine 283: jen stužky (2. pas stužek smí přes kresby)
     const umistene = [];
     const schovane = [];
 
@@ -1315,9 +1316,15 @@ const Ilustrace = (() => {
         const kroky = [0.0, labH * 1.15, -labH * 1.15, labH * 2.3,
                        -labH * 2.3, labH * 3.45, -labH * 3.45,
                        labH * 4.6];
-        for (const dy of kroky) {
+        // engine 283 („menší místa stále nemají stužky"): 1. pas hledá
+        // slot mimo všechno, 2. pas smí PŘES CIZÍ KRESBU (jen ne přes jinou
+        // stužku) – u města na stropu (260 px) byly všechny sloty zabrané
+        // a malé místo skončilo v „+N" beze jména
+        const sloty = kroky.map((dy) => [dy, obsazene])
+          .concat(kroky.map((dy) => [dy, obsazeneStuhy]));
+        for (const [dy, zabrane] of sloty) {
           const rect = obdelnik(it.ax, it.ay + dy, labW, labH);
-          if (obsazene.some((r) => prekryv(r, nafoukni(rect, okraj)))) {
+          if (zabrane.some((r) => prekryv(r, nafoukni(rect, okraj)))) {
             continue;
           }
           if (minule !== 5 && !zmenaRezimuOK(it.slug, 5, z)) {
@@ -1335,7 +1342,10 @@ const Ilustrace = (() => {
         else odlozPas(it.slug);
         schovane.push(it);
       } else {
-        if (it.op > 0.75 || !it.rozplyva) obsazene.push(placed.bounds);
+        if (it.op > 0.75 || !it.rozplyva) {
+          obsazene.push(placed.bounds);
+          if (!placed.obrazek) obsazeneStuhy.push(placed.bounds);
+        }
         umistene.push(placed);
       }
     }

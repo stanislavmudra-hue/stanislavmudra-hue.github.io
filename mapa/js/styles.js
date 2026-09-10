@@ -337,7 +337,7 @@ function stylTuristicka(ctx) {
                  'line-dasharray': [3, 3], 'line-opacity': 0.7 } },
       // Vrcholy se jménem a výškou
       { id: 'vrcholy', type: 'symbol', source: 'omt',
-        'source-layer': 'mountain_peak', minzoom: 9,
+        'source-layer': 'mountain_peak', minzoom: 9 + POSUN_POPISKU,
         filter: ['any', ['<', ['zoom'], 11], ['>', ['coalesce', ['get', 'rank'], 9], 0]],
         layout: {
           'text-field': ['format',
@@ -385,14 +385,14 @@ function stylTuristicka(ctx) {
         paint: { 'text-color': '#333029', 'text-halo-color': '#f4efe3',
                  'text-halo-width': 1.6 } },
       { id: 'vesnice', type: 'symbol', source: 'omt', 'source-layer': 'place',
-        minzoom: 10,
+        minzoom: 10 + POSUN_POPISKU,
         filter: ['==', ['get', 'class'], 'village'],
         // engine 279: 10,5 → 12,5 (větší názvy obcí i mimo hru)
         layout: { 'text-field': NAZEV, 'text-font': FONT, 'text-size': 12.5 },
         paint: { 'text-color': '#4A463C', 'text-halo-color': '#f4efe3',
                  'text-halo-width': 1.6 } },
       { id: 'obce', type: 'symbol', source: 'omt', 'source-layer': 'place',
-        minzoom: 12,
+        minzoom: 12 + POSUN_POPISKU,
         filter: ['==', ['get', 'class'], 'hamlet'],
         layout: { 'text-field': NAZEV, 'text-font': FONT, 'text-size': 10.5 },
         paint: { 'text-color': '#6B665A', 'text-halo-color': '#f4efe3',
@@ -436,6 +436,11 @@ const KRONIKA = {
 // ×1,2; telefon beze změny. Zoomový výraz musí zůstat NAHOŘE, proto se
 // násobí jednotlivé zastávky, ne celý výraz.
 const TEXT_SKALA_WEB = (window.devicePixelRatio || 1) < 1.5 ? 1.2 : 1;
+// engine 283 („při oddálení je mapa plná textů"): širší výřez ukáže 4× víc
+// území než telefon (360 px), takže názvy vesnic/samot/vrcholů nastupují
+// o log2(šířka/360)/2 zoomu později (1280 px → +0,9); telefon 0
+const POSUN_POPISKU = Math.max(0, Math.min(1,
+  Math.log2(Math.max(360, window.innerWidth || 360) / 360) / 2));
 const skalujText = (v) => {
   if (TEXT_SKALA_WEB === 1) return v;
   if (typeof v === 'number') return +(v * TEXT_SKALA_WEB).toFixed(2);
@@ -1085,7 +1090,7 @@ function stylHerni(ctx) {
       // Vrcholy se jménem shodným s malovaným místem odfiltruje
       // Ilustrace.pripoj (jinak by byly dvakrát — kresba + ▲).
       { id: 'ink-vrcholy', type: 'symbol', source: 'omt',
-        'source-layer': 'mountain_peak', minzoom: 9,
+        'source-layer': 'mountain_peak', minzoom: 9 + POSUN_POPISKU,
         filter: ['case', ['<', ['zoom'], 12],
                  ['<=', ['coalesce', ['get', 'rank'], 9], 2], true],
         layout: {
@@ -1164,7 +1169,7 @@ function stylHerni(ctx) {
         layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 16.5, 13, 16, 15, 14.5, 17, 15.5], false),
         paint: obcePaint(KRONIKA.inkTmava) },
       { id: 'ink-vesnice', type: 'symbol', source: 'omt', 'source-layer': 'place',
-        minzoom: 10,
+        minzoom: 10 + POSUN_POPISKU,
         filter: ['==', ['get', 'class'], 'village'],
         // engine 279 („název obce nejde přečíst", z11–13): 13 → 14,5
         layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 14.5, 13, 14, 15, 12.5, 17, 14, 19, 15.5], false),
@@ -1174,7 +1179,7 @@ function stylHerni(ctx) {
         // (main.js) u domů – uzel OSM/RÚIAN bývá na kraji sídla; maxzoom 15,5
         // nastaví engine až po PRVNÍM úspěšném výpočtu (pojistka: kdyby
         // querySourceFeatures nic nevrátil, zůstanou popisky OSM)
-        minzoom: 12,
+        minzoom: 12 + POSUN_POPISKU,
         filter: ['==', ['get', 'class'], 'hamlet'],
         // engine 228: od z15 zase roste – při chůzi (z17+) bylo 9,5 px nečitelné
         layout: obceLayout(FONT, ['interpolate', ['linear'], ['zoom'], 11, 12, 13, 11.5, 15, 10.5, 17, 12.5, 19, 14], false),
