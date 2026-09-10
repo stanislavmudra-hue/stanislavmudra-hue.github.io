@@ -774,6 +774,7 @@ mapa.on('error', (e) => {
     try { nasadPlanTrasu(); } catch (e) { }
     try { nasadPlanStopu(); } catch (e) { }
       try { nasadCyklo(); } catch (e) { }   // v1.601 cyklotrasy
+      try { vykresliPratele(); } catch (e) { }   // engine 277: přátelé
       // v1.607: nový styl smaže vrstvy třpytu, šrafy i světlo
       try { if (aktualniKod === 'herni') Trpyt.nasad(); } catch (e) { }
       try { nasadDomalovani(); } catch (e) { }
@@ -805,6 +806,7 @@ mapa.on('error', (e) => {
       try { nasadPlanTrasu(); } catch (e) { }
     try { nasadPlanStopu(); } catch (e) { }
       try { nasadCyklo(); } catch (e) { }   // v1.601 cyklotrasy
+      try { vykresliPratele(); } catch (e) { }   // engine 277: přátelé
       // v1.607: nový styl smaže vrstvy třpytu, šrafy i světlo
       try { if (aktualniKod === 'herni') Trpyt.nasad(); } catch (e) { }
       try { nasadDomalovani(); } catch (e) { }
@@ -4626,6 +4628,75 @@ function vykresliStopuDne() {
   }
 }
 
+// ⭐ engine 277 (v1.613.50): PŘÁTELÉ – značky s jménem (kolečko v barvě
+// přítele + přezdívka a stáří polohy) a jejich objevené obce jako barevné
+// území („společná mapa"). Data drží appka (`Pratele.proEngine`), engine
+// je jen kreslí; po výměně stylu se vrstvy založí znovu (style.load).
+let posledniPratele = null;
+
+function vykresliPratele() {
+  if (!mapa || !posledniPratele) return;
+  if (!mapa.getStyle()) {
+    clearTimeout(vykresliPratele._t);
+    vykresliPratele._t = setTimeout(vykresliPratele, 250);
+    return;
+  }
+  try {
+    const p = posledniPratele;
+    const body = {
+      type: 'FeatureCollection',
+      features: (p.body || []).map((b) => ({
+        type: 'Feature',
+        properties: { j: b.jmeno || '', b: b.barva || '#3B7DD8', c: b.cas || '' },
+        geometry: { type: 'Point', coordinates: [b.lng, b.lat] },
+      })),
+    };
+    const uzemi = { type: 'FeatureCollection', features: p.uzemi || [] };
+    const zu = mapa.getSource('okolnik-pratele-uzemi');
+    if (zu) {
+      zu.setData(uzemi);
+    } else {
+      mapa.addSource('okolnik-pratele-uzemi',
+          { type: 'geojson', data: uzemi, maxzoom: 13 });
+      // ⚠️ drapované vrstvy VŽDY s beforeId (jinak druhý RTT stack)
+      mapa.addLayer({
+        id: 'okolnik-pratele-uzemi', type: 'fill', source: 'okolnik-pratele-uzemi',
+        paint: { 'fill-color': ['get', 'b'], 'fill-opacity': 0.16 },
+      }, prvniSymbolovaVrstva());
+      mapa.addLayer({
+        id: 'okolnik-pratele-hranice', type: 'line', source: 'okolnik-pratele-uzemi',
+        paint: { 'line-color': ['get', 'b'], 'line-width': 1.2,
+                 'line-opacity': 0.55, 'line-dasharray': [2, 1.5] },
+      }, prvniSymbolovaVrstva());
+    }
+    const zb = mapa.getSource('okolnik-pratele');
+    if (zb) {
+      zb.setData(body);
+    } else {
+      mapa.addSource('okolnik-pratele', { type: 'geojson', data: body });
+      mapa.addLayer({
+        id: 'okolnik-pratele-tecka', type: 'circle', source: 'okolnik-pratele',
+        paint: { 'circle-radius': 8, 'circle-color': ['get', 'b'],
+                 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2.5 },
+      });
+      mapa.addLayer({
+        id: 'okolnik-pratele-jmeno', type: 'symbol', source: 'okolnik-pratele',
+        layout: {
+          'text-field': ['concat', ['get', 'j'], '\n', ['get', 'c']],
+          'text-font': ['Noto Sans Bold'], 'text-size': 12,
+          'text-offset': [0, 1.0], 'text-anchor': 'top',
+          'text-allow-overlap': true, 'text-ignore-placement': true,
+        },
+        paint: { 'text-color': '#1F2A2C', 'text-halo-color': '#FFFFFF',
+                 'text-halo-width': 1.6 },
+      });
+    }
+  } catch (e) {
+    clearTimeout(vykresliPratele._t);
+    vykresliPratele._t = setTimeout(vykresliPratele, 400);
+  }
+}
+
 function vykresliVypravy() {
   // ⚠️ PRÁZDNÝ SEZNAM MUSÍ PROJÍT (6. 8. 2026): dřív se tu skončilo, takže
   // vypnutí filtru „Se záznamem" nechalo staré linky viset na mapě.
@@ -7494,6 +7565,16 @@ window.OkolnikMost = {
       console.log('[most] vypravy ←', posledniVypravy.length);
       vykresliVypravy();
     } catch (e) { console.warn('[most] vypravy', e); }
+  },
+
+  /// ⭐ engine 277 (v1.613.50): PŘÁTELÉ – {body: [{jmeno, lat, lng, barva,
+  /// cas}], uzemi: [GeoJSON Feature (Polygon, properties.b = barva)]}.
+  /// Prázdné pole = nic nekreslit.
+  pratele(cfg) {
+    try {
+      posledniPratele = cfg || null;
+      vykresliPratele();
+    } catch (e) { console.warn('[most] pratele', e); }
   },
 
   /// POČASÍ Z APLIKACE (v2.9): `pole` = [{lat, lon, kod, oblacnost, den}].

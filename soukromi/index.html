@@ -236,6 +236,39 @@ jen v telefonu.</p>
 <li><strong>Právní základ.</strong> Plnění smlouvy – poskytnutí funkce, kterou
   přihlášením využíváte (čl. 6 odst. 1 písm. b GDPR).</li>
 </ul>
+<h2>Přátelé (dobrovolné)</h2>
+<p>Od verze 1.613.50 si přihlášení hráči mohou přidat <strong>přátele</strong>. Funkce je
+zcela dobrovolná: kdo nikoho nepřidá, nesdílí nic.</p>
+<ul>
+<li><strong>Jak se přátelství uzavírá.</strong> Každý přihlášený účet má šestimístný kód
+  (odvozený z účtu, bez osobních údajů). Kdo kód zadá, pošle žádost; přátelé
+  jste až po jejím přijetí druhou stranou. Kód i žádost nesou jen vaši
+  přezdívku ze žebříčku (nebo slovo „Okolník", pokud přezdívku nemáte).</li>
+<li><strong>Co přátelé vidí automaticky.</strong> Přezdívku, počet objevených obcí,
+  nachozené kilometry, úroveň, počet fotovýprav a název poslední z nich
+  a <strong>seznam objevených obcí</strong> – na mapě přítele se ukazují jako barevně
+  podbarvená území („společná mapa"). Neposílá se odkrytá mřížka buněk,
+  trasy, zápisy deníku, fotografie ani doložené návštěvy.</li>
+<li><strong>Poloha.</strong> Vaši aktuální polohu vidí <strong>jen ten přítel, kterému ji
+  v aplikaci výslovně zapnete</strong> (vypínač u jeho jména). Sdílení se samo
+  vypne po 12 hodinách, kdykoli ho vypnete dřív. Poloha se odesílá jen
+  když je aplikace v popředí, nejvýš jednou za minutu a po posunu aspoň
+  o 30 metrů, zaokrouhlená na metry, spolu s přesností a časem. Po vypnutí
+  se záznam polohy ze serveru smaže; přítel vidí polohu starou nejvýš
+  30 minut.</li>
+<li><strong>Kde to je uloženo.</strong> V databázi správce (Google Firebase / Firestore,
+  servery v EU), ve třech malých záznamech svázaných s účtem: kód
+  (<code>kody</code>), přátelství (<code>pratelstvi</code>), sdílený souhrn s obcemi
+  (<code>sdileni</code>) a poloha (<code>poloha</code>). Pravidla databáze pouštějí ke čtení
+  souhrnu jen potvrzené přátele a k poloze jen ty, komu jste ji zapnuli.</li>
+<li><strong>Odebrání a smazání.</strong> Odebráním přítele (nebo odmítnutím žádosti)
+  zmizí přátelství na obou stranách a s ním i přístup k souhrnu a poloze.
+  Smazáním účtu se smažou všechny tyto záznamy.</li>
+<li><strong>Právní základ.</strong> Souhlas – sdílení zapínáte vy sami, přátelství
+  přijímáte výslovně a polohu zapínáte pro každého přítele zvlášť
+  (čl. 6 odst. 1 písm. a GDPR); souhlas kdykoli odvoláte odebráním přítele
+  nebo vypnutím polohy.</li>
+</ul>
 <h2>Záloha do účtu Google (služba Androidu)</h2>
 <p>Android umí sám zálohovat data aplikací do zálohy telefonu ve vašem
 účtu Google. Okolník to má povolené a od verze 1.531 posílá do téhle
