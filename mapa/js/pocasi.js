@@ -63,7 +63,7 @@ const Pocasi = (() => {
       .catch((e) => console.warn('[Pocasi] mřížka mraků', e));
   }
   const VELIKOST_KM = 28.0;           // v1.248: 45 → 28 km
-  const SILA = 0.80;                  // v1.248: 0,55 → 0,80
+  const SILA = 0.62;                  // v1.248: 0,55 → 0,80; engine 286: 0,62 („mraky otravné")
 
   // VÝŠKA MRAKU NAD KRAJINOU (km) — projeví se až při náklonu; shora
   // (pitch 0) je posun nulový, takže 2D pohled zůstává beze změny.
@@ -645,7 +645,9 @@ const Pocasi = (() => {
         // středu) — takový bod je prakticky v nekonečnu
         if (lokal > pxNaKmVodorovne * 4.5) { _zah.horizont++; continue; }
         // 5. 9.: každý mrak má svou velikost (±), tvar a výšku
-        const g = Math.min(kratsi * 0.21, krok * 0.52 * lokal)
+        // engine 286: menší chuchvalce (0,21/0,52 → 0,16/0,42) – výška nad
+        // stínem je pak proti velikosti mraku znát (jako u káňat)
+        const g = Math.min(kratsi * 0.16, krok * 0.42 * lokal)
           * (0.95 + 0.4 * hash(fx, fy, 11));
         if (g < 16) { _zah.maly++; continue; }
         const vKm = vyskaMrakuKm(pocasi.druh, hash(fx, fy, 9));
@@ -780,7 +782,7 @@ const Pocasi = (() => {
                    yz: obloha.kotvaPx.y + m.yz + dy + driftY + oy });
     }
     for (const v of videt) {
-      kresliStin(v.x, v.yz, v.m.g, v.sila * naklon * v.m.alfa);
+      kresliStin(v.x, v.yz, v.m.g, v.sila * naklon * v.m.alfa * 0.6);   // engine 286: slabší stín
       kresliZavoj(v.m.druh, v.x, v.yz, v.m.g, v.sila * naklon);
     }
     for (const v of videt) {

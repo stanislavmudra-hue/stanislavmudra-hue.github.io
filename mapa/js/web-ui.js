@@ -708,6 +708,60 @@
     ui.vysledky.classList.add('zobraz');
   }
 
+  /* engine 286: klik na místo z databáze nebo shluk na mapě → detail v panelu
+     (engine hlásí `onBod`/`onShluk`, web.js má jen kresby přes Ilustrace.detail) */
+  function najdiMisto(id) {
+    id = String(id);
+    for (var i = 0; i < vVyrezu.length; i++) if (String(vVyrezu[i].id) === id) return vVyrezu[i];
+    for (var j = 0; j < kresby.length; j++) if (String(kresby[j].id) === id) return { kresba: kresby[j] };
+    return null;
+  }
+  function ukazDetailMista(m) {
+    if (otevreno === 'detail') { otevreno = null; ui.panel.classList.remove('zobraz'); }
+    prepniPanel('detail');
+    ui.panelNadpis.textContent = m.n || 'Místo';
+    var telo = ui.panelTelo; telo.innerHTML = '';
+    var popis = (kat && kat.chipy && kat.chipy[m.chip] && kat.chipy[m.chip].l) || m.d || '';
+    var c = mapa.getCenter();
+    telo.appendChild(el('p', null, popis + ' · ' + km(vzdalenostM(c.lat, c.lng, m.lat, m.lng)) + ' od středu mapy'));
+    telo.appendChild(el('p', null, m.lat.toFixed(5) + ' N, ' + m.lng.toFixed(5) + ' E'));
+    var odkazy = el('p', null, '');
+    var a1 = document.createElement('a');
+    a1.href = 'https://mapy.cz/turisticka?x=' + m.lng.toFixed(6) + '&y=' + m.lat.toFixed(6) + '&z=17';
+    a1.target = '_blank'; a1.rel = 'noopener'; a1.textContent = 'Mapy.cz';
+    var a2 = document.createElement('a');
+    a2.href = 'https://www.google.com/maps?q=' + m.lat.toFixed(6) + ',' + m.lng.toFixed(6);
+    a2.target = '_blank'; a2.rel = 'noopener'; a2.textContent = 'Google Maps';
+    odkazy.appendChild(a1); odkazy.appendChild(document.createTextNode(' · ')); odkazy.appendChild(a2);
+    telo.appendChild(odkazy);
+    var b = el('button', 'w-tl', 'Přiblížit');
+    b.onclick = function () { try { mapa.jumpTo({ center: [m.lng, m.lat], zoom: Math.max(mapa.getZoom(), 17) }); } catch (e) { } };
+    telo.appendChild(b);
+  }
+  function klikNaMisto(id) {
+    var m = najdiMisto(id);
+    if (!m) return;
+    if (m.kresba) {
+      try { if (typeof Ilustrace !== 'undefined' && Ilustrace.detail) Ilustrace.detail(String(m.kresba.id)); } catch (e) { }
+      return;
+    }
+    ukazDetailMista(m);
+  }
+  function klikNaShluk(ids) {
+    var clenove = [];
+    (ids || []).forEach(function (id) { var m = najdiMisto(id); if (m && !m.kresba) clenove.push(m); });
+    if (!clenove.length) { if (ids && ids.length) klikNaMisto(ids[0]); return; }
+    if (clenove.length === 1) { ukazDetailMista(clenove[0]); return; }
+    if (otevreno === 'detail') { otevreno = null; ui.panel.classList.remove('zobraz'); }
+    prepniPanel('detail');
+    ui.panelNadpis.textContent = 'Místa ve shluku (' + clenove.length + ')';
+    var telo = ui.panelTelo; telo.innerHTML = '';
+    clenove.forEach(function (m) { telo.appendChild(radek(m, ukazDetailMista)); });
+  }
+  window.OkolnikWeb = window.OkolnikWeb || {};
+  window.OkolnikWeb.onBod = klikNaMisto;
+  window.OkolnikWeb.onShluk = klikNaShluk;
+
   function prepniPanel(co) {
     otevreno = (otevreno === co) ? null : co;
     ui.panel.classList.toggle('zobraz', !!otevreno);

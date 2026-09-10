@@ -5376,6 +5376,24 @@ const NOCNI_KRESBA = [
 /// Maže se při výměně stylu spolu s `krokNoci`.
 let puvodniKresba = null;
 
+// engine 286: pata a záře obrázků míst – ve dne slabé, v noci žádné
+const TLUM_MIST = 0.38;
+function vyrazKrytiPaty(noc) {
+  return noc ? 0 : ['case', ['boolean', ['feature-state', 'skryt'], false], 0,
+                    ['*', ['case', ['has', 'tl'], TLUM_MIST, 1], 0.22]];
+}
+function vyrazKrytiZareMist(noc) {
+  return noc ? 0 : ['interpolate', ['linear'], ['zoom'], 13, 0, 14.5,
+                    ['case', ['boolean', ['feature-state', 'skryt'], false], 0, 0.22]];
+}
+function nastavPatyMist(noc) {
+  if (!mapa) return;
+  try {
+    if (mapa.getLayer('okolnik-mista-pata')) mapa.setPaintProperty('okolnik-mista-pata', 'icon-opacity', vyrazKrytiPaty(noc));
+    if (mapa.getLayer('okolnik-mista-zar')) mapa.setPaintProperty('okolnik-mista-zar', 'circle-opacity', vyrazKrytiZareMist(noc));
+  } catch (e) { /* styl v přestavbě */ }
+}
+
 function nastavNocniKresbu(krok) {
   if (!mapa) return;
   if (!puvodniKresba) puvodniKresba = {};
@@ -5391,6 +5409,20 @@ function nastavNocniKresbu(krok) {
           krok <= 0 ? puvodniKresba[klic] : hodnoty[krok]);
     } catch (e) { /* styl se zrovna mění */ }
   }
+  // engine 286: stavby ZABAGED (kostel, hala…) v noci ztlumit jako domy –
+  // světlý kvádr kostela pod kresbou vypadal jako „nepovedený stín"
+  try {
+    if (mapa.getLayer('okolnik-stavby-3d')) {
+      const klic = 'okolnik-stavby-3d|fill-extrusion-color';
+      if (!(klic in puvodniKresba)) {
+        puvodniKresba[klic] = mapa.getPaintProperty('okolnik-stavby-3d', 'fill-extrusion-color');
+      }
+      const ztlum = (v) => ((typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)) ? ztlumNoci(v, krok)
+        : (Array.isArray(v) ? v.map(ztlum) : v));
+      mapa.setPaintProperty('okolnik-stavby-3d', 'fill-extrusion-color',
+          krok <= 0 ? puvodniKresba[klic] : ztlum(puvodniKresba[klic]));
+    }
+  } catch (e) { /* styl se zrovna mění */ }
 }
 
 /// ⭐ NOČNÍ REŽIM MAPY (v1.384, „ať je noční mapa opravdu jako v noci
@@ -5713,6 +5745,7 @@ function aplikujNoc() {
     // ⚠️ opacity světel NEsahat setPaintProperty — nese výraz
     // s feature-state pro mihotání
     krokNoci = krok;
+    nastavPatyMist(krok >= 2);   // engine 286
     window.__casy.nocNaneseno = Math.round(performance.now());
     // v1.599: v Dobyvateli v noci září vlajky (místo světel a hmyzu)
     if (typeof Dobyvatel !== 'undefined' && Dobyvatel.noc) Dobyvatel.noc(krok);
@@ -9960,8 +9993,7 @@ function vykresliMista() {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
                           13, 14, 16, 42],
         'circle-color': '#FFF4D6',
-        'circle-opacity': ['interpolate', ['linear'], ['zoom'],
-                           13, 0, 14.5, ['case', ['boolean', ['feature-state', 'skryt'], false], 0, 0.22]],
+        'circle-opacity': vyrazKrytiZareMist(typeof krokNoci === 'number' && krokNoci >= 2),   // engine 286
         'circle-blur': 1,
         'circle-pitch-alignment': 'map',
       },
@@ -9991,8 +10023,9 @@ function vykresliMista() {
       'icon-rotation-alignment': 'map',
       'icon-size': velikostMist(false),
     },
-    paint: { 'icon-opacity': ['case', ['boolean', ['feature-state', 'skryt'], false], 0,
-               sZanikemMist(['*', ['case', ['has', 'tl'], TLUM, 1], 0.32], 0)] },
+    // engine 286 („pod obrázky nepovedené stíny"): pata 0,32 → 0,22 a v noci
+    // vůbec (tmavá elipsa na tmavé zemi = šmouha); přepíná nastavPatyMist
+    paint: { 'icon-opacity': vyrazKrytiPaty(typeof krokNoci === 'number' && krokNoci >= 2) },
   });
   // ⛔ 5. 9. noc: VRŽENÝ STÍN obrázků míst (`okolnik-mista-stin`) ZRUŠEN –
   // posunutá zploštělá kopie pod billboardem vypadala, „jako by obrázek
@@ -10084,9 +10117,13 @@ function vykresliMista() {
           // výšku (roste jen do šířky), takže druhý řádek by z ní vylezl.
           // Dlouhý název tedy udělá delší stuhu, ne vyšší.
           'text-max-width': 40,
-          // kresba kotví patou na bodě, stuha visí těsně pod ní
-          'text-anchor': 'top',
-          'text-offset': [0, 0.5],
+          // engine 286 („mnoha obrázkům chybí stuhy"): od 280 ikony REZERVUJÍ
+          // místo a stužka pod bodem narážela do vlastní i sousedních ikon
+          // (změřeno: 0 stužek; bez rezervace ikon 4–6). Proměnná kotva zkusí
+          // pod bodem, vlevo a vpravo (stuha se s icon-text-fit stěhuje s textem).
+          'text-variable-anchor': ['top', 'left', 'right'],
+          'text-radial-offset': 1.2,
+          'text-justify': 'auto',
           'text-allow-overlap': false,
           'text-ignore-placement': false,
         },
@@ -10134,8 +10171,9 @@ function vykresliMista() {
           'text-field': ['coalesce', ['get', 't'], ['get', 'tH']],
           'text-font': font || ['Noto Sans Regular'],
           'text-size': 11 * TEXT_SKALA,
-          'text-anchor': 'top',
-          'text-offset': [0, 0.4],
+          'text-variable-anchor': ['top', 'left', 'right'],   // engine 286
+          'text-radial-offset': 1.0,
+          'text-justify': 'auto',
           'text-max-width': 9,
         },
         // tmavý inkoust s bílým halo čte se na turistické i na ortofotu
