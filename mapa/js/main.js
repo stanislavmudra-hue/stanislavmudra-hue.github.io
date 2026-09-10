@@ -1488,8 +1488,12 @@ const SEZONY = {
 // vzorů (`tile.imageAtlas`), takže 512 px u všech = 4× větší textura na
 // dlaždici (0,76 → 3,0 MB) a +20 % pomalých snímků (188/180 vs 155/146 na
 // sadu gest). Brázdy a stébla jemnost potřebují, les/města/voda ne.
+// ⭐ engine 278 (10. 9. 2026, přání „polím a loukám bych snížil rozlišení"):
+// i pole a louka 256 px – vzor na obrazovce stejně velký, jen poloviční
+// jemnost brázd a stébel; atlas každé dlaždice zpět na 0,76 MB (ze 3,0 MB
+// při 512, viz engine 263). `nastavVelikostVzoru(256, 512)` vrátí jemné.
 let VZOR_PX = 256;                                   // les, města, voda
-let VZOR_PX_JEMNE = 512;                             // pole, louka
+let VZOR_PX_JEMNE = 256;                             // pole, louka (dřív 512)
 const VZOR_JEMNE = new Set(['vzor-pole', 'vzor-louka']);
 
 /// Přepnutí velikosti vzorů za běhu (pro měření přes CDP):
@@ -4647,7 +4651,8 @@ function vykresliPratele() {
       type: 'FeatureCollection',
       features: (p.body || []).map((b) => ({
         type: 'Feature',
-        properties: { j: b.jmeno || '', b: b.barva || '#3B7DD8', c: b.cas || '' },
+        properties: { j: b.jmeno || '', b: b.barva || '#3B7DD8', c: b.cas || '',
+                      o: b.stara ? 0.45 : 1 },
         geometry: { type: 'Point', coordinates: [b.lng, b.lat] },
       })),
     };
@@ -4677,7 +4682,9 @@ function vykresliPratele() {
       mapa.addLayer({
         id: 'okolnik-pratele-tecka', type: 'circle', source: 'okolnik-pratele',
         paint: { 'circle-radius': 8, 'circle-color': ['get', 'b'],
-                 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2.5 },
+                 'circle-opacity': ['get', 'o'],
+                 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2.5,
+                 'circle-stroke-opacity': ['get', 'o'] },
       });
       mapa.addLayer({
         id: 'okolnik-pratele-jmeno', type: 'symbol', source: 'okolnik-pratele',
@@ -4688,7 +4695,7 @@ function vykresliPratele() {
           'text-allow-overlap': true, 'text-ignore-placement': true,
         },
         paint: { 'text-color': '#1F2A2C', 'text-halo-color': '#FFFFFF',
-                 'text-halo-width': 1.6 },
+                 'text-halo-width': 1.6, 'text-opacity': ['get', 'o'] },
       });
     }
   } catch (e) {

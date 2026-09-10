@@ -246,16 +246,24 @@ zcela dobrovolná: kdo nikoho nepřidá, nesdílí nic.</p>
   přezdívku ze žebříčku (nebo slovo „Okolník", pokud přezdívku nemáte).</li>
 <li><strong>Co přátelé vidí automaticky.</strong> Přezdívku, počet objevených obcí,
   nachozené kilometry, úroveň, počet fotovýprav a název poslední z nich
-  a <strong>seznam objevených obcí</strong> – na mapě přítele se ukazují jako barevně
-  podbarvená území („společná mapa"). Neposílá se odkrytá mřížka buněk,
+  názvy, data a délky posledních pěti z nich a <strong>seznam objevených obcí</strong> –
+  na mapě přítele se ukazují jako barevně podbarvená území („společná
+  mapa"). Neposílá se odkrytá mřížka buněk,
   trasy, zápisy deníku, fotografie ani doložené návštěvy.</li>
-<li><strong>Poloha.</strong> Vaši aktuální polohu vidí <strong>jen ten přítel, kterému ji
-  v aplikaci výslovně zapnete</strong> (vypínač u jeho jména). Sdílení se samo
-  vypne po 12 hodinách, kdykoli ho vypnete dřív. Poloha se odesílá jen
-  když je aplikace v popředí, nejvýš jednou za minutu a po posunu aspoň
-  o 30 metrů, zaokrouhlená na metry, spolu s přesností a časem. Po vypnutí
-  se záznam polohy ze serveru smaže; přítel vidí polohu starou nejvýš
-  30 minut.</li>
+<li><strong>Poloha.</strong> Vaši aktuální polohu vidí přátelé <strong>po dobu trvání
+  přátelství</strong> – tedy až po vzájemném potvrzení a jen dokud spojení sami
+  nepřerušíte: jedním vypínačem pro všechny („Sdílet polohu s přáteli")
+  nebo vypínačem u jednotlivého přítele. Poloha se odesílá, kdykoli
+  aplikace zaznamenává polohu (v popředí i při zapnutém záznamu aktivity),
+  nejvýš jednou za minutu a po posunu aspoň o 30 metrů, zaokrouhlená na
+  metry, spolu s přesností a časem. Záznam na serveru platí nejvýš den
+  a s každým odesláním se obnovuje; po přerušení sdílení se smaže. Přítel
+  vidí polohu starou nejvýš 24 hodin (na mapě po 30 minutách zbledne).</li>
+<li><strong>Historie v telefonu.</strong> Po odebrání přítele zůstane jen ve vašem
+  telefonu záznam o tom, kdo a odkdy dokdy byl vaším přítelem, jeho
+  poslední souhrn a názvy jeho posledních fotovýprav („vzpomínky") a
+  poznámka v deníku. Na server se nic z toho neukládá; v aplikaci to jde
+  smazat po jednom i celé.</li>
 <li><strong>Kde to je uloženo.</strong> V databázi správce (Google Firebase / Firestore,
   servery v EU), ve třech malých záznamech svázaných s účtem: kód
   (<code>kody</code>), přátelství (<code>pratelstvi</code>), sdílený souhrn s obcemi
