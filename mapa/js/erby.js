@@ -177,7 +177,10 @@ const Erby = (() => {
             // ⚠️ BEZ text-* — chybějící text-font shodí vrstvu POTICHU
             'icon-allow-overlap': true,      // erb nesmí mizet kolizemi
             'icon-ignore-placement': true,   // …ani vytlačovat popisky mapy
-            'icon-anchor': 'center',
+            // engine 279 („erb zakrývá jméno obce"): erb stojí NAD bodem,
+            // jméno (obceLayout: text-anchor top) visí POD ním
+            'icon-anchor': 'bottom',
+            'icon-offset': [0, -5],
             // Skoky po prazích jako 2D _erbMarkers, ale ×1,5 (přání
             // uživatele) — box šířky 24/32/39 CSS px při základu 36 px
             // (plátno 72 / pixelRatio 2)

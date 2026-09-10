@@ -381,19 +381,20 @@ function stylTuristicka(ctx) {
         // ⭐ 12. 8.: town TUČNĚ 14 — třída `city` je v ČR jen pár velkoměst,
         // takže v běžném výřezu byla město/vesnice k nerozeznání (13 vs 10,5
         // týmž řezem). Tučné patro dělá hierarchii viditelnou všude.
-        layout: { 'text-field': NAZEV, 'text-font': FONT_B, 'text-size': 14 },
+        layout: { 'text-field': NAZEV, 'text-font': FONT_B, 'text-size': 15 },
         paint: { 'text-color': '#333029', 'text-halo-color': '#f4efe3',
                  'text-halo-width': 1.6 } },
       { id: 'vesnice', type: 'symbol', source: 'omt', 'source-layer': 'place',
         minzoom: 10,
         filter: ['==', ['get', 'class'], 'village'],
-        layout: { 'text-field': NAZEV, 'text-font': FONT, 'text-size': 10.5 },
+        // engine 279: 10,5 → 12,5 (větší názvy obcí i mimo hru)
+        layout: { 'text-field': NAZEV, 'text-font': FONT, 'text-size': 12.5 },
         paint: { 'text-color': '#4A463C', 'text-halo-color': '#f4efe3',
                  'text-halo-width': 1.6 } },
       { id: 'obce', type: 'symbol', source: 'omt', 'source-layer': 'place',
         minzoom: 12,
         filter: ['==', ['get', 'class'], 'hamlet'],
-        layout: { 'text-field': NAZEV, 'text-font': FONT, 'text-size': 9 },
+        layout: { 'text-field': NAZEV, 'text-font': FONT, 'text-size': 10.5 },
         paint: { 'text-color': '#6B665A', 'text-halo-color': '#f4efe3',
                  'text-halo-width': 1.6 } },
     ],
@@ -1146,12 +1147,14 @@ function stylHerni(ctx) {
       { id: 'ink-mestyse', type: 'symbol', source: 'omt', 'source-layer': 'place',
         filter: ['==', ['get', 'class'], 'town'],
         // ⭐ 12. 8.: tučně 14 — viz poznámka u `mestyse` v turistické
-        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 15, 15, 14, 17, 15.5], false),
+        // engine 279 („větší názvy obcí"): z11–13 o 1,5 px větší
+        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 16.5, 13, 16, 15, 14.5, 17, 15.5], false),
         paint: obcePaint(KRONIKA.inkTmava) },
       { id: 'ink-vesnice', type: 'symbol', source: 'omt', 'source-layer': 'place',
         minzoom: 10,
         filter: ['==', ['get', 'class'], 'village'],
-        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 13, 15, 11.5, 17, 14, 19, 15.5], false),
+        // engine 279 („název obce nejde přečíst", z11–13): 13 → 14,5
+        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 14.5, 13, 14, 15, 12.5, 17, 14, 19, 15.5], false),
         paint: obcePaint(KRONIKA.ink) },
       { id: 'ink-obce', type: 'symbol', source: 'omt', 'source-layer': 'place',
         // engine 228/229: od z15,5 kreslí názvy hamletů `okolnik-sidla-popisky`
@@ -1161,7 +1164,7 @@ function stylHerni(ctx) {
         minzoom: 12,
         filter: ['==', ['get', 'class'], 'hamlet'],
         // engine 228: od z15 zase roste – při chůzi (z17+) bylo 9,5 px nečitelné
-        layout: obceLayout(FONT, ['interpolate', ['linear'], ['zoom'], 11, 11, 15, 10, 17, 12.5, 19, 14], false),
+        layout: obceLayout(FONT, ['interpolate', ['linear'], ['zoom'], 11, 12, 13, 11.5, 15, 10.5, 17, 12.5, 19, 14], false),
         paint: obcePaint(KRONIKA.inkSvetla) },
       // engine 218 (ZABAGED v4, „stačilo by to na mapě pojmenovat"): náměstí
       // jako popisek (2 645) a brody na tocích (5 089) – bez míst v DB a filtrů

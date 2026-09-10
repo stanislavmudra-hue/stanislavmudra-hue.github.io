@@ -3424,6 +3424,28 @@ function nastavBlikaniOken(noc) {
   }, 4000);
 }
 const OKNA_PRAZDNE = { type: 'FeatureCollection', features: [] };
+// engine 279 („okna lezou přes obrázky míst"): záře oken je symbol s 3D
+// hloubkou (záplata bundlu, viz akvarel-dekorace) a vznikala BEZ beforeId –
+// tedy NAD kresbami (`ink-ilustrace*`) i obrázky míst, které jsou v pořadí
+// dřív; v noci pak svítila přes kostel. (Kvádry oken `okolnik-okna-3d`
+// kresby zakrýt nemohou: bundle vypíná hloubkový test u symbolů za první
+// 3D vrstvou – `opaquePassEnabledForLayer`.) Záře patří POD první z nich;
+// `srovnejZariOken` to hlídá i po pozdějším vzniku vrstev (idle).
+const POD_ZARI_OKEN = ['ink-ilustrace-stuhy', 'ink-ilustrace-pata', 'ink-ilustrace-stin',
+                       'ink-ilustrace', 'ink-ilustrace-odznaky', 'okolnik-mista-shluk-ikona',
+                       'okolnik-mista-pata', 'okolnik-mista-ikona', 'okolnik-moje-ikona'];
+function predZariOken() {
+  return POD_ZARI_OKEN.find((id) => mapa.getLayer(id));
+}
+function srovnejZariOken() {
+  if (!mapa || !mapa.getLayer('okolnik-okna-zare')) return;
+  try {
+    const poradi = mapa.style._order || mapa.getStyle().layers.map((l) => l.id);
+    const iZare = poradi.indexOf('okolnik-okna-zare');
+    const pred = predZariOken();
+    if (pred && poradi.indexOf(pred) < iZare) mapa.moveLayer('okolnik-okna-zare', pred);
+  } catch (e) { /* styl v přestavbě */ }
+}
 function nasadOkna3d() {
   if (!mapa || !mapa.getLayer('okolnik-budovy-herni-zdi')) return false;
   try {
@@ -3454,7 +3476,7 @@ function nasadOkna3d() {
                   'icon-ignore-placement': true,
                   'icon-size': ['interpolate', ['exponential', 1.6], ['zoom'],
                                 16.8, 0.3, 18.0, 0.55, 19.5, 0.95] },
-        paint: { 'icon-opacity': vyrazKrytiZare(noc) } });
+        paint: { 'icon-opacity': vyrazKrytiZare(noc) } }, predZariOken());
     }
   } catch (e) { console.warn('[okna] vrstva', e); return false; }
   return true;
@@ -8722,7 +8744,17 @@ const TRIDY_VYSKY = {
       'lavicka', 'piknik', 'ohniste', 'rozcestnik', 'informacni_bod',
       'informacni_tabule', 'naucna_tabule', 'toalety', 'wc', 'sprcha', 'bankomat',
       'odpadkovy_kos', 'prebalovaci_pult', 'nabijeni_elektrokol',
-      'nabijeci_stanice', 'vyhlidka', 'molo'],
+      'nabijeci_stanice', 'vyhlidka', 'molo', 'kanon', 'stola'],
+  // engine 279 („ikona obchodu obří"): obchody a služby sedí v CIZÍ budově –
+  // nikdy nedostanou její půdorys (Potraviny v hale = 40 m) a mají
+  // nižší podlahu (viz velikostMist); výchozí 10 m
+  S: ['obchod', 'obchod_odevy', 'drogerie', 'lekarna', 'elektro', 'nabytek',
+      'zelezarstvi', 'barvy_laky', 'knihkupectvi', 'kvetinarstvi', 'darky',
+      'zahradnictvi', 'autodily', 'cykloservis', 'pujcovna_kol', 'pujcovna_lodi',
+      'banka', 'posta', 'kadernictvi', 'pradelna', 'ordinace', 'pohotovost',
+      'prvni_pomoc', 'veterinar', 'wellness', 'informacni_centrum',
+      'restaurace', 'hospoda', 'bar', 'kavarna', 'vinarna', 'fastfood',
+      'zmrzlina', 'nocni_klub'],
 };
 /// Výchozí velikost objektu v metrech podle třídy (šířka obrázku): kříž a
 /// drobnosti kreslíme 8 m (skutečné 3 m by na mapě nebyly vidět), B 12,
@@ -8753,7 +8785,8 @@ function korekceSirky(ik) {
   return w ? +(448 / w).toFixed(3) : 1;
 }
 function velikostMistaM(ik) {
-  return { A: 8, B: 12, C: 22, D: 40 }[tridaVyskyMista(ik)] || 12;
+  // engine 279: drobnosti 6 m (8 dělalo pomník velký jako dům), služby 10 m
+  return { A: 6, S: 10, B: 12, C: 22, D: 40 }[tridaVyskyMista(ik)] || 12;
 }
 function tridaVyskyMista(ik) {
   const m = /\/assets\/icons\/([a-z0-9_]+)\.webp/.exec(String(ik || ''));
@@ -8762,6 +8795,7 @@ function tridaVyskyMista(ik) {
   if (TRIDY_VYSKY.D.indexOf(n) >= 0) return 'D';
   if (TRIDY_VYSKY.C.indexOf(n) >= 0) return 'C';
   if (TRIDY_VYSKY.A.indexOf(n) >= 0) return 'A';
+  if (TRIDY_VYSKY.S.indexOf(n) >= 0) return 'S';
   return 'B';
 }
 /// icon-size obrázků míst (ikona, stín i pata sdílejí): podlaha 0,20 a
@@ -8782,9 +8816,14 @@ function velikostMist(sBublinou, klic) {
   const sm = ['coalesce', ['get', shluk ? 'smH' : 'sm'], 12];
   const kb = ['coalesce', ['get', shluk ? 'kbH' : 'kb'], 1];
   const podlahaPx = (z) => (z <= 16 ? 48 : z >= 22 ? 90 : 48 + (z - 16) * 7);
+  // engine 279 („obrázky menších míst by mohly být menší, aby se vešly na
+  // svá místa"): podlaha čitelnosti podle třídy – drobnosti (A) 72 %,
+  // obchody a služby (S) 80 %, budovy a krajina 100 %
+  const vt = ['coalesce', ['get', shluk ? 'vtH' : 'vt'], 'B'];
+  const dilPodlahy = ['match', vt, 'A', 0.72, 'S', 0.80, 1];
   const stop = (z) => {
     const c = Math.pow(2, z - 18) / (0.19 * 224);       // icon-size na metr
-    const o = ['*', kb, ['min', 3.0, ['max', +(podlahaPx(z) / 224).toFixed(4),
+    const o = ['*', kb, ['min', 3.0, ['max', ['*', +(podlahaPx(z) / 224).toFixed(4), dilPodlahy],
                                       ['*', sm, +c.toFixed(7)]]]];
     return sBublinou
       ? ['case', ['has', 'fv'], 0.30, ['has', 'b2d'], 0.24, o]
@@ -9067,6 +9106,7 @@ let nazvyPuvodniNasledovnik = null;      // id vrstvy, před kterou se názvy vr
 function poradiNazvuObci() {
   if (!mapa || !mapa.style) return;
   srovnejNocPodMlhu();
+  srovnejZariOken();
   let poradi = null;
   try { poradi = mapa.style._order || mapa.getStyle().layers.map((l) => l.id); }
   catch (e) { return; }
@@ -9532,7 +9572,7 @@ function doplnVelikostiMist(gjPrimo) {
     // na dvoře velké budovy a dostávaly by její rozměr (pomník 80 m)
     const cekaji = gj.features.filter((f) =>
       f.properties.ik && !f.properties.b2d && !f.properties.fv && !f.properties.smB
-      && f.properties.vt !== 'A' && (f.properties.smP || 0) < 3);
+      && f.properties.vt !== 'A' && f.properties.vt !== 'S' && (f.properties.smP || 0) < 3);
     if (!cekaji.length) return;
     const budovy = mapa.querySourceFeatures('omt', { sourceLayer: 'building' });
     if (!budovy.length) return;
@@ -9566,7 +9606,8 @@ function doplnVelikostiMist(gjPrimo) {
       for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
       const plocha = Math.abs(a) / 2 * kLon * 110574;
       // strop podle druhu: hospoda nebude 80 m, i když stojí v hale
-      const strop = { B: 40, C: 60, D: 80 }[f.properties.vt] || 40;
+      // engine 279: B 40 → 24 m (kaple či penzion v hale nemá být hala)
+      const strop = { B: 24, C: 60, D: 80 }[f.properties.vt] || 24;
       const sm = Math.max(8, Math.min(strop, Math.sqrt(plocha) * 1.25));
       if (Math.abs(sm - (f.properties.sm || 0)) > 0.5) zmena++;
       f.properties.sm = +sm.toFixed(1);
@@ -9574,6 +9615,31 @@ function doplnVelikostiMist(gjPrimo) {
     }
     if (zmena && !gjPrimo && zdroj) zdroj.setData(gj);
   } catch (e) { console.warn('[mista] velikosti', e); }
+}
+
+// engine 279: místa na TÝCHŽ souřadnicích (buňka ≈ 10 m) se rozestoupí
+// KOTVOU obrázku – první (největší) zůstává patou na bodě, druhý vlevo
+// nahoru, třetí vpravo nahoru, čtvrtý dolů… Rozestup tak roste s obrázkem
+// (icon-offset by se násobil icon-size stejně) a klik míří na správný
+// obrázek. Dřív se kreslily přes sebe a „ani po úplném přiblížení nebyly
+// vidět všechny". Pata a záře se u posunutých členů nekreslí.
+const KOTVY_ROZESTUPU = ['bottom-right', 'bottom-left', 'top', 'top-right',
+                         'top-left', 'right', 'left'];
+function rozestupStejnychMist(featury) {
+  const skupiny = new Map();
+  for (const f of featury) {
+    const c = f.geometry && f.geometry.coordinates;
+    if (!c || !f.properties || !f.properties.ik) continue;
+    const k = c[0].toFixed(4) + ',' + c[1].toFixed(4);
+    const sk = skupiny.get(k);
+    if (sk) sk.push(f); else skupiny.set(k, [f]);
+  }
+  for (const sk of skupiny.values()) {
+    if (sk.length < 2) continue;
+    for (let i = 1; i < sk.length; i++) {
+      sk[i].properties.an = KOTVY_ROZESTUPU[(i - 1) % KOTVY_ROZESTUPU.length];
+    }
+  }
 }
 
 function vykresliMista() {
@@ -9673,6 +9739,7 @@ function vykresliMista() {
   doplnVelikostiMist(gj);
   featury.sort((a, b) =>
     ((b.properties && b.properties.sm) || 0) - ((a.properties && a.properties.sm) || 0));
+  rozestupStejnychMist(featury);
   posledniMistaGj = gj;
   naplanujVelikostiMist();
   const gjMoje = {
@@ -9712,7 +9779,14 @@ function vykresliMista() {
     // klik hlásí appce `onShluk` se seznamem členů.
     // engine 201: 60 → 44 px a jen do z17 („boží muka u kostela nejdou
     // kliknout, musím hodně přiblížit"); od z18 každé místo samo za sebe
-    cluster: true, clusterRadius: 44, clusterMaxZoom: 17,
+    // engine 279 („ani po úplném přiblížení se neukáží všechny obrázky"):
+    // shluky jen v dlaždicích do z16 (= mapa do z16,5; zdroj bere dlaždici
+    // ZAOKROUHLENĚ), od z16,5 každé místo samo za sebe – 15 soch v řadě na
+    // z15,5 zůstane „5", na z17,5 se rozvine (ověřeno na telefonu).
+    // ⛔ Dřív 17 = strop zdroje: dlaždice nad 17 nejsou, takže shluky
+    // držely i „po úplném přiblížení". Stejné souřadnice rozestupuje
+    // `rozestupStejnychMist`.
+    cluster: true, clusterRadius: 44, clusterMaxZoom: 16,
     clusterProperties: {
       ikH: [['coalesce', ['accumulated'], ['get', 'ikH']], ['get', 'ik']],
       // velikost PRVNÍHO člena (týž, jehož obrázek se ukazuje) – `max` by
@@ -9804,7 +9878,7 @@ function vykresliMista() {
       id: 'okolnik-mista-zar', type: 'circle', source: 'okolnik-mista',
       minzoom: 13,
       filter: ['all', ['has', 'ik'], ['!', ['has', 'point_count']],
-               ['!', ['has', 'b2d']]],
+               ['!', ['has', 'b2d']], ['!', ['has', 'an']]],
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
                           13, 14, 16, 42],
@@ -9830,7 +9904,7 @@ function vykresliMista() {
     type: 'symbol',
     source: 'okolnik-mista',
     filter: ['all', ['has', 'ik'], ['!', ['has', 'point_count']],
-             ['!', ['has', 'b2d']]],
+             ['!', ['has', 'b2d']], ['!', ['has', 'an']]],
     layout: {
       'icon-image': 'stin-pata',
       'icon-allow-overlap': true,
@@ -9856,7 +9930,8 @@ function vykresliMista() {
       // vrstvu potichu (stejná past jako u kreseb Kroniky).
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
-      'icon-anchor': 'bottom',
+      // engine 279: `an` = kotva rozestupu míst na stejných souřadnicích
+      'icon-anchor': ['coalesce', ['get', 'an'], 'bottom'],
       // Bubliny 2D značek (b2d) jsou menší a při přiblížení NEROSTOU
       // (výtka „po přiblížení klidně menší, ať nezakrývají mapu");
       // malované kresby si nechávají původní křivku.

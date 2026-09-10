@@ -71,6 +71,10 @@ const Ilustrace = (() => {
   const ZAKLAD_CSS = 140;        // kresby 280 px / pixelRatio 2
   const PRODLEVA_MS = 650;       // režim se nesmí měnit častěji…
   const PRODLEVA_ZOOM = 0.35;    // …leda by zoom znatelně ujel
+  // engine 279: od z16 kaskáda kresbu při kolizi ZMENŠÍ (režim 1), místo
+  // aby ji schovala do „+N" („ani po úplném přiblížení se neukáží všechny")
+  const ZMENSENI_OD_Z = 16;
+  const ZMENSENI_DIL = 0.6;
 
   // Pozemní šířka v km podle footprintu; důležitost moduluje, města ×1,24
   const KM_LV = { 0: 26.0, 1: 7.0, 2: 2.9 };
@@ -115,7 +119,7 @@ const Ilustrace = (() => {
   let stuhaNactena = false;
   let stuhaBezi = false;
 
-  // režim místa: {rezim: 0 obrázek | 5 stužka | 6 nic, ms, z}
+  // režim místa: {rezim: 0 obrázek | 1 zmenšený obrázek (od z16) | 5 stužka | 6 nic, ms, z}
   const stavRezimu = new Map();
   // PRŮHLEDNOST PER FEATURA (klíč slug#o / #s0 / #s1 / #z): výměna
   // režimu = odchod jedné a příchod druhé featury s crossfade
@@ -403,15 +407,17 @@ const Ilustrace = (() => {
       return ['min', ['get', 'mx'],
               ['max', podlaha, ['*', ['get', 'g0'], Math.pow(2, z)]]];
     };
+    // engine 279: `sc` = zmenšení při kolizi od z16 (kaskáda, režim 1)
+    const sc = ['coalesce', ['get', 'sc'], 1];
     for (let z = 4; z <= 16; z++) {
-      v.push(z, ['/', ohran(z), ZAKLAD_CSS]);
+      v.push(z, ['/', ['*', ohran(z), sc], ZAKLAD_CSS]);
     }
     // ⭐ 5. 9. 2026 večer („obrázky míst od určitého zmenšení už zvětšuj
     // s přiblížením jako stromy a silnice"): strop `mx` platí do z16, dál
     // kresba roste PŘESNĚ S MAPOU (×2 na zoom) z velikosti na stropu –
     // jako malba. ⚠️ Totéž musí dělat `sirkaPx` (JS) níž.
     for (let z = 17; z <= 22; z++) {
-      v.push(z, ['/', ['*', ohran(16), Math.pow(2, z - 16)], ZAKLAD_CSS]);
+      v.push(z, ['/', ['*', ohran(16), Math.pow(2, z - 16), sc], ZAKLAD_CSS]);
     }
     return v;
   }
@@ -1233,6 +1239,19 @@ const Ilustrace = (() => {
           placed = { it, obrazek: true, bounds };
           odlozPas(it.slug);
         }
+        // engine 279: od z16 se při kolizi kresba ZMENŠÍ (režim 1) a kreslí
+        // VŽDY – i s překryvem; zpět na plnou velikost až po prodlevě
+        if (!placed && z >= ZMENSENI_OD_Z && (koliduje || minule === 1)) {
+          const sc = ZMENSENI_DIL;
+          const bs = obdelnik(it.ax, cy, it.w * sc, it.h * sc);
+          if (minule === 1 || zmenaRezimuOK(it.slug, 1, z)) {
+            placed = { it, obrazek: true, bounds: bs, sc };
+            nastavRezim(it.slug, 1, z);
+            if (!koliduje) odlozPas(it.slug);   // povýšení na plnou čeká na prodlevu
+          } else {
+            odlozPas(it.slug);
+          }
+        }
       }
 
       // — aspoň stužka (uhýbá svisle); z dálky se osamocené nekreslí —
@@ -1448,8 +1467,10 @@ const Ilustrace = (() => {
           zi: p.zInEff,
           iof: [0, it.nb ? 0 : 0.035 * p.vy],
           srt: it.imp,
+          // engine 279: zmenšení při kolizi (viz kaskáda); jde do podpisu
+          ...(pl.sc ? { sc: pl.sc } : {}),
           // stav v podpisu — objevení/návštěva musí projít setData
-          pd: it.stav || 'c',
+          pd: (it.stav || 'c') + (pl.sc ? '~' : ''),
           // kontaktní stín: elipsa u paty kresby. ⛔ NE POD MĚSTY (5. 9.
           // večer, „pod obrázky míst stíny nedělej – třeba Ústí"): panorama
           // města není těleso stojící na zemi, stín pod ním byl šmouha
@@ -1485,11 +1506,11 @@ const Ilustrace = (() => {
         let rezimKotvy;
         if (uzemi < MIN_PX) {
           geometrie = [p.lon, p.lat];
-          posunPx = MIN_PX * (p.vy / 280) / 2 + LABEL_OVERLAP_PX;
+          posunPx = MIN_PX * (p.vy / 280) / 2 * (pl.sc || 1) + LABEL_OVERLAP_PX;
           rezimKotvy = 'm';
         } else if (uzemi > mx) {
           geometrie = [p.lon, p.lat];
-          posunPx = mx * (p.vy / 280) / 2 + LABEL_OVERLAP_PX;
+          posunPx = mx * (p.vy / 280) / 2 * (pl.sc || 1) + LABEL_OVERLAP_PX;
           rezimKotvy = 'x';
         } else {
           geometrie = [p.lon, p.latStuha];
