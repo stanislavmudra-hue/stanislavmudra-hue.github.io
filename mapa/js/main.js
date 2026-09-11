@@ -323,7 +323,9 @@ function pridejMaskuZahranici() {
 // nevolá, takže to nic nestojí. Odkrytí se dělá jen při změně nastavení, aby
 // se nepřebíjely vrstvy, které si schoval někdo jiný (balast při terénu…).
 // ---------------------------------------------------------------------------
-const NASTAVENI_MAPY = { vrstevnice: null, objekty3d: true, ilustrace: true, stiny: true };
+//   podpisy:    engine 303 – názvy míst jako podpis pod kresbou (Kalam Bold, papírová
+//               záře, barva podle objevování); vypnuto = stužky jako dřív.
+const NASTAVENI_MAPY = { vrstevnice: null, objekty3d: true, ilustrace: true, stiny: true, podpisy: true };
 window.__nastaveniMapy = NASTAVENI_MAPY;
 const VRSTEVNICE_VYCHOZI = { 11: [200, 1000], 12: [100, 500], 13: [50, 250], 14: [50, 250], 15: [20, 100] };
 const KONTURY_VOLBY = { multiplier: 1, elevationKey: 'ele', levelKey: 'level', contourLayer: 'contours' };
@@ -420,6 +422,8 @@ function aplikujNastaveniMapy(jenSkryt) {
   for (const id of VRSTVY_ILUSTRACE) vid(id, n.ilustrace);
   // 4) stíny na plátně
   vid('stin-domu', n.stiny);
+  // 5) engine 303: podpisy ↔ stužky (jen při změně nastavení, ne v idle dorovnání)
+  if (!jenSkryt) nastavPodpisyMist(typeof krokNoci === 'number' && krokNoci >= 2);
   if (nastaveniMapyPosluchac !== mapa) {
     nastaveniMapyPosluchac = mapa;
     mapa.on('idle', () => { try { if (nastaveniMapyNeniVychozi()) aplikujNastaveniMapy(true); } catch (e) { /* nic */ } });
@@ -5398,12 +5402,85 @@ function vyrazKrytiZareMist(noc) {
   return noc ? 0 : ['interpolate', ['linear'], ['zoom'], 13, 0, 14.5,
                     ['case', ['boolean', ['feature-state', 'skryt'], false], 0, 0.22]];
 }
+
+// ---------------------------------------------------------------------------
+// ⭐ engine 303: PODPIS POD KRESBOU (rozhodnutí 11. 9. 2026 večer, „Návrh A
+// s přepínačem"). Název místa je text TÉHOŽ symbolu jako kresba: kotva `top`
+// pod bodem místa, tedy těsně pod spodní hranou obrázku (kresby mají kotvu
+// `bottom`), ať je obrázek při jakémkoli zoomu jakkoli velký. Písmo Kalam
+// Bold (glyfy SDF z `tools/gen_glyfy.py`, češtinu má vlastní, zbytek z Noto),
+// papírová záře místo stužky. Barva = objevování A: šedá tuš u odkrytých
+// nenavštívených (kresba je černobílá), tmavá tuš po návštěvě, zlatá u
+// propagovaných. ⛔ Bez `icon-text-fit` a bez `text-variable-anchor` –
+// změřeno 11. 9.: stužky s nimi byly nejdražší kreslená vrstva (geometrie
+// přepočítávaná každý snímek) a druhá největší položka rozmisťování.
+// `text-optional`: když se název nevejde, kresba zůstane bez něj.
+// Změna názvu = jiná vlastnost `t`/`tH` prvku, kresba se nikdy nemění.
+// ---------------------------------------------------------------------------
+const PODPIS_PISMO = ['Kalam Bold'];
+const PODPIS_VELIKOST = 13.5;
+const PODPIS_BARVA_DEN = ['case', ['any', ['has', 'pm'], ['==', ['coalesce', ['get', 'pmH'], 0], 1]], '#B08016',
+                          ['any', ['has', 'nav'], ['has', 'navH']], '#34322F', '#6F6A62'];
+const PODPIS_BARVA_NOC = ['case', ['any', ['has', 'pm'], ['==', ['coalesce', ['get', 'pmH'], 0], 1]], '#E3B84A',
+                          ['any', ['has', 'nav'], ['has', 'navH']], '#F1EADA', '#BDB5A6'];
+const PODPIS_HALO_DEN = 'rgba(250,244,226,0.95)';
+const PODPIS_HALO_NOC = 'rgba(30,34,44,0.85)';
+function podpisLayout(pole, kotvaPodleAn) {
+  return {
+    'text-field': NASTAVENI_MAPY.podpisy ? ['coalesce', ['get', pole], ''] : '',
+    'text-font': PODPIS_PISMO,
+    'text-size': PODPIS_VELIKOST * TEXT_SKALA,
+    // kotva zrcadlí kotvu ikony (rozestup míst na stejných souřadnicích)
+    'text-anchor': kotvaPodleAn
+        ? ['match', ['coalesce', ['get', 'an'], 'bottom'], 'bottom-left', 'top-left', 'bottom-right', 'top-right', 'top']
+        : 'top',
+    'text-offset': [0, 0.3],
+    'text-max-width': 9,
+    'text-line-height': 1.05,
+    'text-justify': 'center',
+    'text-padding': 1,
+    'text-optional': true,
+    'text-allow-overlap': false,
+    'text-ignore-placement': false,
+  };
+}
+function podpisPaint(noc) {
+  return {
+    'text-color': noc ? PODPIS_BARVA_NOC : PODPIS_BARVA_DEN,
+    'text-halo-color': noc ? PODPIS_HALO_NOC : PODPIS_HALO_DEN,
+    'text-halo-width': 1.4,
+    'text-halo-blur': 0.8,
+  };
+}
+/// Přepnutí podpisy ↔ stužky za běhu (Nastavení mapy) a noční barvy.
+function nastavPodpisyMist(noc) {
+  if (!mapa) return;
+  const zap = !!NASTAVENI_MAPY.podpisy;
+  try {
+    for (const [id, pole] of [['okolnik-mista-ikona', 't'], ['okolnik-mista-shluk-ikona', 'tH']]) {
+      if (!mapa.getLayer(id)) continue;
+      const chci = zap ? JSON.stringify(['coalesce', ['get', pole], '']) : '""';
+      const ted = JSON.stringify(mapa.getLayoutProperty(id, 'text-field') || '');
+      if (ted !== chci) mapa.setLayoutProperty(id, 'text-field', zap ? ['coalesce', ['get', pole], ''] : '');
+      const pb = podpisPaint(!!noc);
+      for (const k of Object.keys(pb)) mapa.setPaintProperty(id, k, pb[k]);
+    }
+    if (mapa.getLayer('okolnik-mista-stuha')) {
+      const v = zap ? 'none' : 'visible';
+      if ((mapa.getLayoutProperty('okolnik-mista-stuha', 'visibility') || 'visible') !== v) {
+        mapa.setLayoutProperty('okolnik-mista-stuha', 'visibility', v);
+      }
+    }
+  } catch (e) { console.warn('[podpisy]', e); }
+}
+
 function nastavPatyMist(noc) {
   if (!mapa) return;
   try {
     if (mapa.getLayer('okolnik-mista-pata')) mapa.setPaintProperty('okolnik-mista-pata', 'icon-opacity', vyrazKrytiPaty(noc));
     if (mapa.getLayer('okolnik-mista-zar')) mapa.setPaintProperty('okolnik-mista-zar', 'circle-opacity', vyrazKrytiZareMist(noc));
   } catch (e) { /* styl v přestavbě */ }
+  nastavPodpisyMist(noc);   // engine 303: barvy podpisů den/noc
 }
 
 function nastavNocniKresbu(krok) {
@@ -7619,7 +7696,7 @@ window.OkolnikMost = {
         NASTAVENI_MAPY.vrstevnice = (v === null || v === undefined || Number(v) < 0)
             ? null : Math.max(0, Math.min(1000, Number(v) || 0));
       }
-      for (const k of ['objekty3d', 'ilustrace', 'stiny']) if (k in c) NASTAVENI_MAPY[k] = !!c[k];
+      for (const k of ['objekty3d', 'ilustrace', 'stiny', 'podpisy']) if (k in c) NASTAVENI_MAPY[k] = !!c[k];
       aplikujNastaveniMapy(false);
       if (NASTAVENI_MAPY.stiny) { stinyPodpis = ''; naplanujStinyDomu(50); }
       if (NASTAVENI_MAPY.objekty3d) { pohledPodpisOkna = ''; naplanujOkna3d(50); }
@@ -10250,8 +10327,9 @@ function vykresliMista() {
       'icon-ignore-placement': true,
       'icon-anchor': 'bottom',
       'icon-size': velikostMist(false, 'smH'),
+      ...podpisLayout('tH', false),   // engine 303
     },
-    paint: { 'icon-opacity': 1 },
+    paint: Object.assign({ 'icon-opacity': 1 }, podpisPaint(typeof krokNoci === 'number' && krokNoci >= 2)),
   });
   // číslice u paty hlavního obrázku (kruh + počet)
   mapa.addLayer({
@@ -10378,10 +10456,15 @@ function vykresliMista() {
       // NEVIDITELNÉ (hlášeno „ve 3D nevidím oblíbená") → bubliny 0,24
       // a hvězda oblíbených (fv) ještě o kus větší, obě bez růstu.
       'icon-size': velikostMist(true),
+      // engine 303: podpis pod kresbou (viz PODPIS_*); písmo Kalam Bold JE ve
+      // složce fonts (jinak by vrstva potichu umřela – past popsaná níž)
+      ...podpisLayout('t', true),
     },
-    paint: { 'icon-opacity': sZanikemMist(['case', ['has', 'tl'], TLUM, 1],
+    paint: Object.assign({ 'icon-opacity': sZanikemMist(['case', ['has', 'tl'], TLUM, 1],
                ['case', ['any', ['has', 'b2d'], ['has', 'fv']],
-                ['case', ['has', 'tl'], TLUM, 1], 0]) },
+                ['case', ['has', 'tl'], TLUM, 1], 0]),
+      'text-opacity': ['case', ['has', 'tl'], TLUM, 1] },
+      podpisPaint(typeof krokNoci === 'number' && krokNoci >= 2)),
   });
   // ⭐ STUHA SE JMÉNEM POD KRESBOU (9. 8. 2026, přání uživatele „u obrázků
   // v herním režimu přidej stužku s názvem místa").
@@ -10462,6 +10545,8 @@ function vykresliMista() {
           'icon-opacity': ['case', ['has', 'tl'], TLUM, 1],
         },
       }, 'okolnik-mista-ikona');
+      // engine 303: s podpisy pod kresbou je stužka schovaná (přepínač v Nastavení mapy)
+      if (NASTAVENI_MAPY.podpisy) mapa.setLayoutProperty('okolnik-mista-stuha', 'visibility', 'none');
     } catch (e) {
       console.warn('[most] stuha jmen míst:', e);
     }
