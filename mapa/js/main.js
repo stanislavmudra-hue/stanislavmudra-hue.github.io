@@ -6640,6 +6640,21 @@ let snimekBezi = false;
 async function snimekTrasy(cfg) {
   if (!mapa || !cfg || !Array.isArray(cfg.body) || !cfg.body.length) return null;
   snimekBezi = true;
+  // engine 287 („při sdílení ať jsou skryté všechny zapnuté filtry, vidět má být
+  // jen sdílená událost"): po dobu snímku schovat místa z filtrů, mé body, erby,
+  // přátele, ostatní výpravy, stopu dne i Dobyvatele; trasu kreslí snímek sám
+  const SKRYT_PRI_SNIMKU = ['okolnik-mista-', 'okolnik-moje-', 'okolnik-navsteva',
+    'erby-vrstva', 'okolnik-pratele-', 'okolnik-vypravy-', 'okolnik-vyprava-ted-',
+    'okolnik-stopa-dne-', 'dob-', 'hrac-zare', 'ink-ilustrace-odznaky'];
+  const schovane = [];
+  try {
+    for (const v of (mapa.getStyle().layers || [])) {
+      if (!SKRYT_PRI_SNIMKU.some((pref) => v.id.startsWith(pref))) continue;
+      if ((v.layout && v.layout.visibility) === 'none') continue;
+      mapa.setLayoutProperty(v.id, 'visibility', 'none');
+      schovane.push(v.id);
+    }
+  } catch (e) { /* styl v přestavbě */ }
   const puv = { styl: aktualniKod, center: mapa.getCenter(), zoom: mapa.getZoom(),
                 pitch: mapa.getPitch(), bearing: mapa.getBearing() };
   const cekej = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -6781,6 +6796,9 @@ async function snimekTrasy(cfg) {
     return null;
   } finally {
     snimekBezi = false;
+    for (const id of schovane) {
+      try { if (mapa.getLayer(id)) mapa.setLayoutProperty(id, 'visibility', 'visible'); } catch (e) { /* nic */ }
+    }
     try {
       for (const id of [ZDROJ, ZDROJ + '-lem']) if (mapa.getLayer(id)) mapa.removeLayer(id);
       if (mapa.getSource(ZDROJ)) mapa.removeSource(ZDROJ);
@@ -10043,8 +10061,10 @@ function vykresliMista() {
       // s důležitější (nebo se jménem sídla, ta se rozmisťují dřív), se
       // SCHOVÁ, dokud uživatel nepřiblíží. Dřív allow-overlap → změť
       // 15 soch přes sebe. Stužka schované ikony smí zůstat (jako u kreseb).
-      'icon-allow-overlap': false,
-      'icon-ignore-placement': false,
+      // engine 287 („některé obrázky mizí", parkoviště ve Rtyni): kolize jen do z17,
+      // od z17 (chůze) se kreslí vše – obrázky jsou tam už dost rozestoupené
+      'icon-allow-overlap': ['step', ['zoom'], false, 17, true],
+      'icon-ignore-placement': ['step', ['zoom'], false, 17, true],
       'symbol-sort-key': ['get', 'srt'],
       // engine 279: `an` = kotva rozestupu míst na stejných souřadnicích
       'icon-anchor': ['coalesce', ['get', 'an'], 'bottom'],

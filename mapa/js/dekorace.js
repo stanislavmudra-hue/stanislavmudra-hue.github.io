@@ -829,7 +829,7 @@ const Dekorace = (() => {
       }
       rojSvetlusek(rezim);
     } catch (e) { /* zdroj se právě mění — příští tik */ }
-  }, 133);
+  }, 250);   // engine 287: 133 → 250 ms (v noci 10 překreslení/s v klidu)
 
   // -------------------------------------------------------------------------
   // ⭐ ROJ SVĚTLUŠEK (v1.386): „malé svítivé POHYBUJÍCÍ SE tečky, občas
