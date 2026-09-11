@@ -1563,12 +1563,18 @@ const Dekorace = (() => {
   /// JEN U NOVÝCH (viz `kesDlazdic`), a `dopln` si o index řekne jen když
   /// opravdu přibyla netknutá buňka.
   const PREVOD_ROZPOCET_MS = 14;    // engine 202: převod nových dlaždic na průchod
-  function postavIndex() {
+  // ⭐ engine 300: stavba indexu PO VRSTVÁCH (generátor) – `querySourceFeatures`
+  // pro ~17 vrstev krajiny stálo 17–37 ms v jednom kroku hned po zastavení.
+  // Rozpočet převodu geometrie počítá jen AKTIVNÍ čas (mezi yieldy se čeká
+  // na další snímek). Starý index platí, dokud nový nedoběhne.
+  function postavIndex() { for (const _ of postavIndexGen()) { /* synchronně */ } }
+  function* postavIndexGen() {
     if (!mapa) return;
     const defs = definicePloch();
     if (!defs || !defs.length) { idxMrizka = null; return; }
     const z = mapa.getZoom();
-    const tStart = performance.now();
+    let spotreba = 0;
+    let tKrok = performance.now();
     let rozpocetVycerpan = false;
     const mrizka = new Map();
     const mrizkaCary = new Map();
@@ -1616,7 +1622,7 @@ const Dekorace = (() => {
         // ⭐ engine 202: ROZPOČET – převod geometrie (tisíce půdorysů domů na
         // dlaždici) se dělí mezi průchody; co se nestihne, není v keši a
         // převede se příště (body v těch dlaždicích zatím jen počkají)
-        if (rozpocetVycerpan || performance.now() - tStart > PREVOD_ROZPOCET_MS) {
+        if (rozpocetVycerpan || spotreba + (performance.now() - tKrok) > PREVOD_ROZPOCET_MS) {
           rozpocetVycerpan = true;
           for (const kk of nove) klice.delete(kk);
           nove.clear();
@@ -1658,6 +1664,9 @@ const Dekorace = (() => {
         else if (d.id === 'budovy-vypln') { for (const p of polygony) doMrizkyCara(mrizkaBudovy, p); }
         else { for (const p of polygony) doMrizky(mrizka, velke, p); }
       }
+      spotreba += performance.now() - tKrok;
+      yield;   // engine 300: další vrstva v dalším kroku dávky
+      tKrok = performance.now();
     }
     while (kesDlazdic.size > KES_DLAZDIC) {
       kesDlazdic.delete(kesDlazdic.keys().next().value);
@@ -1920,6 +1929,33 @@ const Dekorace = (() => {
     }
     zapisCas('index', performance.now() - t0);
   }
+  /// engine 300: totéž po dávkách – pro generátor `doplnJadro` (`yield*`)
+  function* zajistiIndexGen() {
+    if (indexPass === passId) return;
+    indexPass = passId;
+    let kamera = '';
+    let hotovo = false;
+    try {
+      const c = mapa.getCenter();
+      kamera = mapa.getZoom().toFixed(2) + '|' + c.lng.toFixed(5) + '|' + c.lat.toFixed(5);
+      hotovo = !!mapa.areTilesLoaded();
+    } catch (e) { /* mapa se zrovna mění */ }
+    const ted = performance.now();
+    if (idxMrizka && kamera === indexKamera
+        && (hotovo === indexDlazdiceHotovy || !hotovo)
+        && ted - indexCas < 2500) return;
+    indexKamera = kamera;
+    indexDlazdiceHotovy = hotovo;
+    indexCas = ted;
+    const t0 = performance.now();
+    try { yield* postavIndexGen(); } catch (e) {
+      console.warn('[dekorace] index se nepostavil:', e);
+      idxMrizka = null;
+      idxCary = null;
+      idxBudovy = null;
+    }
+    zapisCas('index', performance.now() - t0);
+  }
 
   /// ⭐ 5. 9. noc: PROŘEZ – dekorace postavené dřív (z hrubších dlaždic bez
   /// malých domů, nebo před touto verzí) se v půdorysu domu / na silnici
@@ -2083,11 +2119,34 @@ const Dekorace = (() => {
     } catch (e) { return null; }
   }
 
+  // ⭐ engine 300 (krok 3 opatrného návratu): PO DÁVKÁCH. `dopln()` na `moveend`
+  // stálo 23–55 ms v jednom snímku (změřeno po posluchačích 11. 9.) – při
+  // sledování hráče přijde moveend s každým fixem, tedy záškub každé 2 s.
+  // Jádro je generátor, hnací smyčka odbaví ≤ 4 ms na snímek; při prstu na
+  // mapě čeká; nový `dopln()` rozpracovaný průchod zruší a začne znovu (keš
+  // buněk zůstává, takže opakování je levné).
+  let doplnBeh = null;
   function dopln() {
-    const t0 = performance.now();
-    try { doplnJadro(); } finally { zapisCas('dopln', performance.now() - t0); }
+    if (doplnBeh) doplnBeh.zrus = true;
+    const beh = { zrus: false, it: null, ms: 0 };
+    doplnBeh = beh;
+    try { beh.it = doplnJadro(); } catch (e) { console.warn('[dekorace] dopln', e); doplnBeh = null; return; }
+    const krok = () => {
+      if (beh.zrus) return;
+      if (typeof prstuNaMape !== 'undefined' && prstuNaMape) { requestAnimationFrame(krok); return; }
+      const t0 = performance.now();
+      let hotovo = false;
+      try {
+        while (performance.now() - t0 < 4) { const r = beh.it.next(); if (r.done) { hotovo = true; break; } }
+      } catch (e) { console.warn('[dekorace] dopln krok', e); hotovo = true; }
+      beh.ms += performance.now() - t0;
+      if (hotovo) { zapisCas('dopln', beh.ms); if (doplnBeh === beh) doplnBeh = null; return; }
+      requestAnimationFrame(krok);
+    };
+    krok();
   }
-  function doplnJadro() {
+  function* doplnJadro() {
+    let bunekOdYield = 0;
     if (!mapa || !ikonyHotove) return;   // malby se ještě stahují
     const z = mapa.getZoom();
     // ⚠️ MUSÍ SEDĚT S NEJNIŽŠÍM `z0` V `DRUHY` (stromy 13,25 = 54 %
@@ -2132,6 +2191,7 @@ const Dekorace = (() => {
         const ix0 = Math.floor((zapad - rw) / dLon);
         const ix1 = Math.ceil((vychod + rw) / dLon);
         for (let ix = ix0; ix <= ix1; ix++) {
+          if ((++bunekOdYield & 127) === 0) yield;   // engine 300: dávky
           if (hrube && (ix & 1)) continue;
           const klic = druh + ':' + iy + ':' + ix;
           if (bunky.has(klic)) continue;
@@ -2182,7 +2242,7 @@ const Dekorace = (() => {
           // v obsluze události spolkne `moveend` se vším, co na něm visí
           // (viz poznámka u `pitchend` v main.js). Bez indexu se dekorace
           // jen na tenhle průchod nedokreslí a zkusí se to znovu.
-          zajistiIndex();
+          yield* zajistiIndexGen();   // engine 300: index po vrstvách
           const q = plochyPodBodem(lon, latB);
           if (!q) continue;         // dlaždice tu není → zkusí se příště
           // ⭐⭐ NA VODU SE SOUŠ NESTAVÍ (9. 8. 2026).
@@ -2266,6 +2326,7 @@ const Dekorace = (() => {
       }
     }
 
+    yield;   // engine 300: přesné dekorace, prořez a setData v dalším snímku
     // přesné dekorace ze ZABAGED a prořez střech/silnic (5. 9. noc)
     try {
       // engine 202: jen 1., 3. a 5. průchod po zastavení (procházení alejí
