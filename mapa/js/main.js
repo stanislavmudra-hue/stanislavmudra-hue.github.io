@@ -596,9 +596,15 @@ async function start() {
     // ⚠️ POUČENÍ: „změřeno = zanedbatelné" platí jen pro tu scénu, na
     // které se měřilo. Při každém zahuštění symbolů tohle přeměřit.
     fadeDuration: 300,  // symboly se rozmisťují inkrementálně (viz výš)
-    attributionControl: { compact: true },
+    // ⭐ engine 298 (krok 1 opatrného návratu 296): v appce BEZ AttributionControl
+    // MapLibre – ten si na KAŽDÝ `move` volá `_updateData` → `map.loaded()` přes
+    // všech 29 zdrojů (změřeno 11. 9.: 0,44 ms na snímek při tahu). Text atribuce
+    // se mění jen s výměnou stylu: vlastní statické ⓘ se stejnými třídami, viz
+    // `nasadStatickouAtribuci`. Na webu (bez ?app=1) zůstává prvek MapLibre.
+    attributionControl: APP_REZIM ? false : { compact: true },
   });
   window.mapa = mapa;   // ladění
+  if (APP_REZIM) { try { nasadStatickouAtribuci(); } catch (e) { console.warn('[atribuce]', e); } }
   zapniDynamickeRozliseni();
   // ⏱ RAZÍTKA STARTU (jen čísla, nic nekreslí) — bez nich se o pořadí
   // „styl → první snímek → mlha" jen hádá. Čte se přes CDP.
@@ -6122,6 +6128,51 @@ function nasadPlynulouVysku() { /* vypnuto — viz komentář výš */ }
 // a odbavuje SE JEDNO NA SNÍMEK. Chyby jdou hned (stav dlaždice
 // se nesmí zaseknout). Platí pro vektorové zdroje (omt, kontury);
 // geojson/DEM mají jiné třídy a nechávají se být.
+
+/// ⭐ engine 298: STATICKÁ ATRIBUCE V APPCE (viz volby mapy). Stejné třídy jako
+/// MapLibre (CSS v `zapniAppRezim` platí dál: sbalené ⓘ, rozbalí se ťuknutím),
+/// text ze zdrojů stylu (© OpenMapTiles, © OpenStreetMap, © ČÚZK…), obnova jen
+/// na `styledata`/`style.load`. Licenci je učiněno zadost stejně jako dřív.
+function nasadStatickouAtribuci() {
+  if (!mapa || document.getElementById('atribuce-okolnik')) return;
+  const kont = mapa.getContainer();
+  let roh = kont.querySelector('.maplibregl-ctrl-bottom-right');
+  if (!roh) {
+    roh = document.createElement('div');
+    roh.className = 'maplibregl-ctrl-bottom-right';
+    (kont.querySelector('.maplibregl-control-container') || kont).appendChild(roh);
+  }
+  const d = document.createElement('details');
+  d.id = 'atribuce-okolnik';
+  d.className = 'maplibregl-ctrl maplibregl-ctrl-attrib maplibregl-compact';
+  d.innerHTML = '<summary class="maplibregl-ctrl-attrib-button" title="Zdroje dat" aria-label="Zdroje dat"></summary>'
+    + '<div class="maplibregl-ctrl-attrib-inner"></div>';
+  roh.appendChild(d);
+  const vnitrek = d.querySelector('.maplibregl-ctrl-attrib-inner');
+  d.querySelector('summary').addEventListener('click', (e) => {
+    e.preventDefault();
+    const ukaz = !d.classList.contains('maplibregl-compact-show');
+    d.classList.toggle('maplibregl-compact-show', ukaz);
+    if (ukaz) d.setAttribute('open', ''); else d.removeAttribute('open');
+  });
+  let posledni = '';
+  const obnov = () => {
+    try {
+      const st = mapa.getStyle(); if (!st || !st.sources) return;
+      const casti = [];
+      for (const z of Object.values(st.sources)) {
+        if (z && typeof z.attribution === 'string' && z.attribution && !casti.includes(z.attribution)) casti.push(z.attribution);
+      }
+      const text = casti.join(' | ');
+      if (text !== posledni) { posledni = text; vnitrek.innerHTML = text; }
+    } catch (e) { /* styl v přestavbě */ }
+  };
+  let t = 0;
+  mapa.on('styledata', () => { clearTimeout(t); t = setTimeout(obnov, 300); });
+  mapa.on('style.load', obnov);
+  obnov();
+}
+
 let skrticNasazen = false;
 function nasadSkrticPrijmu() {
   if (skrticNasazen) return;
