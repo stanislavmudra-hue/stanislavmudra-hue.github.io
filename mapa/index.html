@@ -242,7 +242,7 @@
     }
   }
   const V5 = new URLSearchParams(location.search).get('ml') === '5';
-  const VERZE = '?v=296';
+  const VERZE = '?v=297';
   const SKRIPTY = ['js/styles.js', 'js/fog.js', 'js/pocasi.js',
     'js/svetlo.js', 'js/trpyt.js',
     'js/postavicka.js', 'js/dekorace.js', 'js/ilustrace.js',
@@ -269,7 +269,7 @@
     document.body.appendChild(el);
   } else {
     document.getElementById('ml-css').href = 'vendor/maplibre-gl-v6.css';
-    import('./vendor/maplibre-gl-v6.mjs')
+    import('./vendor/maplibre-gl-v6.mjs?v=297')
       .then(function (m) { window.maplibregl = m; dal(); })
       .catch(function (e) {
         console.error('[zavaděč] MapLibre v6 se nenačetl — nouzově v5',
