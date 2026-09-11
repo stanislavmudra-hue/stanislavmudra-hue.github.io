@@ -8921,7 +8921,7 @@ function sZanikemMist(vyraz) {
 
 /// engine 290 (kolo C): obrázek propagovaného podniku – zlatý prstenec kolem
 /// ikony (contain) nebo kolem fotky/loga oříznutého do kruhu (cover).
-function oramujPremium(src, foto) {
+function oramujPremium(src, foto, cil) {
   if (src instanceof ImageData) {
     const t = document.createElement('canvas');
     t.width = src.width; t.height = src.height;
@@ -8929,13 +8929,17 @@ function oramujPremium(src, foto) {
     src = t;
   }
   const w = src.width, h = src.height;
-  const s = Math.round(Math.max(w, h) * 1.18);
+  // engine 291: ikony a loga vždy 448 px (engine počítá icon-size pro 448px
+  // obrázky – malé logo by vyšlo jako tečka); bubliny (cil = 0) 1,18× zdroje
+  const s = cil || Math.round(Math.max(w, h) * 1.18);
   const c = document.createElement('canvas');
   c.width = s; c.height = s;
   const x = c.getContext('2d');
   const r = s / 2;
   if (foto) {
     x.save();
+    x.beginPath(); x.arc(r, r, r * 0.86, 0, Math.PI * 2);
+    x.fillStyle = '#FFFFFF'; x.fill();   // průhledné logo má bílý podklad
     x.beginPath(); x.arc(r, r, r * 0.86, 0, Math.PI * 2); x.clip();
     const k = Math.max((s * 0.86) / w, (s * 0.86) / h);
     x.drawImage(src, r - w * k / 2, r - h * k / 2, w * k, h * k);
@@ -8966,7 +8970,7 @@ function zajistiIkonu(id) {
       const zakladB = pmB ? id.slice(0, -3) : id;
       const bw = zakladB.endsWith('#bw');
       let data = nakresliZnacku(bw ? zakladB.slice(0, -3) : zakladB);
-      if (pmB) data = oramujPremium(data, false);
+      if (pmB) data = oramujPremium(data, false, 0);
       if (bw) {
         const a = document.createElement('canvas');
         a.width = data.width; a.height = data.height;
@@ -9029,7 +9033,7 @@ function zajistiIkonu(id) {
       if (!mapa.hasImage(id)) {
         const data = stin ? Ilustrace.stin(bitmapa)
           : (bw ? odbarvi(bitmapa)
-            : (pm ? oramujPremium(bitmapa, soubor.startsWith('https://')) : bitmapa));
+            : (pm ? oramujPremium(bitmapa, soubor.startsWith('https://'), 448) : bitmapa));
         mapa.addImage(id, data, { pixelRatio: 2 });
       }
       bitmapa.close();
@@ -9544,7 +9548,7 @@ function mistaViditelna() {
 /// proti 59 % u ✅).
 const IKONA_ODZNAKU = 'emoji|✅|#2E7D5B';
 // engine 290 (kolo C): odznak „i" u popsaného místa, „%" u nabídky podniku
-const IKONA_ODZNAKU_INFO = 'emoji|i|#1E5AA8';
+const IKONA_ODZNAKU_INFO = 'emoji|ℹ️|#1E5AA8';   // engine 291: písmeno i bylo nečitelné
 const IKONA_ODZNAKU_NABIDKA = 'emoji|%|#B8860B';
 let idNabidkyNavstevy = null;
 /// Poslední GeoJSON míst — `zdroj._data` NENÍ použitelný: MapLibre v6
