@@ -6640,21 +6640,9 @@ let snimekBezi = false;
 async function snimekTrasy(cfg) {
   if (!mapa || !cfg || !Array.isArray(cfg.body) || !cfg.body.length) return null;
   snimekBezi = true;
-  // engine 287 („při sdílení ať jsou skryté všechny zapnuté filtry, vidět má být
-  // jen sdílená událost"): po dobu snímku schovat místa z filtrů, mé body, erby,
-  // přátele, ostatní výpravy, stopu dne i Dobyvatele; trasu kreslí snímek sám
-  const SKRYT_PRI_SNIMKU = ['okolnik-mista-', 'okolnik-moje-', 'okolnik-navsteva',
-    'erby-vrstva', 'okolnik-pratele-', 'okolnik-vypravy-', 'okolnik-vyprava-ted-',
-    'okolnik-stopa-dne-', 'dob-', 'hrac-zare', 'ink-ilustrace-odznaky', 'nav-'];   // engine 288: + navigace
-  const schovane = [];
-  try {
-    for (const v of (mapa.getStyle().layers || [])) {
-      if (!SKRYT_PRI_SNIMKU.some((pref) => v.id.startsWith(pref))) continue;
-      if ((v.layout && v.layout.visibility) === 'none') continue;
-      mapa.setLayoutProperty(v.id, 'visibility', 'none');
-      schovane.push(v.id);
-    }
-  } catch (e) { /* styl v přestavbě */ }
+  // engine 289 (uživatel 11. 9.: „ať si každý vypne filtry podle svého a pak sdílí,
+  // erby tam vidět chci"): snímek ukazuje mapu tak, jak je nastavená – žádné
+  // skrývání vrstev (287 to schovávalo; appka na to jen upozorní)
   const puv = { styl: aktualniKod, center: mapa.getCenter(), zoom: mapa.getZoom(),
                 pitch: mapa.getPitch(), bearing: mapa.getBearing() };
   const cekej = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -6796,9 +6784,6 @@ async function snimekTrasy(cfg) {
     return null;
   } finally {
     snimekBezi = false;
-    for (const id of schovane) {
-      try { if (mapa.getLayer(id)) mapa.setLayoutProperty(id, 'visibility', 'visible'); } catch (e) { /* nic */ }
-    }
     try {
       for (const id of [ZDROJ, ZDROJ + '-lem']) if (mapa.getLayer(id)) mapa.removeLayer(id);
       if (mapa.getSource(ZDROJ)) mapa.removeSource(ZDROJ);
