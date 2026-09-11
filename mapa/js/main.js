@@ -810,6 +810,7 @@ mapa.on('error', (e) => {
     nasadPametSnimku();   // BV/RI keš nepotřebuje terén — i pro neherní styly
     nasadSkrticPrijmu();  // příjem dlaždic ≤1/snímek (v1.422)
     nasadPametPokryti();  // engine 301: coveringTiles jednou za průchod
+    TexturaGesta.nasad();  // engine 302: RTT 512 při dotyku
     // ⭐ v1.380: doplňky TRVALE na každý style.load. `once('style.load')`
     // z prepniStyl se při rychlém přepínání stylů navzájem sežraly (dvě
     // registrace vystřelí na prvním loadu, druhý styl zůstane bez
@@ -6222,6 +6223,101 @@ function nasadPametPokryti() {
     console.log('[výkon] paměť pokrývajících dlaždic nasazena');
   } catch (e) { console.warn('[výkon] paměť pokrytí', e); }
 }
+
+
+// =============================================================================
+// ⭐ engine 302 (krok 5 opatrného návratu): TEXTURA TERÉNU 512 PŘI DOTYKU.
+// Se zapnutým terénem kreslí MapLibre všech ~62 drapovaných vrstev do textury
+// každé dlaždice terénu (`rttSize`, u nás 1024²). Při gestu vstupují nové
+// dlaždice terénu do záběru a každá se staví celá – změřeno 11. 9. (Bořislav,
+// štípnutí z15,4 → 19): drapování 5,8 ms na snímek, největší položka kreslení,
+// dlouhých snímků 37 %. Dokud je prst na mapě, nové textury vznikají v 512²
+// (čtvrtina pixelů, 1 MB místo 4 MB); hotové 1024² zůstávají. Po zvednutí
+// prstu a `idle` se `rttSize` vrátí na 1024 a dlaždice s 512 se přestaví
+// JEDNA NA SNÍMEK (ne `releaseAllRTT` – to by přestavělo všechny naráz).
+// ⛔ Bez držení dlaždic a bez zmrazení popisků (296: držení dělalo holé
+// dlaždice bez krajiny při tahu). Vypínač pro A/B: `TexturaGesta.vypni()`.
+// =============================================================================
+const TexturaGesta = (() => {
+  const RTT_GESTO = 512, RTT_KLID = 1024;
+  let aktivni = true, prstDole = false, obnovaRaf = 0, nasazeno = false;
+  const stat = { gest: 0, obnoveno: 0 };
+  function rtt() { try { return mapa && mapa.painter && mapa.painter.renderToTexture; } catch (e) { return null; } }
+  function zacni() {
+    prstDole = true; stat.gest++;
+    if (obnovaRaf) { cancelAnimationFrame(obnovaRaf); obnovaRaf = 0; }
+    if (!aktivni) return;
+    const r = rtt(); if (r && r.rttSize !== RTT_GESTO) r.rttSize = RTT_GESTO;
+  }
+  function konci() { prstDole = false; }
+  function obnov() {
+    if (prstDole || obnovaRaf) return;
+    const r = rtt(); if (!r) return;
+    if (r.rttSize !== RTT_KLID) r.rttSize = RTT_KLID;
+    const krok = () => {
+      obnovaRaf = 0;
+      if (prstDole) return;
+      try {
+        const tm = mapa.terrain && mapa.terrain.tileManager;
+        if (!tm) return;
+        let dl = null;
+        for (const t of tm.getRenderableTiles()) {
+          if (t && t.rttObjects && t.rttObjects.some((o) => o && o.size === RTT_GESTO)) { dl = t; break; }
+        }
+        if (!dl) return;
+        dl.releaseRTT(mapa.painter);
+        stat.obnoveno++;
+        mapa.triggerRepaint();
+      } catch (e) { return; }
+      obnovaRaf = requestAnimationFrame(krok);
+    };
+    obnovaRaf = requestAnimationFrame(krok);
+  }
+  return {
+    zapni() { aktivni = true; },
+    vypni() { aktivni = false; const r = rtt(); if (r) r.rttSize = RTT_KLID; },
+    stat,
+    nasad() {
+      if (nasazeno || !mapa) return;
+      nasazeno = true;
+      const platno = mapa.getCanvasContainer();
+      platno.addEventListener('touchstart', () => { if (!prstDole) zacni(); }, { passive: true });
+      const konec = (e) => { if (!(e.touches && e.touches.length)) konci(); };
+      platno.addEventListener('touchend', konec, { passive: true });
+      platno.addEventListener('touchcancel', konec, { passive: true });
+      mapa.on('idle', () => { if (!prstDole) obnov(); });
+      // ⛔⛔ PŘÍČINA BÍLÝCH DLAŽDIC (296 i první 302, 11. 9. večer): MapLibre 6
+      // zakládá textury terénu s NEMĚNNOU velikostí (`texStorage2D`), ale
+      // `painter.acquireRTT` vezme z recyklačního bazénku objekt JINÉ
+      // velikosti a zkusí ho přealokovat přes `texImage2D` – na neměnné
+      // textuře je to INVALID_OPERATION, velikost zůstane stará a drapování
+      // do ní jde špatně → bílá. Obal: z bazénku jen objekt STEJNÉ velikosti,
+      // jinak nový (originál se zavolá s prázdným bazénkem). Bazének držet
+      // pod 60 kusy (starší odlišné velikosti zahodit).
+      try {
+        const K = Object.getPrototypeOf(mapa.painter);
+        if (typeof K.acquireRTT === 'function' && !K.__rttVelikost) {
+          const puv = K.acquireRTT;
+          K.acquireRTT = function (vel) {
+            const bazen = this._rttObjectRecyclePool;
+            if (Array.isArray(bazen) && bazen.length) {
+              for (let i = bazen.length - 1; i >= 0; i--) {
+                if (bazen[i] && bazen[i].size === vel) return bazen.splice(i, 1)[0];
+              }
+              while (bazen.length > 60) { const o = bazen.shift(); try { o.texture.destroy(); } catch (e) { /* nic */ } }
+              const zaloha = bazen.splice(0, bazen.length);
+              try { return puv.call(this, vel); } finally { bazen.push(...zaloha); }
+            }
+            return puv.call(this, vel);
+          };
+          K.__rttVelikost = true;
+        }
+      } catch (e) { console.warn('[gesto] acquireRTT', e); }
+      console.log('[gesto] textura terénu při dotyku ' + RTT_GESTO + ', v klidu ' + RTT_KLID);
+    },
+  };
+})();
+window.TexturaGesta = TexturaGesta;
 
 let skrticNasazen = false;
 function nasadSkrticPrijmu() {
