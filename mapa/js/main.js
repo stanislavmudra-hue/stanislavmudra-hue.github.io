@@ -8919,6 +8919,38 @@ function sZanikemMist(vyraz) {
   return vyraz;
 }
 
+/// engine 290 (kolo C): obrázek propagovaného podniku – zlatý prstenec kolem
+/// ikony (contain) nebo kolem fotky/loga oříznutého do kruhu (cover).
+function oramujPremium(src, foto) {
+  if (src instanceof ImageData) {
+    const t = document.createElement('canvas');
+    t.width = src.width; t.height = src.height;
+    t.getContext('2d').putImageData(src, 0, 0);
+    src = t;
+  }
+  const w = src.width, h = src.height;
+  const s = Math.round(Math.max(w, h) * 1.18);
+  const c = document.createElement('canvas');
+  c.width = s; c.height = s;
+  const x = c.getContext('2d');
+  const r = s / 2;
+  if (foto) {
+    x.save();
+    x.beginPath(); x.arc(r, r, r * 0.86, 0, Math.PI * 2); x.clip();
+    const k = Math.max((s * 0.86) / w, (s * 0.86) / h);
+    x.drawImage(src, r - w * k / 2, r - h * k / 2, w * k, h * k);
+    x.restore();
+  } else {
+    const k = Math.min((s * 0.84) / w, (s * 0.84) / h);
+    x.drawImage(src, r - w * k / 2, r - h * k / 2, w * k, h * k);
+  }
+  x.lineWidth = Math.max(4, s * 0.045); x.strokeStyle = '#D4A017';
+  x.beginPath(); x.arc(r, r, r * 0.93, 0, Math.PI * 2); x.stroke();
+  x.lineWidth = Math.max(2, s * 0.015); x.strokeStyle = '#FFF3C4';
+  x.beginPath(); x.arc(r, r, r * 0.905, 0, Math.PI * 2); x.stroke();
+  return x.getImageData(0, 0, s, s);
+}
+
 function zajistiIkonu(id) {
   if (typeof id !== 'string') return Promise.resolve(false);
   // bubliny 2D značek se kreslí hned, bez fetch
@@ -8930,8 +8962,11 @@ function zajistiIkonu(id) {
       // režimu ji dostávají neobjevená místa kategorií bez malované
       // kresby (dřív tečka). Šedivka přes malý canvas (300 px) je levná;
       // ctx.filter je zakázaný jen na VELKÉ plochy (viz mlha).
-      const bw = id.endsWith('#bw');
-      let data = nakresliZnacku(bw ? id.slice(0, -3) : id);
+      const pmB = id.endsWith('#pm');                 // engine 290: zlatý prstenec
+      const zakladB = pmB ? id.slice(0, -3) : id;
+      const bw = zakladB.endsWith('#bw');
+      let data = nakresliZnacku(bw ? zakladB.slice(0, -3) : zakladB);
+      if (pmB) data = oramujPremium(data, false);
       if (bw) {
         const a = document.createElement('canvas');
         a.width = data.width; a.height = data.height;
@@ -8950,7 +8985,10 @@ function zajistiIkonu(id) {
       return Promise.resolve(false);
     }
   }
-  if (!id.startsWith('/assets/')) {
+  // engine 290: `#pm` = zlatý prstenec (propagovaný podnik), `https://` = logo
+  // (první oficiální fotka z live.json, jen z raw.githubusercontent.com)
+  const zakladPm = id.endsWith('#pm') ? id.slice(0, -3) : id;
+  if (!zakladPm.startsWith('/assets/') && !zakladPm.startsWith('https://')) {
     return Promise.resolve(false);
   }
   if (!mapa) return Promise.resolve(false);
@@ -8968,8 +9006,9 @@ function zajistiIkonu(id) {
       // Ilustrace.stin), může být i za '#bw' ('…webp#bw#stin')
       const stin = id.endsWith('#stin');
       const zakladId = stin ? id.slice(0, -5) : id;
+      const pm = zakladId.endsWith('#pm');
       const bw = zakladId.endsWith('#bw');
-      const soubor = bw ? zakladId.slice(0, -3) : zakladId;
+      const soubor = (bw || pm) ? zakladId.slice(0, -3) : zakladId;
       const odpoved = await fetch(soubor);
       if (!odpoved.ok) throw new Error('HTTP ' + odpoved.status);
       let bitmapa = await createImageBitmap(await odpoved.blob());
@@ -8989,7 +9028,8 @@ function zajistiIkonu(id) {
       // kresby jsou ~320–450 px; pixelRatio 2 → rozumný základ v CSS px
       if (!mapa.hasImage(id)) {
         const data = stin ? Ilustrace.stin(bitmapa)
-          : (bw ? odbarvi(bitmapa) : bitmapa);
+          : (bw ? odbarvi(bitmapa)
+            : (pm ? oramujPremium(bitmapa, soubor.startsWith('https://')) : bitmapa));
         mapa.addImage(id, data, { pixelRatio: 2 });
       }
       bitmapa.close();
@@ -9503,6 +9543,9 @@ function mistaViditelna() {
 /// bublina vyjde prázdná (změřeno: 0 % tmavých pixelů uprostřed
 /// proti 59 % u ✅).
 const IKONA_ODZNAKU = 'emoji|✅|#2E7D5B';
+// engine 290 (kolo C): odznak „i" u popsaného místa, „%" u nabídky podniku
+const IKONA_ODZNAKU_INFO = 'emoji|i|#1E5AA8';
+const IKONA_ODZNAKU_NABIDKA = 'emoji|%|#B8860B';
 let idNabidkyNavstevy = null;
 /// Poslední GeoJSON míst — `zdroj._data` NENÍ použitelný: MapLibre v6
 /// tam drží obal `{geojson: …}`, ne kolekci, takže `setData(zdroj._data)`
@@ -9528,6 +9571,30 @@ function nasadOdznakNavstevy() {
     return;
   }
   nasadOdznakNavstevy._pokusu = 0;
+  if (!mapa.getLayer('okolnik-mista-odznak-info')) {
+    try {
+      zajistiIkonu(IKONA_ODZNAKU_INFO);
+      zajistiIkonu(IKONA_ODZNAKU_NABIDKA);
+      mapa.addLayer({
+        id: 'okolnik-mista-odznak-info',
+        type: 'symbol',
+        source: 'okolnik-mista',
+        filter: ['all', ['!', ['has', 'point_count']], ['any', ['has', 'pp'], ['has', 'nb']]],
+        layout: {
+          'icon-image': ['case', ['has', 'nb'], IKONA_ODZNAKU_NABIDKA, IKONA_ODZNAKU_INFO],
+          'icon-size': 0.16,
+          'icon-anchor': 'center',
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+        paint: {
+          'icon-translate': [-20, -34],   // levý horní roh (návštěva má pravý)
+          'icon-translate-anchor': 'viewport',
+          'icon-opacity': ['case', ['boolean', ['feature-state', 'skryt'], false], 0, 1],
+        },
+      });
+    } catch (e) { console.warn('[most] odznak info', e); }
+  }
   if (!mapa.getLayer('okolnik-navsteva-odznak')) {
     nasadOdznakNavstevy._posl = null;            // engine 264: nová vrstva → filtr nastavit
     mapa.addLayer({
@@ -9764,7 +9831,7 @@ function vykresliMista() {
   // zdroje smaže → getSource je null → projde se dál i se stejným podpisem.
   const podpisMist = vsechna.map((m) => m.id + '' + (m.ik || '')
       + '' + (m.b || '') + '' + (m.nav ? 1 : 0)
-      + '' + (m.t || '')).join('');
+      + '' + (m.t || '') + (m.pm ? 'P' : '') + (m.pp ? 'I' : '') + (m.nb || '') + (m.lg || '')).join('');
   if (mapa.getSource('okolnik-mista') && mapa.getSource('okolnik-moje')
       && podpisMist === vykresliMista._podpis) return;
   vykresliMista._podpis = podpisMist;
@@ -9830,8 +9897,14 @@ function vykresliMista() {
                 // OBLÍBENÁ (v1.247): zlatá hvězda musí být k nalezení –
                 // kreslí se větší než běžné bubliny (viz icon-size)
                 ...(String(m.id).startsWith('fav:') ? { fv: 1 } : {}),
-                // nenavštívené kreslíme odbarveně (viz odbarvi)
-                ik: m.nav ? m.ik : m.ik + '#bw' }
+                // engine 290 (kolo C): popsané / propagované / nabídka / logo
+                ...(m.pp ? { pp: 1 } : {}),
+                ...(m.pm ? { pm: 1 } : {}),
+                ...(m.nb ? { nb: m.nb } : {}),
+                ...(m.lg ? { lg: m.lg } : {}),
+                // nenavštívené kreslíme odbarveně (viz odbarvi); propagovaný
+                // podnik vždy barevně se zlatým prstencem, logo místo ikony
+                ik: m.pm ? (m.lg || m.ik) + '#pm' : (m.nav ? m.ik : m.ik + '#bw') }
             : { id: m.id, b: m.b || '#E07B39', ...stitek },
         geometry: { type: 'Point', coordinates: [m.lng, m.lat] },
       };
@@ -9845,8 +9918,12 @@ function vykresliMista() {
   // první vykreslení nepřeskakovalo; co chybí, doplní odložený průchod.
   // Řazení (největší první = obrázek shluku) až PO doplnění.
   doplnVelikostiMist(gj);
-  featury.sort((a, b) =>
-    ((a.properties && a.properties.srt) || 0) - ((b.properties && b.properties.srt) || 0));
+  featury.sort((a, b) => {
+    const pa = a.properties || {}, pb = b.properties || {};
+    // engine 290: propagované → popsané → priorita appky (shluk bere prvního)
+    return ((pb.pm ? 1 : 0) - (pa.pm ? 1 : 0)) || ((pb.pp ? 1 : 0) - (pa.pp ? 1 : 0))
+      || ((pa.srt || 0) - (pb.srt || 0));
+  });
   rozestupStejnychMist(featury);
   posledniMistaGj = gj;
   naplanujVelikostiMist();
@@ -9908,6 +9985,7 @@ function vykresliMista() {
       // engine 282: jméno NEJDŮLEŽITĚJŠÍHO člena → stužka i u shluku („stužky
       // u menších míst se téměř neukazují" – pod z16,5 byla místa ve shlucích beze jmen)
       tH: [['coalesce', ['accumulated'], ['get', 'tH']], ['get', 't']],
+      pmH: ['max', ['case', ['has', 'pm'], 1, 0]],   // engine 290: shluk s propagovaným
     },
   });
   // ⭐ v1.555: VYBLEDLÉ MÍSTO = KOMUNITA HLÁSÍ ZÁNIK.
@@ -10092,7 +10170,11 @@ function vykresliMista() {
         filter: ['all', ['any', ['has', 't'], ['has', 'tH']],
                  ['any', ['has', 'ik'], ['has', 'ikH']]],
         layout: {
-          'icon-image': 'ilus-stuha',
+          // engine 290 (kolo C): zlatá stuha propagovaného podniku (i shluku s ním)
+          'icon-image': ['case', ['any', ['has', 'pm'], ['==', ['coalesce', ['get', 'pmH'], 0], 1]],
+                         'ilus-stuha-zlata', 'ilus-stuha'],
+          'symbol-sort-key': ['case', ['any', ['has', 'pm'], ['==', ['coalesce', ['get', 'pmH'], 0], 1]], 0,
+                              ['has', 'pp'], 1, 2],
           // ⚠️ `width`, NE `both` — stuha roste jen do šířky. Svislé
           // natahování rozmazalo její horní okraj (viz `addImage`
           // v ilustrace.js). Výška zůstává původní, takže se text NESMÍ

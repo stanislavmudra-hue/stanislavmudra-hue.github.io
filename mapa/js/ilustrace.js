@@ -490,6 +490,22 @@ const Ilustrace = (() => {
             stretchX: [[135, 165]],
             content: [40, 3, 260, 34],
           });
+          // engine 290 (kolo C): zlatá stuha propagovaného podniku – tatáž
+          // kresba přebarvená do zlata (source-atop), stejné natahování
+          try {
+            const zc = document.createElement('canvas');
+            zc.width = b.width; zc.height = b.height;
+            const zx = zc.getContext('2d');
+            zx.drawImage(b, 0, 0);
+            zx.globalCompositeOperation = 'source-atop';
+            zx.fillStyle = 'rgba(214,160,20,0.55)';
+            zx.fillRect(0, 0, zc.width, zc.height);
+            if (!mapa.hasImage('ilus-stuha-zlata')) {
+              mapa.addImage('ilus-stuha-zlata', zx.getImageData(0, 0, zc.width, zc.height), {
+                pixelRatio: 2, stretchX: [[135, 165]], content: [40, 3, 260, 34],
+              });
+            }
+          } catch (e) { console.warn('[Ilustrace] zlatá stuha', e); }
         }
         b.close();
         stuhaNactena = true;
