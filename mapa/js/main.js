@@ -6645,7 +6645,7 @@ async function snimekTrasy(cfg) {
   // přátele, ostatní výpravy, stopu dne i Dobyvatele; trasu kreslí snímek sám
   const SKRYT_PRI_SNIMKU = ['okolnik-mista-', 'okolnik-moje-', 'okolnik-navsteva',
     'erby-vrstva', 'okolnik-pratele-', 'okolnik-vypravy-', 'okolnik-vyprava-ted-',
-    'okolnik-stopa-dne-', 'dob-', 'hrac-zare', 'ink-ilustrace-odznaky'];
+    'okolnik-stopa-dne-', 'dob-', 'hrac-zare', 'ink-ilustrace-odznaky', 'nav-'];   // engine 288: + navigace
   const schovane = [];
   try {
     for (const v of (mapa.getStyle().layers || [])) {
