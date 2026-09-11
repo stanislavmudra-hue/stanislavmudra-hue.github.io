@@ -5930,7 +5930,10 @@ function nasadSipkuKUzivateli() {
   // pohybu mapy, po příchodu polohy (`window.__sipkaTik`) a pojistně 2×/s
   // (zápis stejné hodnoty transformu překreslení nevyvolá).
   window.__sipkaTik = tik;
-  mapa.on('move', tik);
+  // engine 299 (krok 2): při tahu chodí `move` každý snímek – šipka na kraji
+  // stačí 20×/s (0,58 ms/snímek pryč); `moveend` a časovač 2×/s dorovnají
+  let poslMove = 0;
+  mapa.on('move', () => { const t = performance.now(); if (t - poslMove < 50) return; poslMove = t; tik(); });
   mapa.on('moveend', tik);
   mapa.on('resize', tik);
   setInterval(tik, 500);
@@ -7220,7 +7223,10 @@ function nasadSipkuKCili() {
   // engine 294: bez rAF (jako modrá šipka v engine 292) – pohyb mapy, změna
   // cíle přes `obnovSipkuCile` a pojistka 2×/s
   window.__sipkaCilTik = tik;
-  mapa.on('move', tik);
+  // engine 299 (krok 2): při tahu chodí `move` každý snímek – šipka na kraji
+  // stačí 20×/s (0,58 ms/snímek pryč); `moveend` a časovač 2×/s dorovnají
+  let poslMove = 0;
+  mapa.on('move', () => { const t = performance.now(); if (t - poslMove < 50) return; poslMove = t; tik(); });
   mapa.on('moveend', tik);
   mapa.on('resize', tik);
   setInterval(tik, 500);
