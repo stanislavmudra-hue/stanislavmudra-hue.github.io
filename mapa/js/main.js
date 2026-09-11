@@ -809,6 +809,7 @@ mapa.on('error', (e) => {
     nasadSipkuKUzivateli();   // šipka bez mostu, každý snímek (v1.417)
     nasadPametSnimku();   // BV/RI keš nepotřebuje terén — i pro neherní styly
     nasadSkrticPrijmu();  // příjem dlaždic ≤1/snímek (v1.422)
+    nasadPametPokryti();  // engine 301: coveringTiles jednou za průchod
     // ⭐ v1.380: doplňky TRVALE na každý style.load. `once('style.load')`
     // z prepniStyl se při rychlém přepínání stylů navzájem sežraly (dvě
     // registrace vystřelí na prvním loadu, druhý styl zůstane bez
@@ -6174,6 +6175,52 @@ function nasadStatickouAtribuci() {
   mapa.on('styledata', () => { clearTimeout(t); t = setTimeout(obnov, 300); });
   mapa.on('style.load', obnov);
   obnov();
+}
+
+
+// ⭐ engine 301 (krok 4 opatrného návratu): PAMĚŤ POKRÝVAJÍCÍCH DLAŽDIC NA JEDEN
+// PRŮCHOD. Profil gest 11. 9.: `coveringTiles` (v bundlu `Fa`) 8 % hlavního
+// vlákna – v každém snímku pohybu se volá zvlášť pro každý z 29 zdrojů, ačkoli
+// zdroje se stejnými parametry (tileSize, min/max zoom, roundZoom,
+// reparseOverscaled, terén) dostanou TOTOŽNÝ výsledek. Záplata bundlu
+// (`n=Fa(e,{…})` → `__ktMemo(e,Fa,o)`) vrací v témže průchodu `_updateSources`
+// hotové pole (kopii). Memo žije JEN uvnitř obalu `_updateSources` (razítko +
+// `__ktAktivni`), jinak se počítá čerstvě. Změřeno A,B,B,A (teplý telefon):
+// průměr snímku 20,6 → 19,9 ms, snímků > 33 ms −12 %, 44 % volání ušetřeno.
+// ⚠️ Při přechodu na MapLibre 6.9 přidat do klíče `o.maxContentElevation`.
+globalThis.__ktRazitko = 0;
+globalThis.__ktAktivni = false;
+globalThis.__ktMemo = (() => {
+  let razitko = -1; const kes = new Map();
+  return (tr, fn, o) => {
+    try {
+      if (!globalThis.__ktAktivni || !o || typeof o.calculateTileZoom === 'function') return fn(tr, o);
+      if (razitko !== globalThis.__ktRazitko) { razitko = globalThis.__ktRazitko; kes.clear(); }
+      const k = o.tileSize + '|' + o.minzoom + '|' + o.maxzoom + '|' + (o.roundZoom ? 1 : 0)
+          + '|' + (o.reparseOverscaled ? 1 : 0) + '|' + (o.terrain ? 1 : 0);
+      // ⚠️ KAŽDÝ zdroj dostane KLONY id: správce terénu si do objektů id zapisuje
+      // matici (`terrainRttPosMatrix32f`) a sdílené objekty mezi zdroji dělaly
+      // při rychlém tahu holé pruhy (engine 301, snímek uprostřed tahu)
+      const klon = (pole) => pole.map((id) => (id && typeof id.clone === 'function') ? id.clone() : id);
+      const v = kes.get(k);
+      if (v !== undefined) return klon(v);
+      const n = fn(tr, o); kes.set(k, n); return klon(n);
+    } catch (e) { return fn(tr, o); }
+  };
+})();
+function nasadPametPokryti() {
+  try {
+    const S = Object.getPrototypeOf(mapa.style);
+    if (!S || typeof S._updateSources !== 'function' || S.__ktObal) return;
+    const puvUS = S._updateSources;
+    S._updateSources = function (e) {
+      globalThis.__ktRazitko = (globalThis.__ktRazitko | 0) + 1;
+      globalThis.__ktAktivni = true;
+      try { return puvUS.call(this, e); } finally { globalThis.__ktAktivni = false; }
+    };
+    S.__ktObal = true;
+    console.log('[výkon] paměť pokrývajících dlaždic nasazena');
+  } catch (e) { console.warn('[výkon] paměť pokrytí', e); }
 }
 
 let skrticNasazen = false;

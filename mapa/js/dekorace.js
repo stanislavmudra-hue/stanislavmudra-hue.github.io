@@ -1106,6 +1106,13 @@ const Dekorace = (() => {
     el.__typ = typ;
     return el;
   }
+  const HMYZ_DEN_OD_Z = 16;
+  /// engine 301: denní hmyz bez podlahy velikosti – 0,20 na z16 (9 px, menší
+  /// než dům) → 0,60 na z19 (26 px); dřív podlaha 0,72 = 32 px i z dálky
+  function velikostHmyzuDen() {
+    const z = Math.max(HMYZ_DEN_OD_Z, Math.min(19, mapa.getZoom()));
+    return 0.20 + (z - HMYZ_DEN_OD_Z) / 3 * 0.40;
+  }
   function velikostMusky() {
     const z = Math.max(13.2, Math.min(17.6, mapa.getZoom()));
     // exp 1,6 mezi 13,2→0,27 a 17,6→1,0 (44 px prvek)
@@ -1194,6 +1201,10 @@ const Dekorace = (() => {
   function rojSvetlusek(rezim) {
     rojSvetlusek._tik = (rojSvetlusek._tik || 0) + 1;
     if (mapa.getZoom() < 13.2) rezim = null;   // jako mívala vrstva
+    // ⭐ engine 301 (přání 11. 9. večer: „včelky a mouchy ať se ukazují až při
+    // přiblížení, z dálky vypadají velké jako domy"): denní hmyz až od z16;
+    // světlušky, můry, netopýři a vločky zůstávají od z13,2
+    if ((rezim === 'den' || rezim === 'podzimden') && mapa.getZoom() < HMYZ_DEN_OD_Z) rezim = null;
     if (rojSvetlusek._rezim !== rezim) {
       rojSvetlusek._rezim = rezim;
       zrusRoj();           // jiný vzhled prvků — bazének postavit znovu
@@ -1357,6 +1368,7 @@ const Dekorace = (() => {
       }
     }
     const meritko = velikostMusky();
+    const meritkoDen = velikostHmyzuDen();   // engine 301
     // ⭐⭐ v1.429.3: STABILNÍ PÁR muška↔div (m.el). Dřív se párovalo
     // INDEXEM filtrovaného pole — pohasnutí jediné mušky posunulo
     // indexy a všechny divy za ní skočily na cizí místa
@@ -1429,8 +1441,10 @@ const Dekorace = (() => {
       // a uživatel hlásí, že „zmizela“. Světluška si vystačí s málem,
       // protože svítí.
       const podlaha = m.typ === 'vcela' ? 0.72 : 0.6;
+      const denniTyp = m.typ === 'vcela' || m.typ === 'moucha'
+          || m.typ === 'babileto' || m.typ === 'list';
       const mer = m.typ === 'svetluska'
-          ? meritko : Math.max(podlaha, meritko) * 0.95;
+          ? meritko : (denniTyp ? meritkoDen : Math.max(podlaha, meritko) * 0.95);
       // včela se natáčí po směru letu (SVG má hlavu nahoře)
       const otoceni = m.typ === 'vcela'
           ? ' rotate(' + ((m.smer * 180 / Math.PI + 90) % 360).toFixed(0)
