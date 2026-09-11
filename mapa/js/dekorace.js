@@ -2083,11 +2083,33 @@ const Dekorace = (() => {
     } catch (e) { return null; }
   }
 
+  // ⭐ engine 296: PO DÁVKÁCH. `dopln()` na `moveend` stálo 23–55 ms v jednom
+  // snímku (změřeno po posluchačích 11. 9.) – při sledování hráče přijde
+  // moveend s každým fixem, takže záškub každé 2 s. Jádro je generátor,
+  // hnací smyčka odbaví ≤ 4 ms na snímek; při prstu na mapě čeká; nový
+  // `dopln()` rozpracovaný průchod zruší a začne znovu (keš buněk zůstává).
+  let doplnBeh = null;
   function dopln() {
-    const t0 = performance.now();
-    try { doplnJadro(); } finally { zapisCas('dopln', performance.now() - t0); }
+    if (doplnBeh) doplnBeh.zrus = true;
+    const beh = { zrus: false, it: null, ms: 0 };
+    doplnBeh = beh;
+    try { beh.it = doplnJadro(); } catch (e) { console.warn('[dekorace] dopln', e); doplnBeh = null; return; }
+    const krok = () => {
+      if (beh.zrus) return;
+      if (typeof RezimGesta !== 'undefined' && RezimGesta.prstDole()) { requestAnimationFrame(krok); return; }
+      const t0 = performance.now();
+      let hotovo = false;
+      try {
+        while (performance.now() - t0 < 4) { const r = beh.it.next(); if (r.done) { hotovo = true; break; } }
+      } catch (e) { console.warn('[dekorace] dopln krok', e); hotovo = true; }
+      beh.ms += performance.now() - t0;
+      if (hotovo) { zapisCas('dopln', beh.ms); if (doplnBeh === beh) doplnBeh = null; return; }
+      requestAnimationFrame(krok);
+    };
+    krok();
   }
-  function doplnJadro() {
+  function* doplnJadro() {
+    let bunekOdYield = 0;
     if (!mapa || !ikonyHotove) return;   // malby se ještě stahují
     const z = mapa.getZoom();
     // ⚠️ MUSÍ SEDĚT S NEJNIŽŠÍM `z0` V `DRUHY` (stromy 13,25 = 54 %
@@ -2132,6 +2154,7 @@ const Dekorace = (() => {
         const ix0 = Math.floor((zapad - rw) / dLon);
         const ix1 = Math.ceil((vychod + rw) / dLon);
         for (let ix = ix0; ix <= ix1; ix++) {
+          if ((++bunekOdYield & 127) === 0) yield;   // engine 296: dávky
           if (hrube && (ix & 1)) continue;
           const klic = druh + ':' + iy + ':' + ix;
           if (bunky.has(klic)) continue;
@@ -2266,6 +2289,7 @@ const Dekorace = (() => {
       }
     }
 
+    yield;   // engine 296: přesné dekorace, prořez a setData v dalším snímku
     // přesné dekorace ze ZABAGED a prořez střech/silnic (5. 9. noc)
     try {
       // engine 202: jen 1., 3. a 5. průchod po zastavení (procházení alejí

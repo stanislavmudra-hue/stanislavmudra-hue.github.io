@@ -596,9 +596,14 @@ async function start() {
     // ⚠️ POUČENÍ: „změřeno = zanedbatelné" platí jen pro tu scénu, na
     // které se měřilo. Při každém zahuštění symbolů tohle přeměřit.
     fadeDuration: 300,  // symboly se rozmisťují inkrementálně (viz výš)
-    attributionControl: { compact: true },
+    // ⭐ engine 296: v appce BEZ AttributionControl MapLibre – ten si na KAŽDÝ
+    // `move` volá `_updateData` → `map.loaded()` přes všech 29 zdrojů (změřeno
+    // 0,44 ms na snímek při tahu). Text atribuce se mění jen s výměnou stylu:
+    // vlastní statické ⓘ se stejnými třídami, viz `nasadStatickouAtribuci`.
+    attributionControl: APP_REZIM ? false : { compact: true },
   });
   window.mapa = mapa;   // ladění
+  if (APP_REZIM) { try { nasadStatickouAtribuci(); } catch (e) { console.warn('[atribuce]', e); } }
   zapniDynamickeRozliseni();
   // ⏱ RAZÍTKA STARTU (jen čísla, nic nekreslí) — bez nich se o pořadí
   // „styl → první snímek → mlha" jen hádá. Čte se přes CDP.
@@ -803,6 +808,7 @@ mapa.on('error', (e) => {
     nasadSipkuKUzivateli();   // šipka bez mostu, každý snímek (v1.417)
     nasadPametSnimku();   // BV/RI keš nepotřebuje terén — i pro neherní styly
     nasadSkrticPrijmu();  // příjem dlaždic ≤1/snímek (v1.422)
+    nasadRezimGesta();    // engine 296: fronta dlaždic, RTT 512, popisky při dotyku
     // ⭐ v1.380: doplňky TRVALE na každý style.load. `once('style.load')`
     // z prepniStyl se při rychlém přepínání stylů navzájem sežraly (dvě
     // registrace vystřelí na prvním loadu, druhý styl zůstane bez
@@ -5924,7 +5930,9 @@ function nasadSipkuKUzivateli() {
   // pohybu mapy, po příchodu polohy (`window.__sipkaTik`) a pojistně 2×/s
   // (zápis stejné hodnoty transformu překreslení nevyvolá).
   window.__sipkaTik = tik;
-  mapa.on('move', tik);
+  // engine 296: při tahu chodí `move` každý snímek – šipka na kraji stačí 20×/s
+  let poslMove = 0;
+  mapa.on('move', () => { const t = performance.now(); if (t - poslMove < 50) return; poslMove = t; tik(); });
   mapa.on('moveend', tik);
   mapa.on('resize', tik);
   setInterval(tik, 500);
@@ -6122,6 +6130,201 @@ function nasadPlynulouVysku() { /* vypnuto — viz komentář výš */ }
 // a odbavuje SE JEDNO NA SNÍMEK. Chyby jdou hned (stav dlaždice
 // se nesmí zaseknout). Platí pro vektorové zdroje (omt, kontury);
 // geojson/DEM mají jiné třídy a nechávají se být.
+
+// =============================================================================
+// ⭐ engine 296: REŽIM GESTA (11. 9. 2026). Změřeno po snímcích: dlouhé snímky
+// při tahu (12–15 % snímků, průměr 60 ms) dělá příchod nových dlaždic –
+// stavba bucketů, přemalování textur terénu pro 62 drapovaných vrstev a plné
+// rozmístění 35 symbolových vrstev v JEDNOM snímku. Dokud je prst na mapě:
+//   a) hotové vektorové dlaždice čekají ve frontě škrtiče (viz `odbav`),
+//   b) nově stavěné textury terénu mají 512 px místo 1024 (čtvrtina pixelů,
+//      1 MB místo 4 MB na dlaždici; 6. 8. změřeno 512 vs 1024 při z14:
+//      nejhorší snímek 1–2 fps → 13–15 fps),
+//   c) nespouští se NOVÉ rozmístění popisků (`Placement.stillRecent` → true;
+//      popisky drží poslední kolize, max 3 s – pojistka proti ztracenému
+//      touchend). ⛔ NE přeskočit celé `_updatePlacement`: to plní i pole
+//      průhledností čerstvých bucketů; bez něj se buffer založí s délkou 0
+//      a po rozmrazení padá „Length of new data is 59 … current length of 0"
+//      (první build 296, 11. 9.).
+// Po zvednutí prstu jde fronta 1 dlaždice na snímek jako dřív; na `idle` se
+// RTT vrátí na 1024 a dlaždice s texturou 512 se přestaví JEDNA NA SNÍMEK
+// (ne `releaseAllRTT` – to by přestavělo všechny v jednom snímku).
+// Vypínač pro A/B: `RezimGesta.vypni()` / `zapni()` (CDP).
+// =============================================================================
+const RezimGesta = (() => {
+  const RTT_GESTO = 512, RTT_KLID = 1024;
+  const DRZET_MAX_FRONTA = 40, DRZET_MAX_MS = 2500, POPISKY_MAX_MS = 3000;
+  let aktivni = true, prstDole = false, gestoOd = 0, pojistkaTik = 0;
+  let obnovaRaf = 0, nasazeno = false;
+  const stat = { gest: 0, drzenoDlazdic: 0, preskocenoPlacement: 0, obnovenoRtt: 0 };
+
+  function rtt() { try { return mapa && mapa.painter && mapa.painter.renderToTexture; } catch (e) { return null; } }
+  function zacni() {
+    prstDole = true; gestoOd = performance.now(); pojistkaTik = 0; stat.gest++;
+    if (obnovaRaf) { cancelAnimationFrame(obnovaRaf); obnovaRaf = 0; }
+    if (!aktivni) return;
+    const r = rtt(); if (r && r.rttSize !== RTT_GESTO) r.rttSize = RTT_GESTO;
+  }
+  function konci() {
+    prstDole = false;
+    // RTT zpět až na `idle` (fling ještě běží, dlaždice teprve dojíždějí)
+  }
+  function obnovRtt() {
+    if (prstDole || obnovaRaf) return;
+    const r = rtt(); if (!r) return;
+    if (r.rttSize !== RTT_KLID) r.rttSize = RTT_KLID;
+    const krok = () => {
+      obnovaRaf = 0;
+      if (prstDole) return;
+      let dl = null;
+      try {
+        const tm = mapa.terrain && mapa.terrain.tileManager;
+        if (!tm) return;
+        for (const t of tm.getRenderableTiles()) {
+          if (t && t.rttObjects && t.rttObjects.some((o) => o && o.size === RTT_GESTO)) { dl = t; break; }
+        }
+        if (!dl) return;
+        dl.releaseRTT(mapa.painter);
+        stat.obnovenoRtt++;
+        mapa.triggerRepaint();
+      } catch (e) { return; }
+      obnovaRaf = requestAnimationFrame(krok);
+    };
+    obnovaRaf = requestAnimationFrame(krok);
+  }
+  return {
+    zapni() { aktivni = true; },
+    vypni() { aktivni = false; const r = rtt(); if (r) r.rttSize = RTT_KLID; },
+    jeAktivni() { return aktivni; },
+    prstDole() { return prstDole; },
+    stat,
+    /// škrtič se ptá před odbavením každé dlaždice
+    drzetDlazdice(delkaFronty) {
+      if (!aktivni || !prstDole) return false;
+      const pojistka = delkaFronty > DRZET_MAX_FRONTA || performance.now() - gestoOd > DRZET_MAX_MS;
+      if (!pojistka) { stat.drzenoDlazdic++; return true; }
+      return ((++pojistkaTik) % 6) !== 0;
+    },
+    zmrazitPopisky() {
+      if (!aktivni || !prstDole) return false;
+      if (performance.now() - gestoOd > POPISKY_MAX_MS) return false;
+      stat.preskocenoPlacement++;
+      return true;
+    },
+    nasad() {
+      if (nasazeno || !mapa) return;
+      nasazeno = true;
+      const platno = mapa.getCanvasContainer();
+      platno.addEventListener('touchstart', (e) => { if (!prstDole) zacni(); }, { passive: true });
+      const konec = (e) => { if (!(e.touches && e.touches.length)) konci(); };
+      platno.addEventListener('touchend', konec, { passive: true });
+      platno.addEventListener('touchcancel', konec, { passive: true });
+      mapa.on('idle', () => { if (!prstDole) obnovRtt(); });
+      // popisky: obal `Placement.stillRecent` (prototyp – přežije výměnu stylu);
+      // `style.placement` vzniká až po prvním rozmístění, proto i z `idle`
+      const obalPlacement = () => {
+        try {
+          const pl = mapa.style && mapa.style.placement;
+          const PP = pl && Object.getPrototypeOf(pl);
+          if (!PP || typeof PP.stillRecent !== 'function' || PP.__gestoRecent) return;
+          const puv = PP.stillRecent;
+          PP.stillRecent = function (cas, zoom) {
+            if (RezimGesta.zmrazitPopisky()) return true;
+            return puv.call(this, cas, zoom);
+          };
+          PP.__gestoRecent = true;
+          console.log('[gesto] rozmisťování popisků při dotyku zmrazeno (stillRecent)');
+        } catch (e) { /* zkusí se z idle */ }
+      };
+      obalPlacement();
+      mapa.on('idle', obalPlacement);
+      try {
+        const S = Object.getPrototypeOf(mapa.style);
+        // paměť pokrývajících dlaždic: razítko průchodu pro `__ktMemo`
+        if (S && typeof S._updateSources === 'function' && !S.__ktObal) {
+          const puvUS = S._updateSources;
+          S._updateSources = function (e) {
+            globalThis.__ktRazitko = (globalThis.__ktRazitko | 0) + 1;
+            globalThis.__ktAktivni = true;
+            try { return puvUS.call(this, e); } finally { globalThis.__ktAktivni = false; }
+          };
+          S.__ktObal = true;
+        }
+      } catch (e) { console.warn('[gesto] obaly', e); }
+      console.log('[gesto] režim gesta nasazen (RTT ' + RTT_GESTO + '/' + RTT_KLID + ')');
+    },
+  };
+})();
+window.RezimGesta = RezimGesta;
+function nasadRezimGesta() { RezimGesta.nasad(); }
+
+// ⭐ engine 296: PAMĚŤ POKRÝVAJÍCÍCH DLAŽDIC NA JEDEN PRŮCHOD. Profil gest 11. 9.:
+// `coveringTiles` (v bundlu `Fa`) 8 % hlavního vlákna – v každém snímku pohybu
+// se volá zvlášť pro každý z 29 zdrojů, ačkoli zdroje se stejnými parametry
+// (tileSize, min/max zoom, roundZoom, reparseOverscaled, terén) dostanou
+// TOTOŽNÝ výsledek. Záplata bundlu (`n=Fa(e,{…})` → `__ktMemo(e,Fa,o)`) vrací
+// v témže průchodu `_updateSources` hotové pole (kopii). Memo žije jen uvnitř
+// obalu `_updateSources` (razítko + `__ktAktivni`), jinak se počítá čerstvě.
+globalThis.__ktRazitko = 0;
+globalThis.__ktAktivni = false;
+globalThis.__ktMemo = (() => {
+  let razitko = -1; const kes = new Map();
+  return (tr, fn, o) => {
+    try {
+      if (!globalThis.__ktAktivni || !o || typeof o.calculateTileZoom === 'function') return fn(tr, o);
+      if (razitko !== globalThis.__ktRazitko) { razitko = globalThis.__ktRazitko; kes.clear(); }
+      const k = o.tileSize + '|' + o.minzoom + '|' + o.maxzoom + '|' + (o.roundZoom ? 1 : 0)
+          + '|' + (o.reparseOverscaled ? 1 : 0) + '|' + (o.terrain ? 1 : 0);
+      const v = kes.get(k);
+      if (v !== undefined) return v.slice();
+      const n = fn(tr, o); kes.set(k, n); return n;
+    } catch (e) { return fn(tr, o); }
+  };
+})();
+
+/// ⭐ engine 296: STATICKÁ ATRIBUCE V APPCE (viz volby mapy). Stejné třídy jako
+/// MapLibre (CSS v `zapniAppRezim` platí dál), text ze zdrojů stylu, obnova jen
+/// na `styledata`. Rozbalí se ťuknutím na ⓘ – licenci je učiněno zadost stejně.
+function nasadStatickouAtribuci() {
+  if (!mapa || document.getElementById('atribuce-okolnik')) return;
+  const kont = mapa.getContainer();
+  let roh = kont.querySelector('.maplibregl-ctrl-bottom-right');
+  if (!roh) {
+    roh = document.createElement('div');
+    roh.className = 'maplibregl-ctrl-bottom-right';
+    (kont.querySelector('.maplibregl-control-container') || kont).appendChild(roh);
+  }
+  const d = document.createElement('details');
+  d.id = 'atribuce-okolnik';
+  d.className = 'maplibregl-ctrl maplibregl-ctrl-attrib maplibregl-compact';
+  d.innerHTML = '<summary class="maplibregl-ctrl-attrib-button" title="Zdroje dat" aria-label="Zdroje dat"></summary>'
+    + '<div class="maplibregl-ctrl-attrib-inner"></div>';
+  roh.appendChild(d);
+  const vnitrek = d.querySelector('.maplibregl-ctrl-attrib-inner');
+  d.querySelector('summary').addEventListener('click', (e) => {
+    e.preventDefault();
+    const ukaz = !d.classList.contains('maplibregl-compact-show');
+    d.classList.toggle('maplibregl-compact-show', ukaz);
+    if (ukaz) d.setAttribute('open', ''); else d.removeAttribute('open');
+  });
+  let posledni = '';
+  const obnov = () => {
+    try {
+      const st = mapa.getStyle(); if (!st || !st.sources) return;
+      const casti = [];
+      for (const z of Object.values(st.sources)) {
+        if (z && typeof z.attribution === 'string' && z.attribution && !casti.includes(z.attribution)) casti.push(z.attribution);
+      }
+      const text = casti.join(' | ');
+      if (text !== posledni) { posledni = text; vnitrek.innerHTML = text; }
+    } catch (e) { /* styl v přestavbě */ }
+  };
+  let t = 0;
+  mapa.on('styledata', () => { clearTimeout(t); t = setTimeout(obnov, 300); });
+  mapa.on('style.load', obnov);
+  obnov();
+}
+
 let skrticNasazen = false;
 function nasadSkrticPrijmu() {
   if (skrticNasazen) return;
@@ -6134,6 +6337,13 @@ function nasadSkrticPrijmu() {
     const fronta = [];
     let bezi = false;
     const odbav = () => {
+      // ⭐ engine 296 (režim gesta): dokud je prst na mapě, dokončení dlaždic
+      // ČEKÁ. Událost `data` hotové dlaždice = přemalování textur terénu (62
+      // drapovaných vrstev) + plné rozmístění popisků = dlouhý snímek uprostřed
+      // tahu (změřeno 11. 9.: v dlouhých snímcích příjem 6,4 + drapování 5,0 +
+      // popisky 3,6 ms). Rodičovské dlaždice (předvoj) mezitím kreslí hrubší
+      // obraz. Pojistky: fronta > 40 nebo gesto > 2,5 s → 1 za 6 snímků.
+      if (RezimGesta.drzetDlazdice(fronta.length)) { requestAnimationFrame(odbav); return; }
       const dalsi = fronta.shift();
       if (dalsi) { try { dalsi(); } catch (e) { /* dlaždice mezitím pryč */ } }
       if (fronta.length) requestAnimationFrame(odbav);
@@ -7169,7 +7379,9 @@ function nasadSipkuKCili() {
   // engine 294: bez rAF (jako modrá šipka v engine 292) – pohyb mapy, změna
   // cíle přes `obnovSipkuCile` a pojistka 2×/s
   window.__sipkaCilTik = tik;
-  mapa.on('move', tik);
+  // engine 296: při tahu chodí `move` každý snímek – šipka na kraji stačí 20×/s
+  let poslMove = 0;
+  mapa.on('move', () => { const t = performance.now(); if (t - poslMove < 50) return; poslMove = t; tik(); });
   mapa.on('moveend', tik);
   mapa.on('resize', tik);
   setInterval(tik, 500);
