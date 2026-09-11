@@ -172,10 +172,28 @@ const Ptaci = (() => {
     return v * K;
   }
 
+  // ⭐ engine 292 (audit klidu 11. 9. 2026): rAF jen když se mapa hýbe (prst
+  // nebo animace kamery) – tam musí pták sedět na krajině každý snímek.
+  // V klidu stačí krok 100 ms a přechod CSS (`transition`) mezi kroky:
+  // mezisnímky dopočítá kompozitor bez hlavního vlákna. Káně dřív drželo
+  // rAF 60×/s napořád (20 % hlavního vlákna rendereru v klidu, k tomu
+  // dotaz na výšku terénu pro stín každý snímek) a s ním celý řetězec
+  // WebView → Flutter v překreslování.
+  const KLID_KROK_MS = 100;
+  let vKlidu = false;
+  function mapaSeHybe() {
+    try {
+      if (mapa.isMoving && mapa.isMoving()) return true;
+      if (typeof prstuNaMape !== 'undefined' && prstuNaMape) return true;
+    } catch (e) { /* nic */ }
+    return false;
+  }
   function snimek(t) {
     if (!bezi) return;
-    requestAnimationFrame(snimek);
-    const dt = Math.min(0.1, Math.max(0.001, (t - poslT) / 1000));
+    vKlidu = !mapaSeHybe();
+    if (vKlidu) setTimeout(() => snimek(performance.now()), KLID_KROK_MS);
+    else requestAnimationFrame(snimek);
+    const dt = Math.min(0.12, Math.max(0.001, (t - poslT) / 1000));
     poslT = t;
     if (!mapa) return;
     const ok = smiLetat();
@@ -260,7 +278,17 @@ const Ptaci = (() => {
           : tr.locationToScreenPoint(ll);
       } catch (e) { continue; }
       // engine 233: směr letu je v mapě, prvek je na obrazovce → odečíst natočení mapy
-      const otoc = (p.smer || 0) * 180 / Math.PI - (mapa.getBearing ? mapa.getBearing() : 0);
+      let otoc = (p.smer || 0) * 180 / Math.PI - (mapa.getBearing ? mapa.getBearing() : 0);
+      // engine 292: úhel bez skoku přes 360° – CSS přechod by jinak otočil
+      // ptáka dlouhou cestou
+      if (typeof p.otocPred === 'number') otoc += 360 * Math.round((p.otocPred - otoc) / 360);
+      p.otocPred = otoc;
+      const prechod = vKlidu
+          ? 'transform ' + KLID_KROK_MS + 'ms linear, opacity 300ms linear' : 'none';
+      if (p.el.style.transition !== prechod) {
+        p.el.style.transition = prechod;
+        p.stin.style.transition = prechod;
+      }
       p.el.style.opacity = (0.9 * p.op).toFixed(2);
       p.el.style.transform = 'translate(-50%, -50%) translate(' + bod.x.toFixed(1)
         + 'px, ' + bod.y.toFixed(1) + 'px) rotate(' + otoc.toFixed(1) + 'deg) scale('

@@ -1319,7 +1319,9 @@ mapa.on('error', (e) => {
       + mapa.getCanvas().width + '×' + mapa.getCanvas().height
       + ' (DPR ' + window.devicePixelRatio + ')'), 3000);
     let snimky = 0, dlouhe = 0, minule = performance.now(), t0 = minule;
-    function krok(t) {
+    function krok() {
+      const t = performance.now();   // engine 294: z události `render`
+      if (t - minule > 500) { t0 = t; snimky = 0; dlouhe = 0; }   // po klidu okno znovu
       snimky++;
       if (t - minule > 50) dlouhe++;
       minule = t;
@@ -1342,9 +1344,11 @@ mapa.on('error', (e) => {
           + ` active ${mapa.dragPan.isActive()}`);
         snimky = 0; dlouhe = 0; t0 = t;
       }
-      requestAnimationFrame(krok);
     }
-    requestAnimationFrame(krok);
+    // ⭐ engine 294 (audit klidu 11. 9. 2026): měřič jede z události `render`
+    // (skutečné snímky mapy), ne z trvalého rAF – ten držel WebView i Flutter
+    // v překreslování 60×/s v naprostém klidu (Flutter rastroval nadarmo).
+    mapa.on('render', krok);
   })();
 
   // -------------------------------------------------------------------------
@@ -5911,9 +5915,20 @@ function nasadSipkuKUzivateli() {
         if (pop !== minule) { minule = pop; text.textContent = pop; }
       }
     } catch (e) { /* mapa v přestavbě */ }
-    requestAnimationFrame(tik);
   };
-  requestAnimationFrame(tik);
+  // ⭐ engine 292 (11. 9. 2026, audit klidu): BEZ rAF SMYČKY. Trvalý
+  // requestAnimationFrame držel WebView v překreslování 60×/s i v naprostém
+  // klidu a Flutter musel každý ten snímek znovu rastrovat (raster +
+  // RenderThread + hlavní vlákno ~80 % jádra na nic; změřeno SurfaceFlinger
+  // 59 fps v klidu, renderer WebView 56 % CPU). Šipka se přepočítá při
+  // pohybu mapy, po příchodu polohy (`window.__sipkaTik`) a pojistně 2×/s
+  // (zápis stejné hodnoty transformu překreslení nevyvolá).
+  window.__sipkaTik = tik;
+  mapa.on('move', tik);
+  mapa.on('moveend', tik);
+  mapa.on('resize', tik);
+  setInterval(tik, 500);
+  tik();
 }
 
 function nasadLovce() {
@@ -5943,16 +5958,12 @@ function nasadLovce() {
   }
   const prsten = [];
   let dumpDo = 0;
-  let lovecTik = 0;
   const tik = () => {
     try {
       // ⚠️ v1.400: project() s trvalým terénem není zadarmo (raycast
       // výšky) a běžel 60×/s i při úplném klidu — pro detekci skoku
       // stačí vzorkovat každý 3. snímek (~20 Hz).
-      if ((lovecTik = (lovecTik + 1) % 3) !== 0) {
-        requestAnimationFrame(tik);
-        return;
-      }
+      // engine 292: vzorkuje se časovačem 20 Hz (viz konec funkce), ne rAF
       const t = performance.now();
       const c = mapa.getCenter();
       const z = mapa.getZoom();
@@ -5990,9 +6001,9 @@ function nasadLovce() {
         }
       }
     } catch (e) { /* mapa se přestavuje */ }
-    requestAnimationFrame(tik);
+    setTimeout(tik, 50);   // engine 292: 20 Hz časovačem – rAF držel překreslování v klidu
   };
-  requestAnimationFrame(tik);
+  setTimeout(tik, 50);
 }
 
 /// ⭐ v1.389: PLYNULÉ PŘEVZETÍ VÝŠKY. Okamžitý přepočet (recalc) držel
@@ -7039,7 +7050,10 @@ function azimutNa(aLng, aLat, bLng, bLat) {
 /// (`planCilPopisek`: vzdálenost po cestě · převýšení); dokud nedorazí,
 /// vzdušná vzdálenost od hráče. Klep přeletí na zastávku. Šipka u
 /// postavičky z v1.602 je pryč (přání).
-function obnovSipkuCile() { nasadSipkuKCili(); }
+function obnovSipkuCile() {
+  nasadSipkuKCili();
+  if (window.__sipkaCilTik) window.__sipkaCilTik();   // engine 294
+}
 
 function nasadSipkuKCili() {
   if (window.__sipkaCilEl || !document.body) return;
@@ -7151,9 +7165,15 @@ function nasadSipkuKCili() {
         }
       }
     } catch (e) { /* mapa v přestavbě */ }
-    requestAnimationFrame(tik);
   };
-  requestAnimationFrame(tik);
+  // engine 294: bez rAF (jako modrá šipka v engine 292) – pohyb mapy, změna
+  // cíle přes `obnovSipkuCile` a pojistka 2×/s
+  window.__sipkaCilTik = tik;
+  mapa.on('move', tik);
+  mapa.on('moveend', tik);
+  mapa.on('resize', tik);
+  setInterval(tik, 500);
+  tik();
 }
 
 // ⭐ v1.602: VÝŠKA TERÉNU POD HRÁČEM pro převýšení k zastávce plánu.
@@ -7487,6 +7507,7 @@ window.OkolnikMost = {
       // s nastaveným atlasem, kdežto modrá šipka k uživateli ji
       // potřebuje i pro prostou tečku (cíl, ne mezikroky dojezdu)
       poslednPolohaUziv = { lng, lat };
+      if (window.__sipkaTik) window.__sipkaTik();   // engine 292: šipka bez rAF
       // odstup fixů — z něj se počítá délka dojezdu (viz níž)
       const tedFix = performance.now();
       mezeraFixu = poslednFixMs ? tedFix - poslednFixMs : 0;
@@ -7504,6 +7525,21 @@ window.OkolnikMost = {
       // šum GPS na stole (<0,5 m) — NEPŘEKRESLOVAT VŮBEC (jitter
       // krmil dojezd a mapa se v klidu nikdy nezastavila)
       if (start && dM < 0.5) return;
+      // engine 294: stání (bez rychlosti) a posun do 3 m = šum GPS – jednou
+      // překreslit bez dojezdu; dojezd na rAF jinak v klidu běžel pořád
+      // (fixy po ~2 s, dojezd 2 s) a držel překreslování 60×/s
+      const stoji = !(rychlost > 0.5);
+      // ⭐ engine 295: STÁNÍ + posun do 8 m = šum GPS. Žádná animace (dojezd na
+      // rAF v klidu na stole běžel skoro pořád – fixy po ~2 s, dojezd až 3 s,
+      // značka 24 zápisů/s a s ní celý řetězec WebView → Flutter), jen jeden
+      // zápis s vyhlazením: značka jde o 35 % k nové poloze, šum se utlumí,
+      // skutečný odchod se pozná rychlostí (> 0,5 m/s) nebo posunem nad 8 m.
+      if (start && stoji && dM < 8) {
+        polohaVykres = { lng: start.lng + (lng - start.lng) * 0.35,
+                         lat: start.lat + (lat - start.lat) * 0.35 };
+        vykresliPolohu(polohaVykres.lng, polohaVykres.lat, smer, rychlost);
+        return;
+      }
       // první fix nebo teleport (auto) — bez dojezdu
       if (!start || dM > 45) {
         polohaVykres = { lng, lat };
