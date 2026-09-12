@@ -40,8 +40,10 @@ const Ptaci = (() => {
     + '.kane-kridlo-l,.kane-kridlo-r{transform-box:view-box}'
     + '.kane-kridlo-l{transform-origin:57px 24px}'
     + '.kane-kridlo-r{transform-origin:63px 24px}'
-    + '.kane-machani .kane-kridlo-l{animation:kaneMachL .4s ease-in-out 4}'
-    + '.kane-machani .kane-kridlo-r{animation:kaneMachR .4s ease-in-out 4}'
+    // engine 310: mávnutí po krocích (5 snímků na mávnutí) – plynulé
+    // keyframes držely při každém mávání 1,6 s kompozitor na 60 fps
+    + '.kane-machani .kane-kridlo-l{animation:kaneMachL .4s steps(5, end) 4}'
+    + '.kane-machani .kane-kridlo-r{animation:kaneMachR .4s steps(5, end) 4}'
     + '.kane{pointer-events:none;position:absolute;top:0;left:0;'
     + 'will-change:transform;}'
     + '.kane-stin{pointer-events:none;position:absolute;top:0;left:0;'
@@ -96,6 +98,7 @@ const Ptaci = (() => {
       document.head.appendChild(s);
     }
     if (!bezi) { bezi = true; poslT = performance.now(); requestAnimationFrame(snimek); }
+    if (window.KlidovyTakt) KlidovyTakt.pridej('ptaci', (t) => krokVKlidu(t), 1);
   }
 
   function svetlo() {
@@ -188,11 +191,23 @@ const Ptaci = (() => {
     } catch (e) { /* nic */ }
     return false;
   }
+  // engine 310: v klidu krok volá společný KlidovyTakt (10 Hz, jeden snímek
+  // pro všechny animace); vlastní časovač se použije jen bez tikače (web bokem)
+  let cekaNaTakt = false;
+  function krokVKlidu(t) {
+    if (!bezi || !cekaNaTakt) return;
+    cekaNaTakt = false;
+    snimek(t);
+  }
   function snimek(t) {
     if (!bezi) return;
     vKlidu = !mapaSeHybe();
-    if (vKlidu) setTimeout(() => snimek(performance.now()), KLID_KROK_MS);
-    else requestAnimationFrame(snimek);
+    if (vKlidu) {
+      if (window.KlidovyTakt) cekaNaTakt = true;
+      else setTimeout(() => snimek(performance.now()), KLID_KROK_MS);
+    } else {
+      requestAnimationFrame(snimek);
+    }
     const dt = Math.min(0.12, Math.max(0.001, (t - poslT) / 1000));
     poslT = t;
     if (!mapa) return;
@@ -286,8 +301,9 @@ const Ptaci = (() => {
       // engine 309: přechod po DVOU krocích, ne lineárně – lineární přechod
       // nechal kompozitor kreslit 6 snímků na každý krok (60 fps v klidu),
       // a každý snímek WebView znamená snímek i pro Flutter (viz pocasi.js)
-      const prechod = vKlidu
-          ? 'transform ' + KLID_KROK_MS + 'ms steps(2, end), opacity 300ms steps(3, end)' : 'none';
+      // engine 310: bez CSS přechodu – každý mezisnímek kompozitoru je snímek
+      // i pro Flutter; krok 100 ms z jednoho tikače je ten „jediný" snímek
+      const prechod = 'none';
       if (p.el.style.transition !== prechod) {
         p.el.style.transition = prechod;
         p.stin.style.transition = prechod;

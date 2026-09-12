@@ -1306,22 +1306,40 @@ const Pocasi = (() => {
   let posledniTikMs = 0;
   let vidnoZvenku = true;
 
+  function tikOblohy() {
+    if (!document.hidden && vidnoZvenku) {
+      const t = Date.now();
+      // ⚠️ Strop 1 s: po návratu z pozadí (nebo po uspání časovačů) by
+      // jinak mraky skokem přeletěly půl obrazovky.
+      faze += Math.min(1.0, (posledniTikMs ? t - posledniTikMs : TIK_MS) / 1000);
+      posledniTikMs = t;
+      kresli();
+    } else {
+      posledniTikMs = 0;   // ať se po probuzení nezapočítá celá pauza
+    }
+  }
+  // engine 310: v klidu obloha z jednoho společného tikače (každý 2. tik =
+  // 5 Hz; mraky se sunou pár px/s, krok zůstává subpixelový) – vlastní
+  // časovač jede jen při pohybu (40 ms) nebo bez tikače (web bokem)
+  let taktNasazen = false;
+  function nasadTakt() {
+    if (taktNasazen || !window.KlidovyTakt) return;
+    taktNasazen = true;
+    KlidovyTakt.pridej('obloha', (t, klid) => {
+      if (!klid || tikac) return;       // při pohybu kreslí vlastní časovač
+      if (Date.now() - posledniPohybMs <= KLID_PO_MS) return;
+      tikOblohy();
+    }, 2);
+  }
   function rozjedTikac() {
     clearTimeout(tikac);
     const ted = Date.now();
     const klid = ted - posledniPohybMs > KLID_PO_MS;
+    nasadTakt();
+    if (klid && taktNasazen) { tikac = null; return; }   // v klidu přebírá KlidovyTakt
     tikac = setTimeout(() => {
       tikac = null;
-      if (!document.hidden && vidnoZvenku) {
-        const t = Date.now();
-        // ⚠️ Strop 1 s: po návratu z pozadí (nebo po uspání časovačů) by
-        // jinak mraky skokem přeletěly půl obrazovky.
-        faze += Math.min(1.0, (posledniTikMs ? t - posledniTikMs : TIK_MS) / 1000);
-        posledniTikMs = t;
-        kresli();
-      } else {
-        posledniTikMs = 0;   // ať se po probuzení nezapočítá celá pauza
-      }
+      tikOblohy();
       rozjedTikac();
     }, klid ? TIK_KLID_MS : TIK_MS);
   }

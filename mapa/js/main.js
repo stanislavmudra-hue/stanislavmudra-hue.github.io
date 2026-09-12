@@ -7272,6 +7272,51 @@ function startZUrl() {
 }
 window.startZUrl = startZUrl;
 
+// ---------------------------------------------------------------------------
+// ⭐⭐ engine 310: JEDEN KLIDOVÝ TIKAČ (12. 9. 2026). Změřeno: každý snímek
+// WebView (i čistě kompozitorový – CSS přechod, canvas) znamená nový snímek
+// HWUI i Flutteru nad mapou (raster ~8 ms). Káně, obloha, roj a křídla včel
+// měly každý svůj časovač, takže jejich snímky padaly do RŮZNÝCH okamžiků a
+// okno appky jelo v klidu ~45 snímků/s (Flutter raster 34 %, RenderThread
+// 31 %, telefon se topil → throttling). Teď je v klidu JEDEN časovač 10 Hz a
+// všechny změny DOM se dělají v jednom jeho tiku = jeden snímek na tik.
+// Při pohybu mapy si moduly dál jedou po rAF (musí sedět na krajině).
+// ---------------------------------------------------------------------------
+const KlidovyTakt = (() => {
+  const KROK_MS = 100;
+  const odberatele = [];       // {jmeno, fn, kazdy}
+  let tik = 0;
+  let casovac = null;
+  function vKlidu() {
+    try {
+      if (!mapa) return false;
+      if (mapa.isMoving && mapa.isMoving()) return false;
+      if (typeof prstNaMape === 'function' && prstNaMape()) return false;
+    } catch (e) { /* nic */ }
+    return true;
+  }
+  function krok() {
+    tik++;
+    const klid = vKlidu();
+    const ted = performance.now();
+    for (const o of odberatele) {
+      if (o.kazdy > 1 && tik % o.kazdy !== 0) continue;
+      try { o.fn(ted, klid); } catch (e) { /* jeden odběratel nesmí shodit ostatní */ }
+    }
+  }
+  function pridej(jmeno, fn, kazdy) {
+    if (odberatele.some((o) => o.jmeno === jmeno)) return;
+    odberatele.push({ jmeno, fn, kazdy: kazdy || 1 });
+    if (!casovac) casovac = setInterval(krok, KROK_MS);
+  }
+  function odeber(jmeno) {
+    const i = odberatele.findIndex((o) => o.jmeno === jmeno);
+    if (i >= 0) odberatele.splice(i, 1);
+  }
+  return { pridej, odeber, vKlidu, KROK_MS };
+})();
+window.KlidovyTakt = KlidovyTakt;
+
 function mostHlas(jmeno, data) {
   try {
     if (window.flutter_inappwebview) {

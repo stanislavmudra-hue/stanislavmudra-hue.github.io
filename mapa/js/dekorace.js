@@ -788,7 +788,19 @@ const Dekorace = (() => {
   // udělej plynulejší“). Kroky jsou třetinové, takže rychlost letu
   // i tempo dechu zůstávají — jen po menších kouscích. setData na
   // ~40 bodech je zadarmo i při 7,5 Hz (velký zdroj se nesahá).
-  setInterval(() => {
+  // engine 310: křídla včel/netopýrů – jeden tik pro všechny (10 Hz včely,
+  // netopýr každý 3. tik), žádná CSS animace = žádné snímky navíc
+  let tikKridel = 0;
+  function krokKridel() {
+    tikKridel++;
+    for (const m of musky) {
+      const v = m.el && m.el.__vnitrni;
+      if (!v || !v.__kridla) continue;
+      if (v.__kridla > 1 && tikKridel % v.__kridla !== 0) continue;
+      v.classList.toggle('mih');
+    }
+  }
+  const tikRoje = () => {
     try {
       if (!mapa) return;
       if (document.visibilityState !== 'visible') return;
@@ -829,7 +841,23 @@ const Dekorace = (() => {
       }
       rojSvetlusek(rezim);
     } catch (e) { /* zdroj se právě mění — příští tik */ }
-  }, 250);   // engine 287: 133 → 250 ms (v noci 10 překreslení/s v klidu)
+  };
+  // engine 287: 133 → 250 ms; engine 310: každý 2. tik společného tikače
+  // (200 ms), bez něj vlastní časovač
+  // ⚠️ dekorace.js se načítá PŘED main.js (kde KlidovyTakt vzniká; skripty
+  // jdou za sebou přes onload) → přihlásit se až v `pripoj` z main.js
+  let taktRoje = false;
+  function nasadTaktRoje() {
+    if (taktRoje) return;
+    taktRoje = true;
+    if (window.KlidovyTakt) {
+      KlidovyTakt.pridej('roj', tikRoje, 2);
+      KlidovyTakt.pridej('kridla', () => { if (document.visibilityState === 'visible') krokKridel(); }, 1);
+    } else {
+      setInterval(tikRoje, 250);
+      setInterval(krokKridel, 100);
+    }
+  }
 
   // -------------------------------------------------------------------------
   // ⭐ ROJ SVĚTLUŠEK (v1.386): „malé svítivé POHYBUJÍCÍ SE tečky, občas
@@ -1044,35 +1072,29 @@ const Dekorace = (() => {
       '@keyframes vcelaA{0%,49%{opacity:.46}50%,100%{opacity:.10}}'
       + '@keyframes vcelaB{0%,49%{opacity:.10}50%,100%{opacity:.44}}'
       + '@keyframes vcelaR{0%,49%{opacity:.14}50%,100%{opacity:.34}}'
-      + '.vk-a{animation:vcelaA .1s steps(1,end) infinite '
-      + 'var(--vfaze,0ms)}'
-      + '.vk-b{animation:vcelaB .1s steps(1,end) infinite '
-      + 'var(--vfaze,0ms)}'
-      + '.vk-r{animation:vcelaR .1s steps(1,end) infinite '
-      + 'var(--vfaze,0ms)}'
-      // netopýr mává pomaleji (tytéž keyframes, delší perioda)
-      + '.nk-a{animation:vcelaA .34s steps(1,end) infinite '
-      + 'var(--vfaze,0ms)}'
-      + '.nk-b{animation:vcelaB .34s steps(1,end) infinite '
-      + 'var(--vfaze,0ms)}'
-      // otáčení padajícího listu
+      // engine 310: křídla NEpřepíná CSS animace (každá včela jindy = vlastní
+      // snímek kompozitoru), ale JS v jednom tiku KlidovyTakt – třída `mih`
+      // na vnitřním prvku přehazuje oba stavy naráz pro všechny
+      + '.vk-a{opacity:.46}.vk-b{opacity:.10}.vk-r{opacity:.14}'
+      + '.mih .vk-a{opacity:.10}.mih .vk-b{opacity:.44}.mih .vk-r{opacity:.34}'
+      + '.nk-a{opacity:.46}.nk-b{opacity:.10}'
+      + '.mih .nk-a{opacity:.10}.mih .nk-b{opacity:.44}'
+      // otáčení padajícího listu – po krocích (12 snímků na otáčku)
       + '@keyframes listToc{from{transform:rotate(0deg)}'
       + 'to{transform:rotate(360deg)}}'
-      // třpyt vlákna babího léta (v1.601.5)
+      // třpyt vlákna babího léta (v1.601.5) – po krocích
       + '@keyframes vlaknoTrpyt{0%,100%{opacity:.32}50%{opacity:.78}}';
     document.head.appendChild(st);
   })();
 
+  let kridlaParita = 0;   // engine 310: každá druhá včela začíná s křídly obráceně
   /// Naplní vnitřní div vzhledem daného typu (zrod i přerod prvku).
   function naplnVnitrek(vnitrni, typ) {
     vnitrni.style.cssText = HMYZ_VZHLED[typ] || HMYZ_VZHLED.svetluska;
-    // náhodná fáze mávnutí (jinak mávají všechny naráz jako sbor)
-    // engine 309: fáze jen v násobcích 50 ms – mávnutí různých včel padnou
-    // do TÝCHŽ okamžiků (kompozitor kreslí 20 snímků/s místo ~60, protože
-    // každá včela se dřív přepínala v jiném čase); „sbor" to nedělá,
-    // pořadí křídel je pořád náhodné
-    vnitrni.style.setProperty(
-        '--vfaze', (-50 * Math.floor(Math.random() * 7)).toFixed(0) + 'ms');
+    // engine 310: náhodný počáteční stav křídel (jinak mávají jako sbor);
+    // přepíná se z jednoho tiku pro všechny (viz krokKridel)
+    vnitrni.classList.toggle('mih', (kridlaParita++ & 1) === 1);
+    vnitrni.__kridla = typ === 'vcela' ? 1 : (typ === 'netopyr' ? 3 : 0);
     if (typ === 'vcela') {
       vnitrni.innerHTML = VCELA_SVG;
     } else if (typ === 'mura') {
@@ -1083,16 +1105,16 @@ const Dekorace = (() => {
       vnitrni.innerHTML = LIST_SVG(
           LISTI_BARVY[(Math.random() * LISTI_BARVY.length) | 0]);
       vnitrni.style.animation = 'listToc '
-          + (2.1 + Math.random() * 1.6).toFixed(2) + 's linear infinite';
+          + (2.1 + Math.random() * 1.6).toFixed(2) + 's steps(12, end) infinite';
     } else if (typ === 'babileto') {
       vnitrni.innerHTML = BABILETO_SVG;
       vnitrni.style.animation = 'vlaknoTrpyt '
-          + (1.6 + Math.random() * 1.2).toFixed(2) + 's ease-in-out infinite';
+          + (1.6 + Math.random() * 1.2).toFixed(2) + 's steps(6, end) infinite';
     } else if (typ === 'vlocka') {
       vnitrni.innerHTML = VLOCKA_SVG;
       // pomalé otáčení — sníh se snáší, nepadá jak kámen
       vnitrni.style.animation = 'listToc '
-          + (5 + Math.random() * 3).toFixed(2) + 's linear infinite';
+          + (5 + Math.random() * 3).toFixed(2) + 's steps(16, end) infinite';
     } else {
       vnitrni.innerHTML = '';
     }
@@ -2515,6 +2537,7 @@ const Dekorace = (() => {
   // Body v keši přežívají výměnu stylu — zdroj se založí rovnou s nimi
   // (líně; prázdný zdroj ze style.load byl sterilní, viz pridejVrstvu).
   function pripoj(map) {
+    nasadTaktRoje();   // engine 310: roj a křídla na společném klidovém tikači
     mapa = map;
     ikonyHotove = false;      // atlas je po výměně stylu prázdný
     // Nový styl = jiné filtry ploch (les v Kronice ≠ les jinde), takže
