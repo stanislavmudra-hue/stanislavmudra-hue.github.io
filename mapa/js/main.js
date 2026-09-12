@@ -325,7 +325,42 @@ function pridejMaskuZahranici() {
 // ---------------------------------------------------------------------------
 //   podpisy:    engine 303 – názvy míst jako podpis pod kresbou (Kalam Bold, papírová
 //               záře, barva podle objevování); vypnuto = stužky jako dřív.
-const NASTAVENI_MAPY = { vrstevnice: null, objekty3d: true, ilustrace: true, stiny: true, podpisy: true };
+const NASTAVENI_MAPY = { vrstevnice: null, objekty3d: true, ilustrace: true, stiny: true, podpisy: true,
+                         tempo30: false };
+
+// ⭐ engine 306: STÁLÉ TEMPO PŘI GESTU (experiment 12. 9. 2026, „dost se to
+// posekává dál"). Snímek při tahu na z16,5 trvá průměrně 20–27 ms, takže se
+// na 60Hz displeji střídají 17, 33 a 50 ms – to je to cukání. Když je prst
+// dole a poslední snímky byly pomalé (JS > 14 ms), kreslí se nejvýš každých
+// 30 ms: stálých 30 sn./s místo střídání 60/30/20. Vstup z doteku se
+// nezahazuje – kameru mění ovladače gest, render jen ukáže poslední stav;
+// vynechaný snímek se hned znovu objedná (`triggerRepaint`). Při levných
+// snímcích (oddálení, klid) se nic nevynechává. Vypínač `tempo30`.
+const TempoGesta = (() => {
+  let nasazeno = false;
+  let posl = 0;
+  const okno = [];
+  const pomale = () => okno.length >= 3
+      && okno.reduce((a, b) => a + b, 0) / okno.length > 14;
+  function nasad() {
+    if (nasazeno || !mapa || typeof mapa._render !== 'function') return;
+    nasazeno = true;
+    const puv = mapa._render;
+    mapa._render = function (ts) {
+      if (NASTAVENI_MAPY.tempo30 && prstNaMape() && pomale() && ts - posl < 30) {
+        this.triggerRepaint();
+        return;
+      }
+      posl = ts;
+      const t0 = performance.now();
+      const r = puv.call(this, ts);
+      okno.push(performance.now() - t0);
+      if (okno.length > 6) okno.shift();
+      return r;
+    };
+  }
+  return { nasad };
+})();
 window.__nastaveniMapy = NASTAVENI_MAPY;
 const VRSTEVNICE_VYCHOZI = { 11: [200, 1000], 12: [100, 500], 13: [50, 250], 14: [50, 250], 15: [20, 100] };
 const KONTURY_VOLBY = { multiplier: 1, elevationKey: 'ele', levelKey: 'level', contourLayer: 'contours' };
@@ -7696,8 +7731,9 @@ window.OkolnikMost = {
         NASTAVENI_MAPY.vrstevnice = (v === null || v === undefined || Number(v) < 0)
             ? null : Math.max(0, Math.min(1000, Number(v) || 0));
       }
-      for (const k of ['objekty3d', 'ilustrace', 'stiny', 'podpisy']) if (k in c) NASTAVENI_MAPY[k] = !!c[k];
+      for (const k of ['objekty3d', 'ilustrace', 'stiny', 'podpisy', 'tempo30']) if (k in c) NASTAVENI_MAPY[k] = !!c[k];
       aplikujNastaveniMapy(false);
+      if (NASTAVENI_MAPY.tempo30) TempoGesta.nasad();
       if (NASTAVENI_MAPY.stiny) { stinyPodpis = ''; naplanujStinyDomu(50); }
       if (NASTAVENI_MAPY.objekty3d) { pohledPodpisOkna = ''; naplanujOkna3d(50); }
       return Object.assign({}, NASTAVENI_MAPY);
@@ -8108,6 +8144,27 @@ window.OkolnikMost = {
   /// v něm lineární, appka si dokreslí fotky). Mapa MUSÍ být vidět
   /// (překrytá WebView nekreslí – vrátí se null a karta spadne na OSM).
   snimekTrasy(cfg) { return snimekTrasy(cfg); },
+
+  /// ⭐ engine 305: NADMOŘSKÁ VÝŠKA MÍST pro výběr pod prstem a detail (přání
+  /// 12. 9. 2026: „piš u obrázků / míst jejich nadmořskou výšku"). `body` =
+  /// [{id, lat, lng}] → {id: metry|null}. Bere se z DEM terénu (bez převýšení);
+  /// bez zapnutého terénu nebo mimo načtené dlaždice je null (MapLibre tam
+  /// vrací 0 – ČR začíná na 115 m, takže vše pod 50 m = neznámé).
+  vyskyMist(body) {
+    const out = {};
+    try {
+      const teren = mapa && mapa.getTerrain && mapa.getTerrain();
+      const ex = (teren && +teren.exaggeration) || 1;
+      for (const b of (body || [])) {
+        let v = null;
+        if (teren && mapa.queryTerrainElevation) {
+          try { v = mapa.queryTerrainElevation({ lng: +b.lng, lat: +b.lat }); } catch (e) { v = null; }
+        }
+        out[b.id] = (v == null || !(v / ex > 50)) ? null : Math.round(v / ex);
+      }
+    } catch (e) { /* bez terénu nic */ }
+    return out;
+  },
 
   /// Přelet kamery na místo.
   /// [plynule] = sledování za jízdy: lineární `easeTo` místo `flyTo`.
@@ -9540,6 +9597,20 @@ let nazvyPuvodniNasledovnik = null;      // id vrstvy, před kterou se názvy vr
 // vrací jen UMÍSTĚNÉ symboly – po idle se rozdíl zapíše do feature-state
 // `skryt` (zdroj má promoteId 'id'); pata i záře na něj reagují v paint.
 const skryteMista = new Map();
+let skryteMistaT = null;
+function naplanujSkryteMista() {
+  if (skryteMistaT) return;
+  const zkus = () => {
+    skryteMistaT = null;
+    const odPohybu = performance.now() - (window.__posledniPohybMs || 0);
+    if (prstNaMape() || odPohybu < 400 || (mapa && mapa.isMoving && mapa.isMoving())) {
+      skryteMistaT = setTimeout(zkus, 450);
+      return;
+    }
+    synchronizujSkryteMista();
+  };
+  skryteMistaT = setTimeout(zkus, 120);
+}
 function synchronizujSkryteMista() {
   if (!mapa || !posledniMistaGj || !mapa.getLayer('okolnik-mista-ikona')) return;
   let vidim;
@@ -9616,7 +9687,10 @@ function registrujKlikMista() {
   hookKlikuMist = true;
   mapa.on('zoomend', poradiNazvuObci);
   mapa.on('idle', poradiNazvuObci);
-  mapa.on('idle', synchronizujSkryteMista);   // engine 280: pata/záře schované ikony
+  // engine 280: pata/záře schované ikony. ⛔ engine 306: `idle` chodí i uprostřed
+  // tahu a queryRenderedFeatures s terénem stojí 20–30 ms (změřeno 12. 9.:
+  // 6× za sadu tahů, max 29,5 ms) → jen bez prstu a ≥ 400 ms po posledním pohybu
+  mapa.on('idle', naplanujSkryteMista);
   mapa.on('idle', () => naplanujStinyDomu(600));
   // engine 265: animátory (mihotání světel, blikání oken) čekají 1,5 s po pohybu
   mapa.on('move', () => { window.__posledniPohybMs = performance.now(); });

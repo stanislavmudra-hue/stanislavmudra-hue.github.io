@@ -1262,7 +1262,8 @@ const Pocasi = (() => {
       map.on('move', () => {
         posledniPohybMs = Date.now();   // zrychlí tikot, viz rozjedTikac
         const ted = performance.now();
-        if (ted - posledniKresba < 16) return;
+        // engine 306: 30 Hz (změřeno 12. 9.: 0,8 ms na každý move, špičky 22 ms)
+        if (ted - posledniKresba < 33) return;
         posledniKresba = ted;
         kresli();
       });
