@@ -6275,7 +6275,7 @@ globalThis.__ktMemo = (() => {
       if (!globalThis.__ktAktivni || !o || typeof o.calculateTileZoom === 'function') return fn(tr, o);
       if (razitko !== globalThis.__ktRazitko) { razitko = globalThis.__ktRazitko; kes.clear(); }
       const k = o.tileSize + '|' + o.minzoom + '|' + o.maxzoom + '|' + (o.roundZoom ? 1 : 0)
-          + '|' + (o.reparseOverscaled ? 1 : 0) + '|' + (o.terrain ? 1 : 0);
+          + '|' + (o.reparseOverscaled ? 1 : 0) + '|' + (o.terrain ? 1 : 0) + '|' + (o.maxContentElevation === undefined ? '' : o.maxContentElevation);
       // ⚠️ KAŽDÝ zdroj dostane KLONY id: správce terénu si do objektů id zapisuje
       // matici (`terrainRttPosMatrix32f`) a sdílené objekty mezi zdroji dělaly
       // při rychlém tahu holé pruhy (engine 301, snímek uprostřed tahu)
@@ -9625,13 +9625,41 @@ function registrujKlikMista() {
   mapa.on('idle', nasadTerenKes);                 // engine 232: keš mapování dlaždic na terén
   mapa.on('idle', () => naplanujSidlaPopisky(900));   // engine 228: názvy částí obcí u domů
   poradiNazvuObci();
+  // ⭐ engine 304: JEDNO KLEPNUTÍ = JEDNA ZPRÁVA (12. 9. 2026). MapLibre volá
+  // posluchače každé vrstvy zvlášť, takže prst na shluku „2", pod kterým
+  // ležela ještě samostatná kresba (kříž u Paradisu), poslal appce `onBod`
+  // i `onShluk` a otevřely se dva panely přes sebe (detail kříže + výběr).
+  // Nálezy všech vrstev se za jedno klepnutí posbírají (členové shluku
+  // chodí z workeru, proto se čeká na sliby) a pošlou jednou: 1 místo →
+  // detail, víc → výběr; nic → náhradní akce (přiblížení velkého shluku).
+  let sber = null;
+  const posbirej = (e) => {
+    const ev = e.originalEvent || e;
+    if (sber && sber.ev === ev) return sber;
+    // vlajka Dobyvatele pod prstem má přednost před vším – celé klepnutí
+    // se spolkne (26. 8.), i pro posluchače, kteří přijdou po tomhle
+    const spolknuto = !!(window.Dobyvatel && Dobyvatel.spolklKlik(e));
+    const muj = { ev, ids: [], sliby: [], nahradni: null, spolknuto };
+    sber = muj;
+    setTimeout(() => {
+      if (sber === muj) sber = null;
+      if (muj.spolknuto) return;
+      Promise.allSettled(muj.sliby).then(() => {
+        const vsechna = [...new Set(muj.ids.filter((id) => id))];
+        if (vsechna.length === 1) mostHlas('onBod', vsechna[0]);
+        else if (vsechna.length > 1) mostHlas('onShluk', vsechna);
+        else if (muj.nahradni) muj.nahradni();
+      });
+    }, 0);
+    return muj;
+  };
   for (const vrstva of ['okolnik-mista-kruh', 'okolnik-mista-ikona']) {
     mapa.on('click', vrstva, (e) => {
       // ⭐ engine 201: pod prstem bývá víc obrázků (boží muka UVNITŘ obrázku
       // kostela) – bere se NEJMENŠÍ objekt (`sm`), ne první v pořadí
       const f = nejmensiPodPrstem(e.features);
-      if (window.Dobyvatel && Dobyvatel.spolklKlik(e)) return;
-      if (f) mostHlas('onBod', f.properties.id);
+      const muj = posbirej(e);
+      if (f && !muj.spolknuto) muj.ids.push(f.properties.id);
     });
   }
   // ⭐ KLIK NA SHLUK: zblízka SEZNAM ČLENŮ, z dálky přiblížit (7. 8. 2026).
@@ -9648,20 +9676,21 @@ function registrujKlikMista() {
     if (!zdroj) return;
     const cid = f.properties.cluster_id;
     const pocet = f.properties.point_count || 0;
+    const muj = posbirej(e);
+    if (muj.spolknuto) return;
+    // kdyby se ids nepodařilo vytáhnout (nebo je shluk na seznam moc velký),
+    // ať klepnutí aspoň přiblíží – náhradní akce, když nic jiného nesebere
+    if (!muj.nahradni) muj.nahradni = () => priblizShluk(zdroj, cid, f);
     if (mapa.getZoom() >= SHLUK_SEZNAM_ZOOM && pocet <= SHLUK_SEZNAM_MAX
         && zdroj.getClusterLeaves) {
-      zdroj.getClusterLeaves(cid, SHLUK_SEZNAM_MAX, 0).then((body) => {
-        const ids = (body || [])
-            .map((b) => (b && b.properties && b.properties.id) || '')
-            .filter((s) => s);
-        // kdyby se ids nepodařilo vytáhnout, ať klik aspoň přiblíží
-        if (window.Dobyvatel && Dobyvatel.spolklKlik(e)) return;
-        if (ids.length) mostHlas('onShluk', ids);
-        else priblizShluk(zdroj, cid, f);
-      }).catch(() => priblizShluk(zdroj, cid, f));
-      return;
+      muj.sliby.push(zdroj.getClusterLeaves(cid, SHLUK_SEZNAM_MAX, 0)
+        .then((body) => {
+          for (const b of (body || [])) {
+            const id = b && b.properties && b.properties.id;
+            if (id) muj.ids.push(id);
+          }
+        }).catch(() => {}));
     }
-    priblizShluk(zdroj, cid, f);
   };
   mapa.on('click', 'okolnik-mista-shluk', klikShluk);
   mapa.on('click', 'okolnik-mista-shluk-ikona', klikShluk);
