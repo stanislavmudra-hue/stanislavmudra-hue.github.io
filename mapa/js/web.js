@@ -253,7 +253,8 @@
     // kamera na poslední odkrytou buňku (pořadí buněk = pořadí odkrytí).
     // ⚠️ `OkolnikMost.letNa` tu nedržel (usazování kamery enginu ho
     // přebilo), přímý `jumpTo` drží – ověřeno 5. 9. v náhledu
-    if (body.length) {
+    // engine 307: s cílem v URL (?lat=&lon=) se na poslední buňku neskáče
+    if (body.length && !(window.startZUrl && window.startZUrl())) {
       var p = body[body.length - 1];
       var skok = function () {
         try { mapa.jumpTo({ center: [p[1], p[0]], zoom: 12.2 }); } catch (e) { }

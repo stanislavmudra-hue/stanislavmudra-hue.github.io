@@ -934,6 +934,14 @@ mapa.on('error', (e) => {
       mostHlas('onPripraveno', {});
       return;
     }
+    // engine 307: proklik z webové správy / sdílený odkaz – `?lat=&lon=&z=`
+    // letí rovnou na místo (web.js pak nepřeskakuje na poslední odkrytou buňku)
+    const cil = startZUrl();
+    if (cil) {
+      mapa.flyTo({ center: cil.center, zoom: cil.zoom, pitch: 35, bearing: 0,
+                   duration: 2000, essential: true });
+      return;
+    }
     // Uvítací nájezd na ČR s náklonem
     mapa.flyTo({ center: [15.34, 49.82], zoom: 7.05, pitch: 35, bearing: 0,
                  duration: 2800, essential: true });
@@ -7235,6 +7243,18 @@ function zmerVysku(e) {
 // v Dartu by z toho byla jen tichá chyba v konzoli.
 window.__okolnikApp = new URLSearchParams(location.search).get('app') === '1';
 const APP_REZIM = new URLSearchParams(location.search).get('app') === '1';
+
+/// engine 307: cíl kamery z URL (`?lat=50.6&lon=13.9&z=17`), jinak null.
+function startZUrl() {
+  try {
+    const q = new URLSearchParams(location.search);
+    const lat = parseFloat(q.get('lat')), lon = parseFloat(q.get('lon'));
+    if (!isFinite(lat) || !isFinite(lon) || lat < 48 || lat > 51.5 || lon < 12 || lon > 19) return null;
+    const z = parseFloat(q.get('z'));
+    return { center: [lon, lat], zoom: isFinite(z) && z > 4 && z <= 20 ? z : 16 };
+  } catch (e) { return null; }
+}
+window.startZUrl = startZUrl;
 
 function mostHlas(jmeno, data) {
   try {
