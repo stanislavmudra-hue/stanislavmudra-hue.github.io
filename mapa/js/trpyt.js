@@ -282,6 +282,9 @@ const Trpyt = (() => {
   /// Zdroj + čtyři vrstvy (po každém načtení stylu znovu; idempotentní).
   function nasad() {
     if (!mapa) return;
+    // engine 308: vypnutý třpyt nezakládá zdroj ani 4 vrstvy (každá vrstva
+    // stojí režii na snímek i s prázdným zdrojem)
+    if (!TRPYT_ZAPNUT) return;
     pripravIkony();
     if (!mapa.getSource(ZDROJ)) {
       mapa.addSource(ZDROJ, { type: 'geojson',

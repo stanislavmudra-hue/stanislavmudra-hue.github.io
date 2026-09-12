@@ -1004,18 +1004,6 @@ function stylHerni(ctx) {
                  'line-opacity': ['interpolate', ['linear'], ['zoom'],
                    11.5, 0, 13.5, 0.45],
                  'line-width': 1.1 } },
-      // ⭐ v1.436: kóty vrstevnic v KRONICE dřív nebyly VŮBEC
-      // („ne všechny vrstevnice mají napsanou výšku“) — hlavní
-      // od z14 sépiově, ať rytina zůstane čistá
-      { id: 'ink-vrstevnice-koty', type: 'symbol', source: 'kontury',
-        'source-layer': 'contours', minzoom: 14,
-        filter: ['==', ['get', 'level'], 1],
-        layout: { 'symbol-placement': 'line',
-                  'text-field': ['concat', ['get', 'ele'], ' m'],
-                  'text-font': FONT_I, 'text-size': 9.5 },
-        paint: { 'text-color': KRONIKA.inkSvetla,
-                 'text-halo-color': KRONIKA.pergamen || '#F1E4BE',
-                 'text-halo-width': 1.1 } },
       // Vodstvo tuší: obrysy břehů + tenké linky řek
       { id: 'ink-voda-obrys', type: 'line', source: 'omt',
         'source-layer': 'water', minzoom: 8,
@@ -1089,6 +1077,21 @@ function stylHerni(ctx) {
       // místa bez kresby ať mají po přiblížení aspoň značku kopce).
       // Vrcholy se jménem shodným s malovaným místem odfiltruje
       // Ilustrace.pripoj (jinak by byly dvakrát — kresba + ▲).
+      // ⛔ engine 308: symbol AŽ ZA inkoustovými čarami – jako první nedrapovaná
+      // vrstva mezi čarami dělal DRUHÝ RTT stack (další textura + kreslení
+      // terénu na každou dlaždici a snímek). Symboly leží nad terénem vždy.
+      // ⭐ v1.436: kóty vrstevnic v KRONICE dřív nebyly VŮBEC
+      // („ne všechny vrstevnice mají napsanou výšku“) — hlavní
+      // od z14 sépiově, ať rytina zůstane čistá
+      { id: 'ink-vrstevnice-koty', type: 'symbol', source: 'kontury',
+        'source-layer': 'contours', minzoom: 14,
+        filter: ['==', ['get', 'level'], 1],
+        layout: { 'symbol-placement': 'line',
+                  'text-field': ['concat', ['get', 'ele'], ' m'],
+                  'text-font': FONT_I, 'text-size': 9.5 },
+        paint: { 'text-color': KRONIKA.inkSvetla,
+                 'text-halo-color': KRONIKA.pergamen || '#F1E4BE',
+                 'text-halo-width': 1.1 } },
       { id: 'ink-vrcholy', type: 'symbol', source: 'omt',
         'source-layer': 'mountain_peak', minzoom: 9 + POSUN_POPISKU,
         filter: ['case', ['<', ['zoom'], 12],
@@ -1371,6 +1374,240 @@ function stylDobyvatel(ctx) {
 // Registr stylů. „zakladni" je hotový styl Liberty (URL) — terén a stínování
 // se do něj injektují za běhu v main.js.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// ⭐ engine 308: SLOUČENÍ VRSTEV (12. 9. 2026, rozhodnutí uživatele „sluč to,
+// co dává smysl a kde to neovlivní kvalitu"). Se zapnutým terénem se KAŽDÁ
+// drapovaná vrstva kreslí do textury zvlášť pro každou terénní dlaždici
+// (masky ořezu + program + kreslení), takže počet vrstev = práce při stavbě
+// textur (dlouhé snímky při posunu). Sloučit jde jen vrstvy téhož zdroje,
+// zdrojové vrstvy a typu, jejichž vlastnosti umí MapLibre řídit daty:
+// hodnoty členů se skládají do `case` podle původních filtrů, pořadí
+// kreslení drží `fill-sort-key`/`line-sort-key`, zoomové křivky se sjednotí
+// na společné zarážky (interpolace se stejnou bází je při vložení zarážky
+// na křivce PŘESNÁ), rozdílné minzoomy nahradí strmá rampa krytí (0,01 zoomu).
+// Co sloučit NEJDE (a funkce to sama pozná a skupinu přeskočí): rozdílné
+// konstantní vlastnosti (fill-antialias, translate, allow-overlap…), člen bez
+// filtru mimo poslední místo, zoomové výrazy jiného tvaru než interpolate/step.
+// Vypnutí: `?slouceni=0` (styl se pak staví po starém) – A/B i návrat.
+// Index dekorací čte původní členy z `metadata.okolnik.casti`.
+// ---------------------------------------------------------------------------
+const SLOUCIT_VRSTVY = new URLSearchParams(location.search).get('slouceni') !== '0';
+const SKUPINY_SLOUCENI = [
+  // ⚠️ `skaly` a `zahrada` zůstávají (skály jsou barva mezi vzory, zahrada
+  // leží nad zástavbou), `krajina-ton` kreslí tytéž plochy podruhé (tón),
+  // `hrbitov` (OSM) sedí mezi skupinami pod parky – nesloučeno kvůli pořadí
+  { id: 'krajina-plochy-a', clenove: ['pole', 'louka', 'sad', 'krajina-ostatni'] },
+  { id: 'krajina-plochy-b', clenove: ['hrbitov-zab', 'zelen', 'park', 'zricenina'] },
+  { id: 'landuse-detaily', clenove: ['hriste', 'parkoviste', 'prumysl', 'skoly'] },
+  { id: 'lesy-druhy', clenove: ['les-jehlicnaty', 'les-smiseny', 'les-listnaty'] },
+  { id: 'ink-vrstevnice', clenove: ['ink-vrstevnice', 'ink-vrstevnice-hlavni'] },
+  { id: 'ink-hranice-stat', clenove: ['ink-hranice-stat', 'ink-hranice-kraj'] },
+  { id: 'zab-cesty', clenove: ['zab-cesty', 'zab-pesiny'] },
+  { id: 'zed', clenove: ['zed', 'hradba'] },
+];
+const SL_LAYOUT_DATOVE = { 'line-cap': 1, 'line-join': 1, 'line-round-limit': 1 };
+const SL_KRYTI = { fill: 'fill-opacity', line: 'line-opacity', circle: 'circle-opacity' };
+const SL_KLIC_RAZENI = { fill: 'fill-sort-key', line: 'line-sort-key', circle: 'circle-sort-key', symbol: 'symbol-sort-key' };
+const SL_VYCHOZI = { 'fill-opacity': 1, 'line-opacity': 1, 'circle-opacity': 1, 'line-width': 1,
+                     'line-blur': 0, 'line-offset': 0, 'line-gap-width': 0, 'fill-antialias': true,
+                     'line-color': '#000000', 'fill-color': '#000000', 'circle-radius': 5 };
+const SL_CROSS = { 'fill-pattern': 1, 'line-pattern': 1, 'line-dasharray': 1 };
+
+function slObsahujeZoom(v) {
+  return Array.isArray(v) && (v[0] === 'zoom' || v.some(slObsahujeZoom));
+}
+function slJeVyraz(v) { return Array.isArray(v) && typeof v[0] === 'string'; }
+// pole konstant (dasharray, translate) musí být ve výrazu jako `literal`
+function slKonst(v) { return (Array.isArray(v) && !slJeVyraz(v)) ? ['literal', v] : v; }
+function slStejne(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+function slDruh(v) {
+  if (Array.isArray(v) && v[0] === 'interpolate' && Array.isArray(v[2]) && v[2][0] === 'zoom') return JSON.stringify(v[1]);
+  if (Array.isArray(v) && v[0] === 'step' && Array.isArray(v[1]) && v[1][0] === 'zoom') return '["linear"]';
+  return null;
+}
+function slZarazky(v) {
+  const out = [];
+  if (Array.isArray(v) && v[0] === 'interpolate' && Array.isArray(v[2]) && v[2][0] === 'zoom') {
+    for (let i = 3; i < v.length; i += 2) out.push(v[i]);
+  } else if (Array.isArray(v) && v[0] === 'step' && Array.isArray(v[1]) && v[1][0] === 'zoom') {
+    for (let i = 3; i < v.length; i += 2) out.push(v[i] - 0.01, v[i]);
+  }
+  return out;
+}
+/// Hodnota číselného zoomového výrazu v zoomu z (interpolate lineární/exponenciální, step); null = neumíme.
+function slHodnota(v, z) {
+  if (typeof v === 'number') return v;
+  if (!Array.isArray(v)) return null;
+  if (v[0] === 'interpolate' && Array.isArray(v[2]) && v[2][0] === 'zoom') {
+    const typ = v[1];
+    const st = [];
+    for (let i = 3; i < v.length; i += 2) st.push([v[i], v[i + 1]]);
+    if (st.some((q) => typeof q[1] !== 'number')) return null;
+    if (z <= st[0][0]) return st[0][1];
+    if (z >= st[st.length - 1][0]) return st[st.length - 1][1];
+    for (let i = 0; i < st.length - 1; i++) {
+      const [z0, a] = st[i];
+      const [z1, b] = st[i + 1];
+      if (z < z0 || z > z1) continue;
+      let t;
+      if (typ[0] === 'exponential' && typ[1] !== 1) {
+        t = (Math.pow(typ[1], z - z0) - 1) / (Math.pow(typ[1], z1 - z0) - 1);
+      } else {
+        t = (z - z0) / (z1 - z0);
+      }
+      return a + (b - a) * t;
+    }
+    return null;
+  }
+  if (v[0] === 'step' && Array.isArray(v[1]) && v[1][0] === 'zoom') {
+    let out = v[2];
+    for (let i = 3; i < v.length; i += 2) if (z >= v[i]) out = v[i + 1];
+    return typeof out === 'number' ? out : null;
+  }
+  return null;
+}
+/// Krytí člena s vlastním minzoom/maxzoom: strmá rampa 0,01 zoomu kolem prahu.
+function slBrana(v, mz, xz) {
+  if (mz == null && xz == null) return v;
+  if (slObsahujeZoom(v) && slDruh(v) !== '["linear"]') return null;
+  const stopy = [];
+  const hod = (z) => slHodnota(v, z);
+  if (slObsahujeZoom(v) && hod(mz == null ? 0 : mz) === null) return null;
+  const orig = slObsahujeZoom(v) ? slZarazky(v) : [];
+  const dolni = mz == null ? -Infinity : mz;
+  const horni = xz == null ? Infinity : xz;
+  if (mz != null) stopy.push([mz - 0.01, 0], [mz, typeof v === 'number' ? v : hod(mz)]);
+  for (const z of orig) if (z > dolni && z < horni) stopy.push([z, hod(z)]);
+  if (xz != null) stopy.push([xz - 0.01, typeof v === 'number' ? v : hod(xz - 0.01)], [xz, 0]);
+  if (!slObsahujeZoom(v) && mz == null) stopy.push([0, v]);
+  stopy.sort((a, b) => a[0] - b[0]);
+  const out = ['interpolate', ['linear'], ['zoom']];
+  let posl = null;
+  for (const [z, h] of stopy) { if (h === null || z === posl) return null; out.push(z, +(+h).toFixed(4)); posl = z; }
+  return out;
+}
+/// Jedna vlastnost přes všechny členy: konstanty → `case`, zoomové → společné zarážky.
+function slSluc(hodnoty, filtry, crossFaded) {
+  const seZoomem = hodnoty.some(slObsahujeZoom);
+  if (!seZoomem) {
+    if (hodnoty.every((h) => slStejne(h, hodnoty[0]))) return hodnoty[0];
+    const c = ['case'];
+    hodnoty.forEach((h, i) => { c.push(filtry[i], slKonst(h)); });
+    c.push(slKonst(hodnoty[hodnoty.length - 1]));
+    return c;
+  }
+  if (crossFaded) return null;
+  const druhy = new Set(hodnoty.filter(slObsahujeZoom).map(slDruh));
+  if (druhy.size !== 1 || druhy.has(null)) return null;
+  const druh = JSON.parse([...druhy][0]);
+  const zar = new Set();
+  hodnoty.forEach((h) => slZarazky(h).forEach((z) => zar.add(z)));
+  const out = ['interpolate', druh, ['zoom']];
+  for (const z of [...zar].sort((a, b) => a - b)) {
+    const c = ['case'];
+    for (let i = 0; i < hodnoty.length; i++) {
+      const h = slObsahujeZoom(hodnoty[i]) ? slHodnota(hodnoty[i], z) : hodnoty[i];
+      if (h === null || h === undefined) return null;
+      c.push(filtry[i], typeof h === 'number' ? +h.toFixed(4) : slKonst(h));
+    }
+    c.push(0);
+    out.push(z, c);
+  }
+  return out;
+}
+/// Sloučí skupinu; vrátí novou vrstvu, nebo null (skupina zůstane po starém).
+function slucSkupinu(vrstvy, sk) {
+  const cl = sk.clenove.map((id) => vrstvy.find((v) => v.id === id));
+  if (cl.some((v) => !v)) return null;
+  const typ = cl[0].type;
+  if (!SL_KRYTI[typ]) return null;
+  if (cl.some((v) => v.type !== typ || v.source !== cl[0].source
+      || v['source-layer'] !== cl[0]['source-layer'])) return null;
+  if (cl.some((v, i) => !v.filter && i < cl.length - 1)) return null;
+  const filtry = cl.map((v) => v.filter || true);
+  const minz = cl.map((v) => v.minzoom == null ? 0 : v.minzoom);
+  const maxz = cl.map((v) => v.maxzoom == null ? 24 : v.maxzoom);
+  const mz = Math.min(...minz);
+  const xz = Math.max(...maxz);
+  // layout: shodné konstanty, datové (line-cap/join) přes case, jinak nelze
+  const layout = {};
+  const klice = new Set();
+  cl.forEach((v) => Object.keys(v.layout || {}).forEach((k) => { if (k !== 'visibility') klice.add(k); }));
+  for (const k of klice) {
+    const hod = cl.map((v) => (v.layout || {})[k]);
+    if (hod.every((h) => slStejne(h, hod[0]))) { if (hod[0] !== undefined) layout[k] = hod[0]; continue; }
+    if (!SL_LAYOUT_DATOVE[k] || hod.some((h) => h === undefined || slObsahujeZoom(h))) return null;
+    layout[k] = slSluc(hod, filtry, false);
+    if (layout[k] === null) return null;
+  }
+  if (cl.some((v) => v.layout && v.layout.visibility === 'none')) return null;
+  // pořadí kreslení = pořadí členů
+  const c = ['case'];
+  cl.forEach((v, i) => { c.push(filtry[i], i); });
+  c.push(cl.length);
+  layout[SL_KLIC_RAZENI[typ]] = c;
+  // paint: každá vlastnost, kterou má aspoň jeden člen (chybějící = výchozí)
+  const paint = {};
+  const pk = new Set([SL_KRYTI[typ]]);
+  cl.forEach((v) => Object.keys(v.paint || {}).forEach((k) => pk.add(k)));
+  for (const k of pk) {
+    if (k.endsWith('-transition')) continue;
+    const hod = cl.map((v) => {
+      let h = (v.paint || {})[k];
+      if (h === undefined) {
+        if (!(k in SL_VYCHOZI)) return undefined;
+        h = SL_VYCHOZI[k];
+      }
+      return h;
+    });
+    if (hod.some((h) => h === undefined)) return null;
+    let sl;
+    if (k === SL_KRYTI[typ]) {
+      const branou = hod.map((h, i) => slBrana(h, minz[i] > mz ? minz[i] : null, maxz[i] < xz ? maxz[i] : null));
+      if (branou.some((h) => h === null)) return null;
+      sl = slSluc(branou, filtry, false);
+    } else {
+      // konstantní vlastnost (antialias, translate…) musí být shodná
+      const konst = k === 'fill-antialias' || k.endsWith('-translate') || k.endsWith('-translate-anchor');
+      if (konst && !hod.every((h) => slStejne(h, hod[0]))) return null;
+      sl = slSluc(hod, filtry, !!SL_CROSS[k]);
+    }
+    if (sl === null) return null;
+    paint[k] = sl;
+  }
+  const out = { id: sk.id, type: typ, source: cl[0].source, 'source-layer': cl[0]['source-layer'],
+                filter: ['any', ...cl.map((v) => v.filter || true)],
+                layout, paint,
+                metadata: { okolnik: { casti: cl.map((v) => {
+                  const c = { id: v.id, filter: v.filter };
+                  if (v.minzoom != null) c.minzoom = v.minzoom;
+                  if (v.maxzoom != null) c.maxzoom = v.maxzoom;
+                  return c;
+                }) } } };
+  if (mz > 0) out.minzoom = mz;
+  if (xz < 24) out.maxzoom = xz;
+  return out;
+}
+function sloucVrstvy(vrstvy) {
+  if (!SLOUCIT_VRSTVY) return vrstvy;
+  let out = vrstvy.slice();
+  for (const sk of SKUPINY_SLOUCENI) {
+    const nova = slucSkupinu(out, sk);
+    if (!nova) {
+      if (out.some((v) => v.id === sk.clenove[0])) console.warn('[slouceni] skupina se nedá sloučit:', sk.id);
+      continue;
+    }
+    const kotva = sk.kotva || sk.clenove[0];
+    const pos = out.findIndex((v) => v.id === kotva);
+    // po odebrání členů se index kotvy posune o členy ležící před ní
+    const pred = out.slice(0, pos).filter((v) => sk.clenove.indexOf(v.id) >= 0).length;
+    out = out.filter((v) => sk.clenove.indexOf(v.id) < 0);
+    out.splice(Math.max(0, pos - pred), 0, nova);
+  }
+  return out;
+}
+window.sloucVrstvy = sloucVrstvy;
+
 function vytvorStyly(ctx) {
   return {
     zakladni: {
@@ -1396,6 +1633,7 @@ function vytvorStyly(ctx) {
       nazev: 'Herní',
       podklad: (() => {
         const s = stylHerni(ctx);
+        s.layers = sloucVrstvy(s.layers);   // engine 308
         s.terrain = { source: 'teren', exaggeration: 1.5 };
         return s;
       })(),

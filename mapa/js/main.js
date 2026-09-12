@@ -303,7 +303,7 @@ function pridejMaskuZahranici() {
   // a maska vložená úplně nahoru tak vyrobila DRUHÝ „stack": další textura
   // 1024² na dlaždici a další kreslení terénu přes celou obrazovku.
   // Pod popisky patří i vizuálně (jméno města nemá maska přebít).
-  const prvniSymbol = prvniSymbolovaVrstva();
+  const prvniSymbol = prvniNedrapovanaVrstva();
   mapa.addLayer({ id: 'okolnik-zahranici', type: 'fill', source: 'cr-maska',
     paint: { 'fill-color': barva, 'fill-opacity': 1 } }, prvniSymbol);
 }
@@ -2164,7 +2164,7 @@ function nasadCyklo() {
     if (!mapa.getSource('okolnik-cyklo')) {
       mapa.addSource('okolnik-cyklo', { type: 'geojson', data: cykloFC });
     }
-    const pred = prvniSymbolovaVrstva();
+    const pred = prvniNedrapovanaVrstva();   // engine 308: do drapovaného bloku
     const vid = cykloZap ? 'visible' : 'none';
     if (!mapa.getLayer('okolnik-cyklo-hl')) {
       // významné (mezinárodní/národní) už z dálky
@@ -2243,7 +2243,7 @@ function vykresliZnacky() {
                'line-width': ['interpolate', ['linear'], ['zoom'],
                               10, 3.6, 13, 5.0, 16, 7.4] },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-    }, prvniSymbolovaVrstva());
+    }, prvniNedrapovanaVrstva());
     mapa.addLayer({
       id: 'okolnik-znacky-linka', type: 'line', source: 'okolnik-znacky',
       paint: {
@@ -2253,7 +2253,7 @@ function vykresliZnacky() {
                        'g', '#2E7D32', 'y', '#F9A825', '#D32F2F'],
       },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-    }, prvniSymbolovaVrstva());
+    }, prvniNedrapovanaVrstva());
   } catch (e) {
     clearTimeout(vykresliZnacky._t);
     vykresliZnacky._t = setTimeout(vykresliZnacky, 400);
@@ -3877,7 +3877,7 @@ function nasadMosty3d() {
       // ⭐ engine 239: POD SILNICI. Zábradlí NAD vozovkou vypadalo jako dva bílé
       // pruhy podél silnice („mosty jsou nehezké"); most má být TĚLESO, po
       // kterém silnice jede – deska tedy leží pod lemem silnice a kouká zpod ní.
-      const predP = mapa.getLayer('silnice-lem') ? 'silnice-lem' : prvniSymbolovaVrstva();
+      const predP = mapa.getLayer('silnice-lem') ? 'silnice-lem' : prvniNedrapovanaVrstva();
       mapa.addLayer({ id: 'okolnik-mosty-ploche', type: 'fill', source: 'mosty-ploche',
         paint: { 'fill-color': ['get', 'c'],
                  // engine 242: krytí po prvcích – vržený stín mostu je slabší
@@ -4615,7 +4615,7 @@ function nasadDomalovani() {
       paint: { 'line-pattern': 'srafa', 'line-width': 4,
                'line-opacity': ['interpolate', ['linear'], ['zoom'],
                  14, 0, 15.5, 0.45] },
-    }, prvniSymbolovaVrstva());
+    }, prvniNedrapovanaVrstva());
   }
 }
 
@@ -4640,6 +4640,22 @@ function prvniSymbolovaVrstva() {
   try {
     for (const v of mapa.getStyle().layers) {
       if (v.type === 'symbol') return v.id;
+    }
+  } catch (e) { /* styl se zrovna mění */ }
+  return undefined;
+}
+
+/// ⭐ engine 308: kotva pro DRAPOVANÉ vrstvy (fill/line/raster) vkládané za
+/// běhu. S terénem se drapované vrstvy kreslí do textur po blocích
+/// („stacích"); blok končí první nedrapovanou vrstvou (budovy, symboly,
+/// kolečka). Vkládání „před první symbol" je řadilo AŽ ZA budovy 3D, takže
+/// vznikaly další bloky (změřeno 12. 9.: 3 stacky = 3× textura a kreslení
+/// terénu na každou dlaždici a snímek). Sem patří vše, co se drapuje.
+function prvniNedrapovanaVrstva() {
+  const drapuje = { background: 1, fill: 1, line: 1, raster: 1, hillshade: 1, 'color-relief': 1 };
+  try {
+    for (const v of mapa.getStyle().layers) {
+      if (!drapuje[v.type]) return v.id;
     }
   } catch (e) { /* styl se zrovna mění */ }
   return undefined;
@@ -4685,14 +4701,14 @@ function vykresliAktivniVypravu() {
       paint: { 'line-color': '#FFF3E0', 'line-width': 6.5,
                'line-opacity': 0.6 },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-    }, prvniSymbolovaVrstva());
+    }, prvniNedrapovanaVrstva());
     mapa.addLayer({
       id: 'okolnik-vyprava-ted-linka', type: 'line',
       source: 'okolnik-vyprava-ted',
       paint: { 'line-color': '#C62828', 'line-width': 3.4,
                'line-opacity': 0.95 },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-    }, prvniSymbolovaVrstva());
+    }, prvniNedrapovanaVrstva());
   } catch (e) {
     // výměna stylu zrovna běží – zkusit za chvíli znovu
     clearTimeout(vykresliAktivniVypravu._t);
@@ -4729,14 +4745,14 @@ function vykresliStopuDne() {
       paint: { 'line-color': '#FFFFFF', 'line-width': 7,
                'line-opacity': 0.55 },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-    }, prvniSymbolovaVrstva());
+    }, prvniNedrapovanaVrstva());
     mapa.addLayer({
       id: 'okolnik-stopa-dne-linka', type: 'line',
       source: 'okolnik-stopa-dne',
       paint: { 'line-color': '#3949AB', 'line-width': 3.6,
                'line-opacity': 0.95, 'line-dasharray': [2.2, 1.2] },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-    }, prvniSymbolovaVrstva());
+    }, prvniNedrapovanaVrstva());
   } catch (e) {
     clearTimeout(vykresliStopuDne._t);
     vykresliStopuDne._t = setTimeout(vykresliStopuDne, 400);
@@ -4778,12 +4794,12 @@ function vykresliPratele() {
       mapa.addLayer({
         id: 'okolnik-pratele-uzemi', type: 'fill', source: 'okolnik-pratele-uzemi',
         paint: { 'fill-color': ['get', 'b'], 'fill-opacity': 0.16 },
-      }, prvniSymbolovaVrstva());
+      }, prvniNedrapovanaVrstva());
       mapa.addLayer({
         id: 'okolnik-pratele-hranice', type: 'line', source: 'okolnik-pratele-uzemi',
         paint: { 'line-color': ['get', 'b'], 'line-width': 1.2,
                  'line-opacity': 0.55, 'line-dasharray': [2, 1.5] },
-      }, prvniSymbolovaVrstva());
+      }, prvniNedrapovanaVrstva());
     }
     const zb = mapa.getSource('okolnik-pratele');
     if (zb) {
@@ -4856,13 +4872,13 @@ function vykresliVypravy() {
       paint: { 'line-color': '#F4EBD3', 'line-width': 4.5,
                'line-opacity': 0.55 },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-    }, prvniSymbolovaVrstva());
+    }, prvniNedrapovanaVrstva());
     mapa.addLayer({
       id: 'okolnik-vypravy-linka', type: 'line', source: 'okolnik-vypravy',
       paint: { 'line-color': '#6B4A2E', 'line-width': 2.2,
                'line-opacity': 0.9, 'line-dasharray': [2.2, 1.6] },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-    }, prvniSymbolovaVrstva());
+    }, prvniNedrapovanaVrstva());
   } catch (e) {
     // výměna stylu zrovna běží – zkusit za chvíli znovu
     clearTimeout(vykresliVypravy._t);

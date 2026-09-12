@@ -1553,15 +1553,21 @@ const Dekorace = (() => {
     const out = [];
     const zdroje = new Set();
     for (const v of vrstvy) {
-      const nosna = !!NOSNE[v.id];
-      const cara = !!CARY_ZAKAZ[v.id];
-      if (!nosna && !cara && SVEDCI.indexOf(v.id) < 0) continue;
       if (!v.source || !v['source-layer']) continue;
       if (v.layout && v.layout.visibility === 'none') continue;
-      out.push({ id: v.id, zdroj: v.source, vrstva: v['source-layer'],
-                 filtr: v.filter, nosna, cara,
-                 zmin: v.minzoom, zmax: v.maxzoom });
-      zdroje.add(v.source);
+      // engine 308: sloučená vrstva nese původní členy (id + filtr + zoomy)
+      // v metadata.okolnik.casti – index je čte, jako by vrstvy dál existovaly
+      const casti = (v.metadata && v.metadata.okolnik && v.metadata.okolnik.casti) || [v];
+      for (const c of casti) {
+        const nosna = !!NOSNE[c.id];
+        const cara = !!CARY_ZAKAZ[c.id];
+        if (!nosna && !cara && SVEDCI.indexOf(c.id) < 0) continue;
+        out.push({ id: c.id, zdroj: v.source, vrstva: v['source-layer'],
+                   filtr: c.filter, nosna, cara,
+                   zmin: c.minzoom == null ? v.minzoom : c.minzoom,
+                   zmax: c.maxzoom == null ? v.maxzoom : c.maxzoom });
+        zdroje.add(v.source);
+      }
     }
     plochyDef = out;
     return plochyDef;
