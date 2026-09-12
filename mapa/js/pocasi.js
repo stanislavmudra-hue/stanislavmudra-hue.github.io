@@ -1295,7 +1295,12 @@ const Pocasi = (() => {
   //  2. NEVIDITELNÁ MAPA NEKRESLÍ. `document.hidden` nestačí: když appka
   //     překryje WebView vlastní obrazovkou (seznam, detail…), stránka je
   //     pořád „viditelná". Proto to appka říká mostem (`OkolnikMost.vidno`).
-  const TIK_KLID_MS = 40;   // 5. 9. 2026: i v klidu plynule (25 Hz)
+  // ⛔⛔ engine 309 (změřeno 12. 9. 2026): KAŽDÝ snímek WebView v klidu
+  // = nový snímek i pro Flutter (raster vlákno ~8 ms) a HWUI RenderThread –
+  // řetězec WebView → Android → Flutter držel v klidu ~1,7 jádra (raster
+  // 40 %, RenderThread 40 %, JS 49 %, kompozitor 16 %) a telefon se topil.
+  // Mraky se sunou pár px za sekundu, 10 Hz je pro ně stále subpixelový krok.
+  const TIK_KLID_MS = 100;  // 5. 9. 2026 bylo 40 (25 Hz)
   const KLID_PO_MS = 3000;
   let posledniPohybMs = 0;
   let posledniTikMs = 0;

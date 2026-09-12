@@ -1067,8 +1067,12 @@ const Dekorace = (() => {
   function naplnVnitrek(vnitrni, typ) {
     vnitrni.style.cssText = HMYZ_VZHLED[typ] || HMYZ_VZHLED.svetluska;
     // náhodná fáze mávnutí (jinak mávají všechny naráz jako sbor)
+    // engine 309: fáze jen v násobcích 50 ms – mávnutí různých včel padnou
+    // do TÝCHŽ okamžiků (kompozitor kreslí 20 snímků/s místo ~60, protože
+    // každá včela se dřív přepínala v jiném čase); „sbor" to nedělá,
+    // pořadí křídel je pořád náhodné
     vnitrni.style.setProperty(
-        '--vfaze', (-Math.random() * 340).toFixed(0) + 'ms');
+        '--vfaze', (-50 * Math.floor(Math.random() * 7)).toFixed(0) + 'ms');
     if (typ === 'vcela') {
       vnitrni.innerHTML = VCELA_SVG;
     } else if (typ === 'mura') {

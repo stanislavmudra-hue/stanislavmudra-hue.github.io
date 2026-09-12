@@ -283,8 +283,11 @@ const Ptaci = (() => {
       // ptáka dlouhou cestou
       if (typeof p.otocPred === 'number') otoc += 360 * Math.round((p.otocPred - otoc) / 360);
       p.otocPred = otoc;
+      // engine 309: přechod po DVOU krocích, ne lineárně – lineární přechod
+      // nechal kompozitor kreslit 6 snímků na každý krok (60 fps v klidu),
+      // a každý snímek WebView znamená snímek i pro Flutter (viz pocasi.js)
       const prechod = vKlidu
-          ? 'transform ' + KLID_KROK_MS + 'ms linear, opacity 300ms linear' : 'none';
+          ? 'transform ' + KLID_KROK_MS + 'ms steps(2, end), opacity 300ms steps(3, end)' : 'none';
       if (p.el.style.transition !== prechod) {
         p.el.style.transition = prechod;
         p.stin.style.transition = prechod;
