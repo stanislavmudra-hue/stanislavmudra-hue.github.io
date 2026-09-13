@@ -9488,7 +9488,18 @@ function velikostMist(sBublinou, klic) {
   const v = ['interpolate', ['exponential', 2], ['zoom'],
     10, (sBublinou ? ['case', ['has', 'fv'], 0.24, ['has', 'b2d'], 0.14, ['*', kb, 0.16]]
                    : ['case', ['has', 'fv'], 0.24, ['*', kb, 0.16]])];
-  for (let z = 13; z <= 22; z++) v.push(z, stop(z));
+  // ⛔⛔ engine 316 („obrázek kostela je jednou velký, pak malý, pak velký"):
+  // MapLibre peče velikost symbolu po DLAŽDICÍCH mezi dvěma krycími
+  // zastávkami výrazu (symbol_size getSizeData) a mimo ně ji OŘÍZNE
+  // (t ∈ [0,1]). Se zastávkou na každém celém zoomu velikost při gestu
+  // zamrzla na hraně dlaždice (z16 → 17: 0,47 místo 0,58), dokud nedojela
+  // nová dlaždice, a pak skočila – tam a zpět při každém přejetí celého
+  // zoomu. Výraz sám je hladký (změřeno CDP 13. 9.), skáče jen ořez.
+  // Proto jen zastávky 14 a 18: dlaždice z14–17 kryje jediný úsek, nic
+  // nezamrzá; nad z18 už platí strop 260 px (velké) / podlaha (malé) –
+  // tam ořez nevadí. Cena: velké objekty jsou na z15–16 o 15–35 % větší
+  // než dřív (exponenciála mezi 14 a 18 místo lomené křivky).
+  v.push(14, stop(14), 18, stop(18));
   return v;
 }
 /// Rozplynutí, když by obrázek zaplnil obrazovku (D od z19, C od z20, B od
@@ -9849,13 +9860,15 @@ function naplanujSkryteMista() {
   const zkus = () => {
     skryteMistaT = null;
     const odPohybu = performance.now() - (window.__posledniPohybMs || 0);
-    if (prstNaMape() || odPohybu < 400 || (mapa && mapa.isMoving && mapa.isMoving())) {
-      skryteMistaT = setTimeout(zkus, 450);
+    // engine 316: dřív 400 ms klidu + opakování 450 ms („počítadlo shluků
+    // počítá pomalu") – teď 150 / 200 ms; dotaz stojí ~20 ms, jednou po zastavení
+    if (prstNaMape() || odPohybu < 150 || (mapa && mapa.isMoving && mapa.isMoving())) {
+      skryteMistaT = setTimeout(zkus, 200);
       return;
     }
     synchronizujSkryteMista();
   };
-  skryteMistaT = setTimeout(zkus, 120);
+  skryteMistaT = setTimeout(zkus, 100);
 }
 function synchronizujSkryteMista() {
   if (!mapa || !posledniMistaGj || !mapa.getLayer('okolnik-mista-ikona')) return;
@@ -9886,7 +9899,7 @@ function synchronizujSkryteMista() {
         let host = null;
         for (const h of pod) {
           const hid = String(h.properties.id);
-          if (hid === id || h.properties.point_count) continue;
+          if (hid === id || h.properties.point_count || h.properties.b2d || h.properties.fv) continue;
           const smH = +h.properties.sm || 12;
           if (smH >= 3 * smS && (!host || smH > host.sm)) host = { id: hid, sm: smH };
         }
@@ -9921,6 +9934,9 @@ function synchronizujSkryteMista() {
     for (const f of vidimPrvky) {
       const id = String(f.properties.id);
       if (uz.has(id) || f.properties.point_count || spolkVidit.has(id)) continue;
+      // engine 316: hostitelem je jen KRESBA – bublina (b2d: špendlík výpravy,
+      // emoji) ani hvězda oblíbených odznak nenesou (bota u kostela měla „6")
+      if (f.properties.b2d || f.properties.fv) continue;
       uz.add(id);
       const p = mapa.project(f.geometry.coordinates);
       hostitele.push({ id, x: p.x, y: p.y, c: f.geometry.coordinates });
@@ -10624,7 +10640,12 @@ function vykresliMista() {
   // pod zoomem 13 MapLibre slil do zeleného kolečka s číslem – a protože
   // vrstva ikon shluky odfiltruje, nebylo nač kliknout. Ve 2D jsou to
   // vlastní vrstvy MIMO shlukování; tady tedy taky.
-  const MOJE = /^(fav|priv|trip|zapis):/;
+  // ⭐ engine 316 („co ta výprava? proč jsi ji nedal také do shluků?"): špendlíky
+  // VÝPRAV a ZÁPISŮ jdou do shlukovaného zdroje – shluk je počítá, odznak
+  // spolknutí je počítá, výběr je nabídne (appka zná `trip:`/`zapis:` v onBod
+  // i onShluk). Oblíbená a soukromá místa zůstávají zvlášť (nezhlukují se,
+  // 6. 8. 2026: „vložil jsem zálohu, nedá se otevřít").
+  const MOJE = /^(fav|priv):/;
   const viditelnaVse = vsechna.filter((m) => !MOJE.test(String(m.id)));
   const mojeMista = vsechna.filter((m) => MOJE.test(String(m.id)));
   // ⭐ v1.405 (bod B): POSTUPNÉ ROZENÍ. Nová POI (v téhle relaci
@@ -10642,13 +10663,17 @@ function vykresliMista() {
   } else {
     viditelna = viditelnaVse.filter((m) => znama.has(String(m.id)));
     vykresliMista._fronta = nova;
+    // engine 316 („obrázky se objevují po moc dlouhé době"): 180 ms na kus
+    // dávalo u 15 nových 2,7 s; teď 60 ms a po dávkách, ať celá vlna trvá
+    // nejvýš ~0,7 s (dávka = nová / 12, nejméně 1)
+    const davka = Math.max(1, Math.ceil(nova.length / 12));
     vykresliMista._rozeni = setInterval(() => {
-      const dalsi = (vykresliMista._fronta || []).shift();
-      if (!dalsi) { clearInterval(vykresliMista._rozeni); return; }
-      znama.add(String(dalsi.id));
+      const fronta = vykresliMista._fronta || [];
+      if (!fronta.length) { clearInterval(vykresliMista._rozeni); return; }
+      for (let k = 0; k < davka && fronta.length; k++) znama.add(String(fronta.shift().id));
       vykresliMista._podpis = null;   // vynutit průchod braným podpisem
       try { vykresliMista(); } catch (e) { /* příští tik */ }
-    }, 180);
+    }, 60);
   }
   // engine 213: text stuhy připravuje ODESÍLATEL – appka `_jmenoProStuhu`
   // (bez obce v názvu, druh + jméno, strop 40 znaků), web totéž ve
