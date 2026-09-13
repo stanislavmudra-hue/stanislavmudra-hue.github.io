@@ -1133,11 +1133,13 @@ const Dekorace = (() => {
     return el;
   }
   const HMYZ_DEN_OD_Z = 16;
-  /// engine 301: denní hmyz bez podlahy velikosti – 0,20 na z16 (9 px, menší
-  /// než dům) → 0,60 na z19 (26 px); dřív podlaha 0,72 = 32 px i z dálky
+  /// engine 301 dal 0,20 na z16 → 0,60 na z19 – jenže včela je 13px prvek,
+  /// takže z ní zbyly 3–4 px („hmyz zmizel", 13. 9.). Engine 311: 0,6 na z16
+  /// (8 px) → 1,2 na z19 (16 px); prvky 44 px (světluška, můra) mají vlastní
+  /// `velikostMusky`.
   function velikostHmyzuDen() {
     const z = Math.max(HMYZ_DEN_OD_Z, Math.min(19, mapa.getZoom()));
-    return 0.20 + (z - HMYZ_DEN_OD_Z) / 3 * 0.40;
+    return 0.6 + (z - HMYZ_DEN_OD_Z) / 3 * 0.6;
   }
   function velikostMusky() {
     const z = Math.max(13.2, Math.min(17.6, mapa.getZoom()));
