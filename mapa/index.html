@@ -16,6 +16,22 @@
   if (new URLSearchParams(location.search).get('app') === '1') {
     document.documentElement.classList.add('v-appce');
   }
+  // ⭐ engine 318: PŘIHLÁŠENÝ NA WEBU → HERNÍ MAPA, NE DEMO. /mapa/ bez
+  // ?web=1 je ukázka (jen kresby Kouzelného Česka, žádné obrázky míst ani
+  // stav hry); uživatel ji po přihlášení otevřel a hlásil „na webu na mapě
+  // nevidím obrázky v herním módu". Má-li prohlížeč relaci Můj Okolník
+  // (okolnikUcet1 s uid + refreshToken), jde rovnou na ?web=1 (ostatní
+  // parametry zůstávají); ?demo=1 ukázku vynutí, ?app=1 je appka.
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.get('app') !== '1' && q.get('web') !== '1' && q.get('demo') !== '1') {
+      const r = JSON.parse(localStorage.getItem('okolnikUcet1') || 'null');
+      if (r && r.uid && r.refreshToken) {
+        q.set('web', '1');
+        location.replace(location.pathname + '?' + q.toString() + location.hash);
+      }
+    }
+  } catch (e) { /* bez localStorage = demo */ }
 </script>
 <style>
   html.v-appce .panel, html.v-appce #napoveda, html.v-appce #znacka,
@@ -242,7 +258,7 @@
     }
   }
   const V5 = new URLSearchParams(location.search).get('ml') === '5';
-  const VERZE = '?v=317';
+  const VERZE = '?v=318';
   const SKRIPTY = ['js/styles.js', 'js/fog.js', 'js/pocasi.js',
     'js/svetlo.js', 'js/trpyt.js',
     'js/postavicka.js', 'js/dekorace.js', 'js/ilustrace.js',
