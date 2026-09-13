@@ -4102,16 +4102,71 @@ function prepoctiMosty3d() {
     return 0;
   };
   const mosty = new Map();
+  // ⭐⭐ engine 313 („některé mosty jsou zdvojené a nesouhlasí s terénem"):
+  // TENTÝŽ MOST CHODÍ Z OBOU DLAŽDIC, NA JEJICHŽ HRANICI LEŽÍ, a každý kus je
+  // jinak oříznutý (buffer dlaždice 64/4096 ≈ 38 m na z14). Ověřeno 13. 9.
+  // u Teplic (trunk 229285982: 51,5 m a 63 m, společný jen jeden konec).
+  // Jiné konce = jiný klíč = dvě desky přes sebe, každá s opěrami uprostřed
+  // rozpětí a s výškou „nižšího konce" = terén pod oříznutým koncem (utopená
+  // deska). Kusy TÉHOŽ OSM id, které se dotýkají nebo překrývají (konec jednoho
+  // leží do 3 m na čáře druhého), se proto nejdřív slepí do jednoho těla –
+  // řazení podél osy níž z něj duplicitní body vyhodí.
+  const kusyPodleId = new Map();
+  const vzdBodCara = (P, c, kx, ky) => {
+    let nej = Infinity;
+    for (let i = 1; i < c.length; i++) {
+      const ax = c[i - 1][0] * kx, ay = c[i - 1][1] * ky, bx = c[i][0] * kx, by = c[i][1] * ky;
+      const px = P[0] * kx, py = P[1] * ky;
+      const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1e-9;
+      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L2));
+      nej = Math.min(nej, Math.hypot(px - (ax + dx * t), py - (ay + dy * t)));
+    }
+    return nej;
+  };
+  const dotykaSe = (c1, c2) => {
+    const kx = 111320 * Math.cos(c1[0][1] * Math.PI / 180), ky = 110574;
+    for (const q of [c1[0], c1[c1.length - 1]]) if (vzdBodCara(q, c2, kx, ky) < 3) return true;
+    for (const q of [c2[0], c2[c2.length - 1]]) if (vzdBodCara(q, c1, kx, ky) < 3) return true;
+    return false;
+  };
   for (const f of prvky) {
     const p = f.properties || {};
     const g = f.geometry;
     if (!g) continue;
-    const cary = g.type === 'LineString' ? [g.coordinates]
-               : (g.type === 'MultiLineString' ? g.coordinates : null);
-    if (!cary) continue;
+    const cary0 = g.type === 'LineString' ? [g.coordinates]
+                : (g.type === 'MultiLineString' ? g.coordinates : null);
+    if (!cary0) continue;
+    const cls0 = p['class'] || 'minor';
+    const idK = (f.id != null ? String(f.id) : 'x' + Math.random()) + '|' + cls0;
+    if (!kusyPodleId.has(idK)) kusyPodleId.set(idK, []);
+    const sk = kusyPodleId.get(idK);
+    for (const c of cary0) {
+      if (!c || c.length < 2) continue;
+      let vlozeno = false;
+      for (const o of sk) {
+        if (dotykaSe(o.c, c)) { o.c = o.c.concat(c); vlozeno = true; break; }
+      }
+      if (!vlozeno) sk.push({ cls: cls0, c: c.slice() });
+    }
+  }
+  const slepene = [];
+  for (const sk of kusyPodleId.values()) for (const o of sk) slepene.push(o);
+  for (const o of slepene) {
+    const p = { class: o.cls };
+    const cary = [o.c];
     for (const c of cary) {
       if (!c || c.length < 2) continue;
-      const a = c[0], b = c[c.length - 1];
+      // krajní body slepeného těla = nejvzdálenější dvojice (klíč dedupu)
+      let a = c[0], b = c[c.length - 1];
+      if (c.length > 2) {
+        const kx0 = 111320 * Math.cos(c[0][1] * Math.PI / 180);
+        let nej = -1;
+        for (let i = 0; i < c.length; i++) for (let j = i + 1; j < c.length; j++) {
+          const dx = (c[i][0] - c[j][0]) * kx0, dy = (c[i][1] - c[j][1]) * 110574;
+          const d = dx * dx + dy * dy;
+          if (d > nej) { nej = d; a = c[i]; b = c[j]; }
+        }
+      }
       // ⛔⛔ engine 247: KLÍČ NESMÍ ZÁLEŽET NA SMĚRU ANI NA PŘESNÝCH SOUŘADNICÍCH.
       // Tentýž most přichází i obráceně (druhá kolej, jiná dlaždice) a se
       // starým klíčem (pořadí bodů + jejich počet) prošel jako nový – vedle
@@ -9788,22 +9843,48 @@ function registrujKlikMista() {
   // chodí z workeru, proto se čeká na sliby) a pošlou jednou: 1 místo →
   // detail, víc → výběr; nic → náhradní akce (přiblížení velkého shluku).
   let sber = null;
+  // ⭐ engine 313 („přiblížení dvojitým klikem na shluk mě hodilo jinam a zase
+  // oddálilo"): první klepnutí spustilo easeTo na shluk a druhé klepnutí
+  // (MapLibre tap-zoom +1 kolem prstu) ho přerušilo uprostřed letu – mapa
+  // skončila v mezipoloze, s jiným zoomem, a klik dopadl na cizí shluk.
+  // Přiblížení shluku proto čeká DVOJKLIK_MS; přijde-li do té doby druhé
+  // klepnutí blízko prvního, zruší se (zoom udělá MapLibre sám) a klepnutí
+  // během běžící animace shluku se nepočítá.
+  const DVOJKLIK_MS = 280;
+  let posledniKlep = null;          // {t, x, y}
+  let cekajiciShluk = null;         // časovač odloženého přiblížení
+  let shlukAnimaceDo = 0;
   const posbirej = (e) => {
     const ev = e.originalEvent || e;
     if (sber && sber.ev === ev) return sber;
     // vlajka Dobyvatele pod prstem má přednost před vším – celé klepnutí
     // se spolkne (26. 8.), i pro posluchače, kteří přijdou po tomhle
-    const spolknuto = !!(window.Dobyvatel && Dobyvatel.spolklKlik(e));
-    const muj = { ev, ids: [], sliby: [], nahradni: null, spolknuto };
+    let spolknuto = !!(window.Dobyvatel && Dobyvatel.spolklKlik(e));
+    const ted = performance.now();
+    const pt = e.point || { x: 0, y: 0 };
+    const dvojity = !!(posledniKlep && ted - posledniKlep.t < DVOJKLIK_MS + 40
+        && Math.hypot(pt.x - posledniKlep.x, pt.y - posledniKlep.y) < 30);
+    posledniKlep = { t: ted, x: pt.x, y: pt.y };
+    if (dvojity && cekajiciShluk) { clearTimeout(cekajiciShluk); cekajiciShluk = null; }
+    if (ted < shlukAnimaceDo) spolknuto = true;
+    const muj = { ev, ids: [], sliby: [], nahradni: null, spolknuto, dvojity };
     sber = muj;
     setTimeout(() => {
       if (sber === muj) sber = null;
-      if (muj.spolknuto) return;
+      // druhé klepnutí dvojkliku: nic neposílat (detail už otevřelo první)
+      if (muj.spolknuto || muj.dvojity) return;
       Promise.allSettled(muj.sliby).then(() => {
         const vsechna = [...new Set(muj.ids.filter((id) => id))];
         if (vsechna.length === 1) mostHlas('onBod', vsechna[0]);
         else if (vsechna.length > 1) mostHlas('onShluk', vsechna);
-        else if (muj.nahradni) muj.nahradni();
+        else if (muj.nahradni) {
+          if (cekajiciShluk) clearTimeout(cekajiciShluk);
+          cekajiciShluk = setTimeout(() => {
+            cekajiciShluk = null;
+            shlukAnimaceDo = performance.now() + 650;
+            muj.nahradni();
+          }, DVOJKLIK_MS);
+        }
       });
     }, 0);
     return muj;

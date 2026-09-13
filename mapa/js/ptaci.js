@@ -184,6 +184,14 @@ const Ptaci = (() => {
   // WebView → Flutter v překreslování.
   const KLID_KROK_MS = 100;
   let vKlidu = false;
+  let poslStred = null;            // engine 313: střed mapy v minulém kroku
+  function prstNaMape_() {
+    try {
+      if (typeof prstNaMape === 'function') return prstNaMape();
+      if (typeof prstuNaMape !== 'undefined') return !!prstuNaMape;
+    } catch (e) { /* nic */ }
+    return false;
+  }
   function mapaSeHybe() {
     try {
       if (mapa.isMoving && mapa.isMoving()) return true;
@@ -217,8 +225,24 @@ const Ptaci = (() => {
     const st = svetlo();
     const b = mapa.getBounds();
     const mLat = 1 / 110574;
+    // ⭐ engine 313 („káňata někdy lítají pozpátku"): káně stálo ve světě, ale
+    // při PROGRAMOVÉM pohybu kamery (sledování hráče v autě 15–25 m/s, dojezd,
+    // přelet) se mapa pod ním sunula rychleji, než letí (14–37 m/s), a na
+    // obrazovce couvalo proti svému nosu. Střed kroužení se proto posouvá
+    // s kamerou; při tahu prstem zůstává ve světě (posun je záměr uživatele).
+    let posunLng = 0, posunLat = 0;
+    try {
+      const c = mapa.getCenter();
+      if (poslStred && !prstNaMape_()) {
+        posunLng = c.lng - poslStred.lng;
+        posunLat = c.lat - poslStred.lat;
+        if (Math.abs(posunLng) > 0.02 || Math.abs(posunLat) > 0.02) { posunLng = 0; posunLat = 0; }
+      }
+      poslStred = { lng: c.lng, lat: c.lat };
+    } catch (e) { posunLng = 0; posunLat = 0; }
     for (let i = ptaci.length - 1; i >= 0; i--) {
       const p = ptaci[i];
+      if (posunLng || posunLat) { p.sx += posunLng; p.sy += posunLat; }
       const mLon = 1 / (111320 * Math.cos(p.sy * Math.PI / 180));
       const cil = ok ? 1 : 0;
       p.op += (cil - p.op) * Math.min(1, dt * 1.2);
