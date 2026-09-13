@@ -9766,6 +9766,7 @@ async function nactiIkonyZdroje(gj, zdrojId) {
 /// „vyskočí ty pop up okna dvě"). Posluchač na ID vrstvy přežije i to,
 /// když je vrstva mezitím zahozená a založená znovu.
 let hookKlikuMist = false;
+let posbirejKlik = null;                // engine 315: sběrač klepnutí (viz registrujKlikMista)
 
 /// Nejmenší objekt (`sm`) z prvků pod prstem – malé věci (boží muka, kašna)
 /// mají přednost před velkým obrázkem, v jehož ploše leží.
@@ -9809,6 +9810,40 @@ let nazvyPuvodniNasledovnik = null;      // id vrstvy, před kterou se názvy vr
 // `skryt` (zdroj má promoteId 'id'); pata i záře na něj reagují v paint.
 const skryteMista = new Map();
 let skryteMistaT = null;
+// ⭐ engine 315 („shluky ne vždycky fungují" – Rtyně n. B.): nad z16,5 MapLibre
+// neshlukuje a boží muka u kostela schová KOLIZE bez jakékoli stopy (z16,8
+// shluk „2", z17,3 nic, z17,8 kříž uvnitř kresby kostela). Schovaná ikona se
+// proto připočte k nejbližší viditelné do SPOLKNUTI_PX a ta nese odznak
+// s číslem jako shluk; klepnutí na ni pošle appce i schované členy.
+const SPOLKNUTI_PX = 90;
+const spolknutaMista = new Map();      // id hostitele → [id schovaných]
+let spolknutePodpis = '';
+function zajistiVrstvySpolknutych() {
+  if (!mapa || !mapa.getLayer('okolnik-mista-ikona')) return false;
+  try {
+    if (!mapa.getSource('okolnik-mista-spolknute')) {
+      mapa.addSource('okolnik-mista-spolknute',
+          { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    if (!mapa.getLayer('okolnik-mista-spolknute-kruh')) {
+      // nad ikonami míst (odznak leží na kresbě), pod odznakem „i"
+      const pred = mapa.getLayer('okolnik-mista-odznak-info') ? 'okolnik-mista-odznak-info' : undefined;
+      mapa.addLayer({
+        id: 'okolnik-mista-spolknute-kruh', type: 'circle', source: 'okolnik-mista-spolknute',
+        paint: { 'circle-radius': 10, 'circle-translate': [16, -12],
+                 'circle-color': '#2E7D5B', 'circle-opacity': 0.92,
+                 'circle-stroke-width': 2, 'circle-stroke-color': '#F2E8CF' },
+      }, pred);
+      mapa.addLayer({
+        id: 'okolnik-mista-spolknute-pocet', type: 'symbol', source: 'okolnik-mista-spolknute',
+        layout: { 'text-field': ['get', 'n'], 'text-font': ['Noto Sans Bold'], 'text-size': 11,
+                  'text-allow-overlap': true, 'text-ignore-placement': true },
+        paint: { 'text-color': '#F2E8CF', 'text-translate': [16, -12] },
+      }, pred);
+    }
+  } catch (e) { return false; }
+  return true;
+}
 function naplanujSkryteMista() {
   if (skryteMistaT) return;
   const zkus = () => {
@@ -9824,23 +9859,104 @@ function naplanujSkryteMista() {
 }
 function synchronizujSkryteMista() {
   if (!mapa || !posledniMistaGj || !mapa.getLayer('okolnik-mista-ikona')) return;
-  let vidim;
+  let vidimPrvky;
   try {
-    vidim = new Set(mapa.queryRenderedFeatures({ layers: ['okolnik-mista-ikona'] })
-      .map((f) => String(f.properties.id)));
+    vidimPrvky = mapa.queryRenderedFeatures({ layers: ['okolnik-mista-ikona'] });
   } catch (e) { return; }
+  const vidim = new Set(vidimPrvky.map((f) => String(f.properties.id)));
   let pohled = null;
   try { pohled = mapa.getBounds(); } catch (e) { /* bez ořezu */ }
+  // engine 315b: VIDITELNÁ malá ikona uvnitř obrázku výrazně většího místa
+  // (kotva kříže leží v kresbě kostela: `sm` 6 vs. 40) se spolkne – kreslila
+  // se malá uvnitř kostela a vypadalo to jako „shluk tam není".
+  const spolkVidit = new Map();        // id malé → id hostitele
+  try {
+    const podleId = new Map();
+    for (const f of vidimPrvky) {
+      const id = String(f.properties.id);
+      if (!podleId.has(id) && !f.properties.point_count) podleId.set(id, f);
+    }
+    if (podleId.size <= 80) {
+      for (const [id, f] of podleId) {
+        const smS = +f.properties.sm || 12;
+        const p = mapa.project(f.geometry.coordinates);
+        let pod;
+        try { pod = mapa.queryRenderedFeatures([p.x, p.y], { layers: ['okolnik-mista-ikona'] }); }
+        catch (e) { continue; }
+        let host = null;
+        for (const h of pod) {
+          const hid = String(h.properties.id);
+          if (hid === id || h.properties.point_count) continue;
+          const smH = +h.properties.sm || 12;
+          if (smH >= 3 * smS && (!host || smH > host.sm)) host = { id: hid, sm: smH };
+        }
+        if (host) spolkVidit.set(id, host.id);
+      }
+      // hostitel sám spolknutý jiným → řetěz se narovná na konečného hostitele
+      for (const [id, hid] of spolkVidit) {
+        let h = hid, n = 0;
+        while (spolkVidit.has(h) && n++ < 5) h = spolkVidit.get(h);
+        spolkVidit.set(id, h);
+      }
+    }
+  } catch (e) { spolkVidit.clear(); }
+  const schovane = [];
   for (const f of posledniMistaGj.features) {
     const id = String(f.properties.id);
     const c = f.geometry && f.geometry.coordinates;
     if (pohled && c && !pohled.contains(c)) continue;   // mimo výřez neřešit
-    const skryt = !vidim.has(id);
-    if (skryteMista.get(id) === skryt) continue;
-    skryteMista.set(id, skryt);
-    try { mapa.setFeatureState({ source: 'okolnik-mista', id }, { skryt }); }
+    const spolk = spolkVidit.has(id);
+    const skryt = !vidim.has(id) || spolk;
+    if (!vidim.has(id) && c) schovane.push({ id, c });
+    const klic = skryt + '|' + spolk;
+    if (skryteMista.get(id) === klic) continue;
+    skryteMista.set(id, klic);
+    try { mapa.setFeatureState({ source: 'okolnik-mista', id }, { skryt, spolk }); }
     catch (e) { /* zdroj v přestavbě */ }
   }
+  // engine 315: schované ikony → odznak na nejbližší viditelné (viz SPOLKNUTI_PX)
+  try {
+    const hostitele = [];
+    const uz = new Set();
+    for (const f of vidimPrvky) {
+      const id = String(f.properties.id);
+      if (uz.has(id) || f.properties.point_count || spolkVidit.has(id)) continue;
+      uz.add(id);
+      const p = mapa.project(f.geometry.coordinates);
+      hostitele.push({ id, x: p.x, y: p.y, c: f.geometry.coordinates });
+    }
+    const skupiny = new Map();
+    for (const [id, hid] of spolkVidit) {
+      const h = hostitele.find((x) => x.id === hid);
+      if (!h) continue;
+      if (!skupiny.has(hid)) skupiny.set(hid, { c: h.c, cleni: [] });
+      skupiny.get(hid).cleni.push(id);
+    }
+    for (const s of schovane) {
+      const p = mapa.project(s.c);
+      let nej = null, nejD = Infinity;
+      for (const h of hostitele) {
+        const d = Math.hypot(h.x - p.x, h.y - p.y);
+        if (d < nejD) { nejD = d; nej = h; }
+      }
+      if (!nej || nejD > SPOLKNUTI_PX) continue;
+      if (!skupiny.has(nej.id)) skupiny.set(nej.id, { c: nej.c, cleni: [] });
+      skupiny.get(nej.id).cleni.push(s.id);
+    }
+    spolknutaMista.clear();
+    const features = [];
+    for (const [hid, sk] of skupiny) {
+      spolknutaMista.set(hid, sk.cleni);
+      features.push({ type: 'Feature', properties: { id: hid, n: String(sk.cleni.length + 1) },
+                      geometry: { type: 'Point', coordinates: sk.c } });
+    }
+    const podpis = features.map((f) => f.properties.id + ':' + f.properties.n).sort().join('|');
+    if (podpis !== spolknutePodpis && zajistiVrstvySpolknutych()) {
+      spolknutePodpis = podpis;
+      const src = mapa.getSource('okolnik-mista-spolknute');
+      if (src) src.setData({ type: 'FeatureCollection', features });
+    }
+  } catch (e) { /* projekce mimo mapu – příště */ }
 }
 
 function poradiNazvuObci() {
@@ -9918,6 +10034,7 @@ function registrujKlikMista() {
   // chodí z workeru, proto se čeká na sliby) a pošlou jednou: 1 místo →
   // detail, víc → výběr; nic → náhradní akce (přiblížení velkého shluku).
   let sber = null;
+  // engine 315: sběrač je dostupný i posluchači špendlíků výprav (`okolnik-moje-ikona`)
   // ⭐ engine 313 („přiblížení dvojitým klikem na shluk mě hodilo jinam a zase
   // oddálilo"): první klepnutí spustilo easeTo na shluk a druhé klepnutí
   // (MapLibre tap-zoom +1 kolem prstu) ho přerušilo uprostřed letu – mapa
@@ -9964,13 +10081,22 @@ function registrujKlikMista() {
     }, 0);
     return muj;
   };
+  posbirejKlik = posbirej;
   for (const vrstva of ['okolnik-mista-kruh', 'okolnik-mista-ikona']) {
     mapa.on('click', vrstva, (e) => {
       // ⭐ engine 201: pod prstem bývá víc obrázků (boží muka UVNITŘ obrázku
       // kostela) – bere se NEJMENŠÍ objekt (`sm`), ne první v pořadí
-      const f = nejmensiPodPrstem(e.features);
+      // engine 315b: průhledné spolknuté ikony pod prstem zastupuje hostitel
+      const spolknute = new Set();
+      for (const cl of spolknutaMista.values()) for (const m of cl) spolknute.add(m);
+      const f = nejmensiPodPrstem((e.features || []).filter((x) => !spolknute.has(String(x.properties.id))))
+          || nejmensiPodPrstem(e.features);
       const muj = posbirej(e);
-      if (f && !muj.spolknuto) muj.ids.push(f.properties.id);
+      if (f && !muj.spolknuto) {
+        muj.ids.push(f.properties.id);
+        // engine 315: hostitel nese i ikony schované kolizí (odznak s číslem)
+        for (const m of (spolknutaMista.get(String(f.properties.id)) || [])) muj.ids.push(m);
+      }
     });
   }
   // ⭐ KLIK NA SHLUK: zblízka SEZNAM ČLENŮ, z dálky přiblížit (7. 8. 2026).
@@ -10800,10 +10926,15 @@ function vykresliMista() {
       // složce fonts (jinak by vrstva potichu umřela – past popsaná níž)
       ...podpisLayout('t', true),
     },
-    paint: Object.assign({ 'icon-opacity': sZanikemMist(['case', ['has', 'tl'], TLUM, 1],
+    paint: Object.assign({ 'icon-opacity': ['case',
+               // engine 315b: ikona spolknutá větším obrázkem (viz synchronizujSkryteMista)
+               ['boolean', ['feature-state', 'spolk'], false], 0,
+               sZanikemMist(['case', ['has', 'tl'], TLUM, 1],
                ['case', ['any', ['has', 'b2d'], ['has', 'fv']],
-                ['case', ['has', 'tl'], TLUM, 1], 0]),
-      'text-opacity': ['case', ['has', 'tl'], TLUM, 1] },
+                ['case', ['has', 'tl'], TLUM, 1], 0])],
+      // engine 315b: podpis spolknuté ikony taky pryč (jinak visí „Kříž" v kostele)
+      'text-opacity': ['case', ['boolean', ['feature-state', 'spolk'], false], 0,
+                       ['case', ['has', 'tl'], TLUM, 1]] },
       podpisPaint(typeof krokNoci === 'number' && krokNoci >= 2)),
   });
   // ⭐ STUHA SE JMÉNEM POD KRESBOU (9. 8. 2026, přání uživatele „u obrázků
@@ -11010,6 +11141,14 @@ function vykresliMojeMista(gj) {
     vykresliMojeMista._hook = true;
     mapa.on('click', 'okolnik-moje-ikona', (e) => {
       const f = e.features && e.features[0];
+      // engine 315 („klik na shluk vedle fotovýpravy ukáže výpravu a po zavření
+      // proběhne zoom"): špendlík jde přes týž sběrač jako místa – jedno
+      // klepnutí = jedna zpráva (výprava sama → detail, se shlukem → výběr)
+      if (posbirejKlik) {
+        const muj = posbirejKlik(e);
+        if (f && !muj.spolknuto) muj.ids.push(f.properties.id);
+        return;
+      }
       if (window.Dobyvatel && Dobyvatel.spolklKlik(e)) return;
       if (f) mostHlas('onBod', f.properties.id);
     });
