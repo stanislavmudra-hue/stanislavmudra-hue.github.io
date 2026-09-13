@@ -681,6 +681,10 @@ float projectionScaling=1.0;
 #ifdef GLOBE
 if(u_pitch_with_map) {float anchor_pos_tile_y=(u_coord_matrix*vec4(projected_pos.xy/projected_pos.w,z,1.0)).y;projectionScaling=mix(projectionScaling,1.0/circumferenceRatioAtTileY(anchor_pos_tile_y)*u_pitched_scale,u_projection_transition);}
 #endif
+
+#ifdef OKOLNIK_HLOUBKA
+{vec2 okPosun=rotation_matrix*(a_offset/32.0*max(a_minFontScale,fontScale)+a_pxoffset/16.0)*projectionScaling;vec4 okP1=projectTileWithElevation(translated_a_pos,ele+1.0);float okDy1=okP1.y/okP1.w-projectedPoint.y/projectedPoint.w;float okDyV=u_coord_matrix[1][1]*okPosun.y;float okH=abs(okDy1)>1e-7?clamp(okDyV/okDy1,-6.0,80.0):0.0;vec4 okPv=projectTileWithElevation(translated_a_pos,ele+okH);z=okPv.z/okPv.w;}
+#endif
 vec4 finalPos=u_coord_matrix*vec4(projected_pos.xy/projected_pos.w+rotation_matrix*(a_offset/32.0*max(a_minFontScale,fontScale)+a_pxoffset/16.0)*projectionScaling,z,1.0);if(u_pitch_with_map) {finalPos=projectTileWithElevation(finalPos.xy,finalPos.z);}gl_Position=finalPos;v_tex=a_tex/u_texsize;}`),symbolSDF:J(`#define SDF_PX 8.0
 uniform bool u_is_halo;uniform bool u_is_plain;uniform sampler2D u_texture;uniform highp float u_gamma_scale;uniform lowp float u_device_pixel_ratio;uniform bool u_is_text;in vec2 v_data0;in vec3 v_data1;
 #pragma maplibre: define highp vec4 fill_color
@@ -719,6 +723,10 @@ float z=float(u_pitch_with_map)*projected_pos.z/projected_pos.w;
 float projectionScaling=1.0;
 #ifdef GLOBE
 if(u_pitch_with_map) {float anchor_pos_tile_y=(u_coord_matrix*vec4(projected_pos.xy/projected_pos.w,z,1.0)).y;projectionScaling=mix(projectionScaling,1.0/circumferenceRatioAtTileY(anchor_pos_tile_y)*u_pitched_scale,u_projection_transition);}
+#endif
+
+#ifdef OKOLNIK_HLOUBKA
+{vec2 okPosun=rotation_matrix*(a_offset/32.0*max(a_minFontScale,fontScale)+a_pxoffset)*projectionScaling;vec4 okP1=projectTileWithElevation(translated_a_pos,ele+1.0);float okDy1=okP1.y/okP1.w-projectedPoint.y/projectedPoint.w;float okDyV=u_coord_matrix[1][1]*okPosun.y;float okH=abs(okDy1)>1e-7?clamp(okDyV/okDy1,-6.0,80.0):0.0;vec4 okPv=projectTileWithElevation(translated_a_pos,ele+okH);z=okPv.z/okPv.w;}
 #endif
 vec4 finalPos=u_coord_matrix*vec4(projected_pos.xy/projected_pos.w+rotation_matrix*(a_offset/32.0*max(a_minFontScale,fontScale)+a_pxoffset)*projectionScaling,z,1.0);if(u_pitch_with_map) {finalPos=projectTileWithElevation(finalPos.xy,finalPos.z);}float gamma_scale=finalPos.w;gl_Position=finalPos;v_data0=a_tex/u_texsize;v_data1=vec3(gamma_scale,size,total_opacity);}`),symbolTextAndIcon:J(`#define SDF_PX 8.0
 #define SDF 1.0
@@ -764,6 +772,10 @@ float z=float(u_pitch_with_map)*projected_pos.z/projected_pos.w;
 float projectionScaling=1.0;
 #ifdef GLOBE
 if(u_pitch_with_map && !u_is_along_line) {float anchor_pos_tile_y=(u_coord_matrix*vec4(projected_pos.xy/projected_pos.w,z,1.0)).y;projectionScaling=mix(projectionScaling,1.0/circumferenceRatioAtTileY(anchor_pos_tile_y)*u_pitched_scale,u_projection_transition);}
+#endif
+
+#ifdef OKOLNIK_HLOUBKA
+{vec2 okPosun=rotation_matrix*(a_offset/32.0*fontScale)*projectionScaling;vec4 okP1=projectTileWithElevation(translated_a_pos,ele+1.0);float okDy1=okP1.y/okP1.w-projectedPoint.y/projectedPoint.w;float okDyV=u_coord_matrix[1][1]*okPosun.y;float okH=abs(okDy1)>1e-7?clamp(okDyV/okDy1,-6.0,80.0):0.0;vec4 okPv=projectTileWithElevation(translated_a_pos,ele+okH);z=okPv.z/okPv.w;}
 #endif
 vec4 finalPos=u_coord_matrix*vec4(projected_pos.xy/projected_pos.w+rotation_matrix*(a_offset/32.0*fontScale)*projectionScaling,z,1.0);if(u_pitch_with_map) {finalPos=projectTileWithElevation(finalPos.xy,finalPos.z);}float gamma_scale=finalPos.w;gl_Position=finalPos;v_data0.xy=a_tex/u_texsize;v_data0.zw=a_tex/u_texsize_icon;v_data1=vec3(gamma_scale,size,total_opacity);v_is_sdf=is_sdf;}`),terrain:J(`uniform sampler2D u_texture;uniform vec4 u_fog_color;uniform vec4 u_horizon_color;uniform float u_fog_ground_blend;uniform float u_fog_ground_blend_opacity;uniform float u_horizon_fog_blend;uniform bool u_is_globe_mode;in vec2 v_texture_pos;in float v_fog_depth;const float gamma=2.2;vec4 gammaToLinear(vec4 color) {return pow(color,vec4(gamma));}vec4 linearToGamma(vec4 color) {return pow(color,vec4(1.0/gamma));}void main() {vec4 surface_color=texture(u_texture,vec2(v_texture_pos.x,1.0-v_texture_pos.y));if (!u_is_globe_mode && u_fog_ground_blend_opacity > 0.0 && v_fog_depth > u_fog_ground_blend) {vec4 surface_color_linear=gammaToLinear(surface_color);float blend_color=smoothstep(0.0,1.0,max((v_fog_depth-u_horizon_fog_blend)/(1.0-u_horizon_fog_blend),0.0));vec4 fog_horizon_color_linear=mix(gammaToLinear(u_fog_color),gammaToLinear(u_horizon_color),blend_color);float factor_fog=max(v_fog_depth-u_fog_ground_blend,0.0)/(1.0-u_fog_ground_blend);fragColor=linearToGamma(mix(surface_color_linear,fog_horizon_color_linear,pow(factor_fog,2.0)*u_fog_ground_blend_opacity));} else {fragColor=surface_color;}}`,`layout(location=0) in vec3 a_pos3d;uniform mat4 u_fog_matrix;uniform float u_ele_delta;out vec2 v_texture_pos;out float v_fog_depth;void main() {float ele=get_elevation(a_pos3d.xy);float ele_delta=a_pos3d.z==1.0 ? u_ele_delta : 0.0;v_texture_pos=a_pos3d.xy/8192.0;gl_Position=projectTileFor3D(a_pos3d.xy,ele-ele_delta);vec4 pos=u_fog_matrix*vec4(a_pos3d.xy,ele,1.0);v_fog_depth=pos.z/pos.w*0.5+0.5;}`),terrainDepth:J(`in float v_depth;const highp vec4 bitSh=vec4(256.*256.*256.,256.*256.,256.,1.);const highp vec4 bitMsk=vec4(0.,vec3(1./256.0));highp vec4 pack(highp float value) {highp vec4 comp=fract(value*bitSh);comp-=comp.xxyz*bitMsk;return comp;}void main() {fragColor=pack(v_depth);}`,`layout(location=0) in vec3 a_pos3d;uniform float u_ele_delta;out float v_depth;void main() {float ele=get_elevation(a_pos3d.xy);float ele_delta=a_pos3d.z==1.0 ? u_ele_delta : 0.0;gl_Position=projectTileFor3D(a_pos3d.xy,ele-ele_delta);v_depth=gl_Position.z/gl_Position.w;}`),terrainCoords:J(`precision mediump float;uniform sampler2D u_texture;uniform float u_terrain_coords_id;in vec2 v_texture_pos;void main() {vec4 rgba=texture(u_texture,v_texture_pos);fragColor=vec4(rgba.r,rgba.g,rgba.b,u_terrain_coords_id);}`,`layout(location=0) in vec3 a_pos3d;uniform float u_ele_delta;out vec2 v_texture_pos;void main() {float ele=get_elevation(a_pos3d.xy);float ele_delta=a_pos3d.z==1.0 ? u_ele_delta : 0.0;v_texture_pos=a_pos3d.xy/8192.0;gl_Position=projectTileFor3D(a_pos3d.xy,ele-ele_delta);}`),atmosphere:J(`#ifdef GL_ES
 precision highp float;
