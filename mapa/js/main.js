@@ -10610,13 +10610,28 @@ function rozestupStejnychMist(featury) {
   }
 }
 
+/// ⛔⛔ engine 317 („na webu nevidím obrázky v herním módu"): brána
+/// `isStyleLoaded()` čeká i na VŠECHNY dlaždice a obrázky – na webu (pmtiles
+/// z R2, vrstevnice, mraky) je skoro pořád false, takže `vykresliMista`
+/// jen dokola odkládala a místa se neukázala; v appce totéž zdržovalo
+/// obrázky po posunu. Pro založení zdrojů/vrstev stačí načtený STYL
+/// (`style._loaded` – přesně to kontroluje `addLayer`).
+function stylPripraven() {
+  try {
+    if (!mapa || !mapa.style) return false;
+    if (mapa.style._loaded) return true;
+    return !!(mapa.isStyleLoaded && mapa.isStyleLoaded());
+  } catch (e) { return false; }
+}
+
 function vykresliMista() {
   if (!mapa) return;
-  // ⚠️ PO VÝMĚNĚ STYLU JEŠTĚ CHVÍLI `isStyleLoaded() === false`. Dřív se
+  // ⚠️ PO VÝMĚNĚ STYLU JEŠTĚ CHVÍLI není styl načtený. Dřív se
   // tu prostě skončilo → místa Okolníku se po přepnutí stylu (např. do
   // herního) UŽ NIKDY nevykreslila, protože appka je posílá jen při
-  // změně. Teď se to za chvíli zkusí znovu.
-  if (!mapa.isStyleLoaded()) {
+  // změně. Teď se to za chvíli zkusí znovu. (engine 317: brána `stylPripraven`,
+  // ne `isStyleLoaded()` – viz výše)
+  if (!stylPripraven()) {
     clearTimeout(vykresliMista._t);
     vykresliMista._t = setTimeout(vykresliMista, 250);
     return;
@@ -11115,7 +11130,8 @@ function vykresliMojeMista(gj) {
   // skoro pořád `false` (viz poznámka u `nastavTeren`), takže se vlastní
   // záložky uživatele po přepnutí stylu neobjevily, dokud je appka
   // neposlala znovu. A ta je posílá až na `moveend`, tedy AŽ PO POHYBU.
-  if (!mapa.isStyleLoaded()) {
+  // engine 317: brána `stylPripraven` (viz vykresliMista)
+  if (!stylPripraven()) {
     setTimeout(() => vykresliMojeMista(gj), 250);
     return;
   }
