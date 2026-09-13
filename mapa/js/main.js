@@ -4149,8 +4149,38 @@ function prepoctiMosty3d() {
       if (!vlozeno) sk.push({ cls: cls0, c: c.slice() });
     }
   }
-  const slepene = [];
-  for (const sk of kusyPodleId.values()) for (const o of sk) slepene.push(o);
+  const slepene0 = [];
+  for (const sk of kusyPodleId.values()) for (const o of sk) slepene0.push(o);
+  // ⭐ engine 314 („ve Rtyni je stále jeden most 2×"): OSM má vedle silničního
+  // mostu často zvlášť CHODNÍK (footway/path, bridge=yes) – dvě desky vedle
+  // sebe (7 m + 2,8 m, 4 m od sebe) = jeden most dvakrát. Úzký díl (path,
+  // track, service), který leží celý podél širšího mostu (oba konce do
+  // šířka/2 + 4 m od jeho osy a uvnitř jeho délky), se vynechá – chodník
+  /// nese silniční deska.
+  const UZKE = new Set(['path', 'track', 'service']);
+  const podelSirsiho = (uzky) => {
+    const wU = MOST_SIRKY[uzky.cls] || 3;
+    const c1 = uzky.c;
+    const kx = 111320 * Math.cos(c1[0][1] * Math.PI / 180), ky = 110574;
+    for (const o of slepene0) {
+      if (o === uzky) continue;
+      const wO = MOST_SIRKY[o.cls] || 0;
+      if (wO <= wU + 0.5) continue;
+      const c2 = o.c;
+      let A = c2[0], B = c2[c2.length - 1];
+      const abx = (B[0] - A[0]) * kx, aby = (B[1] - A[1]) * ky, ab2 = abx * abx + aby * aby || 1;
+      let ok = true;
+      for (const q of [c1[0], c1[c1.length - 1]]) {
+        const px = (q[0] - A[0]) * kx, py = (q[1] - A[1]) * ky;
+        const t = (px * abx + py * aby) / ab2;
+        const bocne = Math.abs(px * aby - py * abx) / Math.sqrt(ab2);
+        if (t < -0.15 || t > 1.15 || bocne > wO / 2 + 4) { ok = false; break; }
+      }
+      if (ok) return true;
+    }
+    return false;
+  };
+  const slepene = slepene0.filter((o) => !(UZKE.has(o.cls) && podelSirsiho(o)));
   for (const o of slepene) {
     const p = { class: o.cls };
     const cary = [o.c];
@@ -8300,6 +8330,51 @@ window.OkolnikMost = {
       }
     } catch (e) { /* bez terénu nic */ }
     return out;
+  },
+
+  /// ⭐ engine 314: PŘEVÝŠENÍ TRASY Z VÝŠKOPISU. Čte DEM dlaždice z13 přímo
+  /// (`__okolnikDem.getDemTile`, tj. z archivu terénu, ne z toho, co je
+  /// zrovna na mapě), takže funguje i pro výpravu na druhém konci kraje.
+  /// body = [{lat,lng}] (vzorek po ~40 m); hystereze 6 m jako u GPS.
+  async stoupaniTrasy(body) {
+    const dem = window.__okolnikDem;
+    if (!dem || !dem.getDemTile || !body || body.length < 2) return null;
+    const Z = 13, n = Math.pow(2, Z);
+    const kes = new Map();
+    const dlazdice = (tx, ty) => {
+      const k = tx + '/' + ty;
+      if (!kes.has(k)) {
+        kes.set(k, Promise.race([
+          dem.getDemTile(Z, tx, ty).then((t) => (t && t.data && t.width === 256) ? t : null),
+          new Promise((r) => setTimeout(() => r(null), 5000)),
+        ]).catch(() => null));
+      }
+      return kes.get(k);
+    };
+    const vysky = [];
+    for (const b of body) {
+      const lat = +b.lat, lng = +b.lng;
+      if (!isFinite(lat) || !isFinite(lng)) { vysky.push(null); continue; }
+      const x = (lng + 180) / 360 * n;
+      const r = lat * Math.PI / 180;
+      const y = (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n;
+      const tx = Math.floor(x), ty = Math.floor(y);
+      const t = await dlazdice(tx, ty);
+      if (!t) { vysky.push(null); continue; }
+      const px = Math.min(255, Math.max(0, Math.floor((x - tx) * 256)));
+      const py = Math.min(255, Math.max(0, Math.floor((y - ty) * 256)));
+      const v = t.data[py * 256 + px];
+      vysky.push(isFinite(v) && v > -1000 ? v : null);
+    }
+    let ref = null, up = 0, down = 0, bodu = 0;
+    for (const v of vysky) {
+      if (v == null) continue;
+      bodu++;
+      if (ref === null) { ref = v; continue; }
+      const d = v - ref;
+      if (d >= 6) { up += d; ref = v; } else if (d <= -6) { down -= d; ref = v; }
+    }
+    return { stoupani: Math.round(up), klesani: Math.round(down), bodu, celkem: body.length };
   },
 
   /// Přelet kamery na místo.
