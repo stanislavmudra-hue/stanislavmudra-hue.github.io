@@ -430,6 +430,24 @@ function posledniZaHrace(radky) {
 }
 
 /**
+ * Tentýž hráč pod víc účty (14. 9. 2026: „proč tam jsem 3×?" – dva staré
+ * uid z doby před přihlašováním účtem posílaly totéž jméno a čísla).
+ * Z řádků se stejnou přezdívkou (bez ohledu na velikost písmen) zůstane
+ * jen ten NEJČERSTVĚJI aktualizovaný – opuštěné účty se už neaktualizují.
+ * ⚠️ Dva různí lidé se stejnou přezdívkou se tím slijí – ať si zvolí
+ * jinou; duplicita jednoho hráče je častější a horší.
+ */
+function bezDuplicit(radky) {
+  var podle = {};
+  radky.forEach(function (r) {
+    var k = r.prezdivka.trim().toLowerCase();
+    var z = podle[k];
+    if (!z || r.aktualizovano > z.aktualizovano) podle[k] = r;
+  });
+  return Object.keys(podle).map(function (k) { return podle[k]; });
+}
+
+/**
  * Seřadí a očísluje VŠECHNY řádky vybraného období/metriky (bez ořezu),
  * aby šla spočítat i pozice hráče, který v TOP není. Ořez dělá až výpis.
  */
@@ -438,6 +456,7 @@ function seradVse(radky, obdobi, metrika) {
   var vybrane = sin
     ? posledniZaHrace(radky)
     : radky.filter(function (r) { return r.obdobi === obdobi; });
+  vybrane = bezDuplicit(vybrane);
   vybrane = vybrane.filter(function (r) { return hodnota(r, metrika, sin) > 0; });
   vybrane.sort(function (a, b) {
     var ha = hodnota(a, metrika, sin), hb = hodnota(b, metrika, sin);
@@ -711,10 +730,6 @@ function ukazTabulku(radky, celkemHracu, korunky) {
     elVysledek.appendChild(obal);
   }
 
-  var prav = document.createElement('p');
-  prav.className = 'pravidlo';
-  prav.textContent = kat.pravidlo;
-  elVysledek.appendChild(prav);
 }
 
 /* ── „Moje pozice" (přihlášený hráč) ─────────────────────────────── */
@@ -737,7 +752,7 @@ function ukazMojiPozici(serazene, vse) {
     h.textContent = 'Moje pozice';
     var mamRadek = vse.some(function (r) { return r.uid === relace.uid; });
     p.textContent = mamRadek
-      ? 'V téhle kategorii zatím nemáš nic – ' + kat.pravidlo
+      ? 'V téhle disciplíně zatím nemáš nic.'
       : 'Ještě nesoutěžíš. V aplikaci zapni „Více → Můj Okolník → Soutěžit v žebříčku" ' +
         'a při dalším odeslání se tu objevíš.';
     box.appendChild(h);
@@ -929,6 +944,7 @@ function vykresliKategorie() {
     b.type = 'button';
     b.setAttribute('data-metrika', k);
     b.setAttribute('aria-pressed', k === stav.metrika ? 'true' : 'false');
+    b.title = def[k].pravidlo;   // pravidlo jen po najetí, ne v textu (14. 9.)
     var ik = document.createElement('span');
     ik.className = 'ik';
     ik.setAttribute('aria-hidden', 'true');
