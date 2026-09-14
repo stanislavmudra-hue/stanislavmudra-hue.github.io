@@ -569,99 +569,147 @@ function kategorieDef() {
   return stav.obdobi === 'sin' ? SIN[stav.metrika] : KATEGORIE[stav.metrika];
 }
 
+function stupenVitezu(r, kat, korunky) {
+  var d = document.createElement('div');
+  var tridy = ['stupen', 'm' + r.poradi];
+  if (relace && r.uid === relace.uid) tridy.push('ja');
+  d.className = tridy.join(' ');
+  var med = document.createElement('span');
+  med.className = 'medaile';
+  med.textContent = ['', '🥇', '🥈', '🥉'][r.poradi] || '';
+  d.appendChild(med);
+  var jm = document.createElement('span');
+  jm.className = 'jm';
+  jm.textContent = r.prezdivka;
+  if (korunky && korunky[r.uid] && korunky[r.uid].length) {
+    var kor = document.createElement('span');
+    kor.className = 'koruna';
+    kor.textContent = '👑';
+    kor.title = '1. místo v ' + nazevObdobiKde(OBDOBI.minuly) + ': ' + korunky[r.uid].join(', ');
+    jm.appendChild(kor);
+  }
+  d.appendChild(jm);
+  var hod = document.createElement('span');
+  hod.className = 'hod';
+  hod.textContent = sJednotkou(r.hodnota, kat);
+  d.appendChild(hod);
+  var kr = document.createElement('span');
+  kr.className = 'kr';
+  kr.textContent = (r.kraj || '') + (r.uroven > 0 ? (r.kraj ? ' · ' : '') + 'úr. ' + r.uroven : '');
+  d.appendChild(kr);
+  return d;
+}
+
 function ukazTabulku(radky, celkemHracu, korunky) {
   var kat = kategorieDef();
   var sin = stav.obdobi === 'sin';
   var obdobi = OBDOBI[stav.obdobi];
   prazdny(elVysledek);
 
-  var obal = document.createElement('div');
-  obal.className = 'obal-tabulky';
-  var tab = document.createElement('table');
-
-  var popis = document.createElement('caption');
+  // hlavička: disciplína · období · počet hráčů · odpočet
+  var hl = document.createElement('div');
+  hl.className = 'zeb-hlava';
+  var h2 = document.createElement('h2');
+  h2.textContent = kat.ikona + ' ' + kat.nazev;
+  hl.appendChild(h2);
+  var meta = document.createElement('span');
+  meta.className = 'meta';
   var kdeText = stav.kdo === 'kraj' && stav.kraj ? ' · ' + stav.kraj
               : (stav.kdo === 'pratele' ? ' · mezi přáteli' : '');
-  var zb = dniDoKonceMesice();
-  popis.textContent = kat.ikona + ' ' + kat.nazev + ' – ' +
-    (sin ? 'síň slávy' : nazevObdobi(obdobi)) + kdeText + ' · ' + hraciSlovo(celkemHracu) +
-    (stav.obdobi === 'tento'
-      ? ' · do konce měsíce ' + zb + (zb === 1 ? ' den' : (zb < 5 ? ' dny' : ' dní'))
-      : '');
-  tab.appendChild(popis);
+  meta.textContent = (sin ? 'síň slávy' : nazevObdobi(obdobi)) + kdeText + ' · ' + hraciSlovo(celkemHracu);
+  hl.appendChild(meta);
+  if (stav.obdobi === 'tento') {
+    var zb = dniDoKonceMesice();
+    var od = document.createElement('span');
+    od.className = 'odpocet';
+    od.textContent = 'do konce měsíce ' + zb + (zb === 1 ? ' den' : (zb < 5 ? ' dny' : ' dní'));
+    hl.appendChild(od);
+  }
+  elVysledek.appendChild(hl);
 
-  var hlava = document.createElement('thead');
-  var hr = document.createElement('tr');
-  [['poradi', '#'], ['jmeno', 'Přezdívka'], ['kraj', 'Kraj'], ['hodnota', kat.jednotka]]
-    .forEach(function (par) {
-      var th = document.createElement('th');
-      th.className = par[0];
-      th.scope = 'col';
-      th.textContent = par[1];
-      hr.appendChild(th);
+  // stupně vítězů: první tři (2. – 1. – 3.), zbytek do tabulky
+  var top = radky.filter(function (r) { return r.poradi <= 3; }).slice(0, 3);
+  var zbytek = radky.filter(function (r) { return r.poradi > 3; });
+  if (top.length) {
+    var st = document.createElement('div');
+    st.className = 'stupne-v';
+    var poradiKaret = top.length === 3 ? [1, 0, 2] : top.map(function (_, i) { return i; });
+    poradiKaret.forEach(function (i) { st.appendChild(stupenVitezu(top[i], kat, korunky)); });
+    elVysledek.appendChild(st);
+  }
+
+  if (zbytek.length) {
+    var obal = document.createElement('div');
+    obal.className = 'obal-tabulky';
+    var tab = document.createElement('table');
+    var hlava = document.createElement('thead');
+    var hr = document.createElement('tr');
+    [['poradi', '#'], ['jmeno', 'Přezdívka'], ['kraj', 'Kraj'], ['hodnota', kat.jednotka]]
+      .forEach(function (par) {
+        var th = document.createElement('th');
+        th.className = par[0];
+        th.scope = 'col';
+        th.textContent = par[1];
+        hr.appendChild(th);
+      });
+    hlava.appendChild(hr);
+    tab.appendChild(hlava);
+
+    var telo = document.createElement('tbody');
+    var predchoziPoradi = 3;
+    zbytek.forEach(function (r) {
+      // vlastní řádek za TOP: vizuální mezera „…"
+      if (r.poradi > predchoziPoradi + 1) {
+        var trM = document.createElement('tr');
+        trM.className = 'mezera';
+        var tdM = td('', '…');
+        tdM.colSpan = 4;
+        trM.appendChild(tdM);
+        telo.appendChild(trM);
+      }
+      predchoziPoradi = r.poradi;
+
+      var tr = document.createElement('tr');
+      if (relace && r.uid === relace.uid) tr.className = 'ja';
+      tr.appendChild(td('poradi', r.poradi + '.'));
+
+      var jmeno = td('jmeno', r.prezdivka);
+      if (r.uroven > 0) {
+        var ur = document.createElement('span');
+        ur.className = 'uroven';
+        ur.textContent = 'úr. ' + r.uroven;
+        ur.title = 'Úroveň hráče';
+        jmeno.appendChild(ur);
+      }
+      if (korunky && korunky[r.uid] && korunky[r.uid].length) {
+        var kor = document.createElement('span');
+        kor.className = 'koruna';
+        kor.textContent = '👑';
+        kor.title = '1. místo v ' + nazevObdobiKde(OBDOBI.minuly) + ': ' + korunky[r.uid].join(', ');
+        kor.setAttribute('aria-label', kor.title);
+        jmeno.appendChild(kor);
+      }
+      if (relace && r.uid === relace.uid) {
+        var ja = document.createElement('span');
+        ja.className = 'ja-stitek';
+        ja.textContent = 'to jsi ty';
+        jmeno.appendChild(ja);
+      }
+      if (r.kraj) {                       // na mobilu se sloupec Kraj skrývá
+        var pod = document.createElement('span');
+        pod.className = 'kraj-mob';
+        pod.textContent = r.kraj;
+        jmeno.appendChild(pod);
+      }
+      tr.appendChild(jmeno);
+      tr.appendChild(td('kraj', r.kraj || '–'));
+      tr.appendChild(td('hodnota', formatuj(r.hodnota, kat.desetinna)));
+      telo.appendChild(tr);
     });
-  hlava.appendChild(hr);
-  tab.appendChild(hlava);
-
-  var telo = document.createElement('tbody');
-  var predchoziPoradi = 0;
-  radky.forEach(function (r) {
-    // vlastní řádek za TOP: vizuální mezera „…"
-    if (predchoziPoradi && r.poradi > predchoziPoradi + 1) {
-      var trM = document.createElement('tr');
-      trM.className = 'mezera';
-      var tdM = td('', '…');
-      tdM.colSpan = 4;
-      trM.appendChild(tdM);
-      telo.appendChild(trM);
-    }
-    predchoziPoradi = r.poradi;
-
-    var tr = document.createElement('tr');
-    var tridy = [];
-    if (r.poradi <= 3) tridy.push('stupne', 'm' + r.poradi);
-    if (relace && r.uid === relace.uid) tridy.push('ja');
-    tr.className = tridy.join(' ');
-
-    tr.appendChild(td('poradi', r.poradi + '.'));
-
-    var jmeno = td('jmeno', r.prezdivka);
-    if (r.uroven > 0) {
-      var ur = document.createElement('span');
-      ur.className = 'uroven';
-      ur.textContent = 'úr. ' + r.uroven;
-      ur.title = 'Úroveň hráče';
-      jmeno.appendChild(ur);
-    }
-    if (korunky && korunky[r.uid] && korunky[r.uid].length) {
-      var kor = document.createElement('span');
-      kor.className = 'koruna';
-      kor.textContent = '👑';
-      kor.title = '1. místo v ' + nazevObdobiKde(OBDOBI.minuly) + ': ' + korunky[r.uid].join(', ');
-      kor.setAttribute('aria-label', kor.title);
-      jmeno.appendChild(kor);
-    }
-    if (relace && r.uid === relace.uid) {
-      var ja = document.createElement('span');
-      ja.className = 'ja-stitek';
-      ja.textContent = 'to jsi ty';
-      jmeno.appendChild(ja);
-    }
-    if (r.kraj) {                       // na mobilu se sloupec Kraj skrývá
-      var pod = document.createElement('span');
-      pod.className = 'kraj-mob';
-      pod.textContent = r.kraj;
-      jmeno.appendChild(pod);
-    }
-    tr.appendChild(jmeno);
-
-    tr.appendChild(td('kraj', r.kraj || '–'));
-    tr.appendChild(td('hodnota', formatuj(r.hodnota, kat.desetinna)));
-    telo.appendChild(tr);
-  });
-  tab.appendChild(telo);
-  obal.appendChild(tab);
-  elVysledek.appendChild(obal);
+    tab.appendChild(telo);
+    obal.appendChild(tab);
+    elVysledek.appendChild(obal);
+  }
 
   var prav = document.createElement('p');
   prav.className = 'pravidlo';
@@ -881,7 +929,12 @@ function vykresliKategorie() {
     b.type = 'button';
     b.setAttribute('data-metrika', k);
     b.setAttribute('aria-pressed', k === stav.metrika ? 'true' : 'false');
-    b.textContent = def[k].ikona + ' ' + def[k].nazev;
+    var ik = document.createElement('span');
+    ik.className = 'ik';
+    ik.setAttribute('aria-hidden', 'true');
+    ik.textContent = def[k].ikona;
+    b.appendChild(ik);
+    b.appendChild(document.createTextNode(def[k].nazev));
     obal.appendChild(b);
   });
 }

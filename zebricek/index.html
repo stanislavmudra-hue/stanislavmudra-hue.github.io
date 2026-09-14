@@ -11,33 +11,45 @@
 <link rel="apple-touch-icon" href="/img/favicon.png">
 <link rel="stylesheet" href="/styl.css?v=2">
 <style>
-/* ── přepínače ─────────────────────────────────────────────── */
-  .volby { display: grid; gap: 16px; margin: 0 0 22px; }
+/* ── rozložení: levý sloupec (období · disciplína · kdo) + obsah ──── */
+  .uzky.zeb { max-width: 1040px; }
+
+  .zeb-rozlozeni { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 30px; align-items: start; }
+
+  .zeb-bok { position: sticky; top: 16px; display: grid; gap: 18px; }
 
   .skupina .popis {
-    font-size: .8rem; text-transform: uppercase; letter-spacing: .06em;
-    color: var(--slabsi); margin: 0 0 6px;
+    font-size: .74rem; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--slabsi); margin: 0 0 6px; font-weight: 700;
   }
 
-  .prepinac { display: flex; flex-wrap: wrap; gap: 8px; }
+  .svisle { display: flex; flex-direction: column; gap: 4px; }
 
-  .prepinac button {
-    font: inherit; font-size: .95rem; line-height: 1.2;
-    padding: 9px 14px; cursor: pointer;
-    background: var(--jemna); color: var(--tmava);
-    border: 1px solid var(--linka); border-radius: 999px;
+  .svisle button {
+    font: inherit; font-size: .95rem; line-height: 1.25; text-align: left;
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; cursor: pointer; width: 100%;
+    background: transparent; color: var(--tmava);
+    border: 1px solid transparent; border-radius: 10px;
     transition: background .12s, border-color .12s, color .12s;
   }
 
-  .prepinac button:hover { border-color: var(--zelena); }
+  .svisle button .ik { width: 1.5em; text-align: center; flex: none; font-size: 1.05em; }
 
-  .prepinac button:focus-visible { outline: 3px solid var(--oranzova); outline-offset: 2px; }
+  .svisle button:hover { background: var(--jemna); border-color: var(--linka); }
 
-  .prepinac button[aria-pressed="true"] {
-    background: var(--zelena); border-color: var(--zelena);
-    color: #fff; font-weight: 600;
+  .svisle button:focus-visible { outline: 3px solid var(--oranzova); outline-offset: 2px; }
+
+  .svisle button[aria-pressed="true"] {
+    background: var(--zelena); border-color: var(--zelena); color: #fff; font-weight: 600;
   }
 
+  .svisle button.sin[aria-pressed="true"] { background: var(--oranzova); border-color: var(--oranzova); color: #3a2405; }
+
+  #vyberKraje {
+    font: inherit; font-size: .95rem; padding: 8px 12px; margin-top: 6px; width: 100%;
+    border: 1px solid var(--linka); border-radius: 10px; background: #fff; color: var(--tmava);
+  }
 
   /* ── stavy ─────────────────────────────────────────────────── */
   .stav {
@@ -55,37 +67,74 @@
     background: var(--zelena); color: #fff; border: 0; border-radius: 999px;
   }
 
+  /* ── hlavička výsledku ─────────────────────────────────────── */
+  .zeb-hlava { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 0 0 12px; }
+
+  .zeb-hlava h2 { margin: 0; font-size: 1.35rem; color: var(--tmava); }
+
+  .zeb-hlava .meta { color: var(--slabsi); font-size: .9rem; }
+
+  .zeb-hlava .odpocet {
+    margin-left: auto; font-size: .82rem; font-weight: 700; color: #3a2405;
+    background: #fde9c8; border-radius: 999px; padding: 3px 10px;
+  }
+
+  /* ── stupně vítězů ─────────────────────────────────────────── */
+  .stupne-v { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; align-items: end; margin: 0 0 18px; }
+
+  .stupen {
+    border: 1px solid var(--linka); border-radius: 14px; padding: 14px 12px 12px;
+    text-align: center; background: #fff; position: relative;
+  }
+
+  .stupen.m1 { background: #fff8ec; border-color: #f2d59a; padding-top: 22px; }
+
+  .stupen.m2 { background: #f7f8f9; }
+
+  .stupen.m3 { background: #fbf3ee; }
+
+  .stupen .medaile { font-size: 1.9rem; line-height: 1; display: block; }
+
+  .stupen.m1 .medaile { font-size: 2.4rem; }
+
+  .stupen .jm { display: block; font-weight: 700; color: var(--tmava); margin-top: 6px; word-break: break-word; }
+
+  .stupen .hod { display: block; font-size: 1.25rem; font-weight: 800; color: var(--tmava); margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  .stupen.m1 .hod { font-size: 1.5rem; }
+
+  .stupen .kr { display: block; font-size: .8rem; color: var(--slabsi); margin-top: 2px; }
+
+  .stupen.ja { outline: 2px solid var(--oranzova); }
 
   /* ── tabulka ───────────────────────────────────────────────── */
-  .obal-tabulky { overflow-x: auto; }
+  .obal-tabulky { overflow-x: auto; border: 1px solid var(--linka); border-radius: 14px; }
 
   table { border-collapse: collapse; width: 100%; }
 
-  caption { text-align: left; color: var(--slabsi); font-size: .9rem; padding-bottom: 10px; }
+  th, td { padding: 10px 12px; border-bottom: 1px solid var(--linka); }
 
-  th, td { padding: 9px 10px; border-bottom: 1px solid var(--linka); }
+  tbody tr:last-child td { border-bottom: 0; }
 
   th {
-    text-align: left; font-size: .78rem; text-transform: uppercase;
-    letter-spacing: .06em; color: var(--slabsi); font-weight: 600;
-    border-bottom: 2px solid var(--linka);
+    text-align: left; font-size: .74rem; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--slabsi); font-weight: 700;
+    background: var(--jemna);
   }
 
-  td.poradi, th.poradi { width: 3.2rem; text-align: right; color: var(--slabsi); font-variant-numeric: tabular-nums; }
+  td.poradi, th.poradi { width: 3.4rem; text-align: right; color: var(--slabsi); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
   td.hodnota, th.hodnota { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-  td.hodnota { font-weight: 600; color: var(--tmava); }
+  td.hodnota { font-weight: 700; color: var(--tmava); }
 
   td.jmeno { font-weight: 600; color: var(--tmava); word-break: break-word; }
 
-  td.kraj, th.kraj { color: var(--slabsi); font-size: .92rem; }
+  td.kraj, th.kraj { color: var(--slabsi); font-size: .9rem; }
 
-  tbody tr:nth-child(odd) { background: #fbfcfb; }
+  tbody tr:nth-child(even) { background: #fbfcfb; }
 
   tr.stupne td.poradi { color: var(--tmava); font-weight: 700; }
-
-  tr.m1 { background: #fff8ec !important; }
 
   tr.m1 td.poradi::before { content: "🥇 "; }
 
@@ -95,7 +144,6 @@
 
   .kraj-mob { display: none; font-weight: 400; font-size: .85rem; color: var(--slabsi); }
 
-  /* ── 14. 9. 2026: víc kategorií, Moje pozice, koruny ─────────── */
   .uroven {
     display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
     font-size: .72rem; font-weight: 600; color: var(--slabsi);
@@ -110,47 +158,57 @@
     vertical-align: middle;
   }
 
-  tr.ja { background: #fff3dd !important; outline: 2px solid var(--oranzova); outline-offset: -2px; }
+  tr.ja { background: #fff3dd !important; }
 
   tr.mezera td { text-align: center; color: var(--slabsi); border-bottom: 1px dashed var(--linka); }
 
   .moje {
-    border: 2px solid var(--oranzova); border-radius: 14px; padding: 16px 18px;
+    border: 2px solid var(--oranzova); border-radius: 14px; padding: 14px 18px;
     margin: 0 0 18px; background: #fffaf1;
   }
 
-  .moje h2 { margin: 0 0 6px; font-size: 1.15rem; color: var(--tmava); }
+  .moje h2 { margin: 0 0 6px; font-size: 1.1rem; color: var(--tmava); }
 
-  .moje p { margin: 0 0 4px; color: var(--tmava); }
+  .moje p { margin: 0 0 4px; color: var(--tmava); font-size: .95rem; }
 
   .moje p:last-child { margin-bottom: 0; }
 
   .pravidlo { margin: 12px 0 0; font-size: .88rem; color: var(--slabsi); }
 
-  #vyberKraje {
-    font: inherit; font-size: .95rem; padding: 8px 12px; margin-top: 8px;
-    border: 1px solid var(--linka); border-radius: 10px; background: #fff; color: var(--tmava);
-    max-width: 100%;
-  }
-
-  .prepinac button.sin[aria-pressed="true"] { background: var(--oranzova); border-color: var(--oranzova); color: #3a2405; }
-
-  .jak ul { padding-left: 1.2em; }
-  .jak li { margin-bottom: 6px; }
-
-
   .ukazka-pruh {
     background: var(--oranzova); color: #3a2405; font-weight: 600;
     border-radius: 10px; padding: 10px 14px; margin: 0 0 16px; text-align: center;
   }
-@media (max-width: 620px) {
-th, td { padding: 8px 6px; }
 
-    .prepinac button { padding: 8px 12px; font-size: .9rem; }
+  .jak ul { padding-left: 1.2em; }
+  .jak li { margin-bottom: 6px; }
+
+  @media (max-width: 760px) {
+    .zeb-rozlozeni { grid-template-columns: 1fr; gap: 14px; }
+
+    .zeb-bok { position: static; gap: 12px; }
+
+    .svisle { flex-direction: row; flex-wrap: wrap; }
+
+    .svisle button { width: auto; padding: 7px 11px; font-size: .9rem; border-color: var(--linka); border-radius: 999px; }
+
+    .svisle button .ik { width: auto; }
+
+    #vyberKraje { width: auto; }
+
+    th, td { padding: 8px 6px; }
 
     th.kraj, td.kraj { display: none; }
 
     .kraj-mob { display: block; }
+
+    .stupne-v { gap: 6px; }
+
+    .stupen { padding: 10px 6px; }
+
+    .stupen .hod { font-size: 1.05rem; }
+
+    .stupen.m1 .hod { font-size: 1.2rem; }
   }
 </style>
 </head>
@@ -174,7 +232,7 @@ th, td { padding: 8px 6px; }
   </div>
 </header>
 
-<main class="uzky">
+<main class="uzky zeb">
   <h1>Žebříček</h1>
   <p class="podtitul">Sedm měsíčních disciplín, kraje, přátelé a&nbsp;síň slávy. Každý měsíc
   se začíná od nuly – nováček soutěží s&nbsp;nováčkem. Soutěží jen ti, kdo se do žebříčku sami
@@ -184,41 +242,45 @@ th, td { padding: 8px 6px; }
     UKÁZKA – zobrazená čísla jsou vymyšlená, nejde o&nbsp;skutečná data.
   </div>
 
-  <div class="volby">
-    <div class="skupina">
-      <p class="popis" id="popisObdobi">Období</p>
-      <div class="prepinac" role="group" aria-labelledby="popisObdobi" id="prepinacObdobi">
-        <button type="button" data-obdobi="tento" aria-pressed="true">Tento měsíc</button>
-        <button type="button" data-obdobi="minuly" aria-pressed="false">Minulý měsíc</button>
-        <button type="button" class="sin" data-obdobi="sin" aria-pressed="false">🏛️ Síň slávy</button>
+  <div class="zeb-rozlozeni">
+    <aside class="zeb-bok" aria-label="Výběr žebříčku">
+      <div class="skupina">
+        <p class="popis" id="popisObdobi">Období</p>
+        <div class="svisle" role="group" aria-labelledby="popisObdobi" id="prepinacObdobi">
+          <button type="button" data-obdobi="tento" aria-pressed="true"><span class="ik" aria-hidden="true">📆</span>Tento měsíc</button>
+          <button type="button" data-obdobi="minuly" aria-pressed="false"><span class="ik" aria-hidden="true">🗓️</span>Minulý měsíc</button>
+          <button type="button" class="sin" data-obdobi="sin" aria-pressed="false"><span class="ik" aria-hidden="true">🏛️</span>Síň slávy</button>
+        </div>
       </div>
-    </div>
-    <div class="skupina">
-      <p class="popis" id="popisKategorie">Disciplína</p>
-      <div class="prepinac" role="group" aria-labelledby="popisKategorie" id="prepinacKategorie">
-        <!-- tlačítka doplní zebricek.js podle období -->
+      <div class="skupina">
+        <p class="popis" id="popisKategorie">Disciplína</p>
+        <div class="svisle" role="group" aria-labelledby="popisKategorie" id="prepinacKategorie">
+          <!-- tlačítka doplní zebricek.js podle období -->
+        </div>
       </div>
-    </div>
-    <div class="skupina">
-      <p class="popis" id="popisKdo">Kdo</p>
-      <div class="prepinac" role="group" aria-labelledby="popisKdo" id="prepinacKdo">
-        <button type="button" data-kdo="vsichni" aria-pressed="true">Celé Česko</button>
-        <button type="button" data-kdo="kraj" aria-pressed="false">Kraj</button>
-        <button type="button" data-kdo="pratele" aria-pressed="false">Přátelé</button>
+      <div class="skupina">
+        <p class="popis" id="popisKdo">Kdo</p>
+        <div class="svisle" role="group" aria-labelledby="popisKdo" id="prepinacKdo">
+          <button type="button" data-kdo="vsichni" aria-pressed="true"><span class="ik" aria-hidden="true">🇨🇿</span>Celé Česko</button>
+          <button type="button" data-kdo="kraj" aria-pressed="false"><span class="ik" aria-hidden="true">🗺️</span>Kraj</button>
+          <button type="button" data-kdo="pratele" aria-pressed="false"><span class="ik" aria-hidden="true">🤝</span>Přátelé</button>
+        </div>
+        <select id="vyberKraje" aria-label="Kraj" hidden>
+          <option value="">Vyber kraj…</option>
+        </select>
       </div>
-      <select id="vyberKraje" aria-label="Kraj" hidden>
-        <option value="">Vyber kraj…</option>
-      </select>
-    </div>
-  </div>
+    </aside>
 
-  <div id="mojePozice" hidden></div>
+    <section class="zeb-obsah" aria-label="Výsledky">
+      <div id="mojePozice" hidden></div>
 
-  <div id="vysledek" aria-live="polite" aria-busy="true">
-    <div class="stav">
-      <div class="tocka" aria-hidden="true"></div>
-      <p>Načítám žebříček…</p>
-    </div>
+      <div id="vysledek" aria-live="polite" aria-busy="true">
+        <div class="stav">
+          <div class="tocka" aria-hidden="true"></div>
+          <p>Načítám žebříček…</p>
+        </div>
+      </div>
+    </section>
   </div>
 
   <section class="vysvetlivka jak">
@@ -272,7 +334,7 @@ th, td { padding: 8px 6px; }
   </div>
 </footer>
 
-<script src="/zebricek/zebricek.js?v=4"></script>
+<script src="/zebricek/zebricek.js?v=5"></script>
 <script src="/web.js?v=2"></script>
 </body>
 </html>
