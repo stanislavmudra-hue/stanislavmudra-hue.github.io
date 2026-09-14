@@ -542,6 +542,11 @@ function hraciSlovo(n) {
   return n + (n === 1 ? ' hráč' : (n < 5 ? ' hráči' : ' hráčů'));
 }
 
+/** 2. pád po „z": „z 1 hráče", „z 3 hráčů". */
+function hraciZ(n) {
+  return n + (n === 1 ? ' hráče' : ' hráčů');
+}
+
 /** „2 vrcholy", „5 vrcholů", „1,5 km" – jednotka ve správném pádu. */
 function sJednotkou(n, kat) {
   var t = formatuj(n, kat.desetinna);
@@ -763,7 +768,7 @@ function ukazMojiPozici(serazene, vse) {
   }
   var n = serazene.length;
   var lepsiNez = n > 1 ? Math.round((n - muj.poradi) / (n - 1) * 100) : 100;
-  h.textContent = 'Jsi ' + muj.poradi + '. z ' + hraciSlovo(n) + ' · ' + sJednotkou(muj.hodnota, kat);
+  h.textContent = 'Jsi ' + muj.poradi + '. z ' + hraciZ(n) + ' · ' + sJednotkou(muj.hodnota, kat);
   box.appendChild(h);
 
   var radky = [];
@@ -807,7 +812,7 @@ function ukazMojiPozici(serazene, vse) {
       var minule = seradVse(vse, OBDOBI.minuly, stav.metrika);
       for (var m = 0; m < minule.length; m++) {
         if (minule[m].uid === relace.uid) {
-          radky.push('Minulý měsíc: ' + minule[m].poradi + '. místo z ' + hraciSlovo(minule.length) + '.');
+          radky.push('Minulý měsíc: ' + minule[m].poradi + '. místo z ' + hraciZ(minule.length) + '.');
           break;
         }
       }
