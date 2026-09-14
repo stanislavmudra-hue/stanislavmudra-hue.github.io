@@ -5,7 +5,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Žebříček – Okolník</title>
-<meta name="description" content="Měsíční žebříček hráčů Okolníku: ušlé kilometry, nové obce a fotovýpravy.">
+<meta name="description" content="Žebříčky hráčů Okolníku: kilometry, nové obce, fotovýpravy, doložené návštěvy, vrcholy, malovaná místa, dny venku, série, kroky a XP – po měsících, po krajích, mezi přáteli a síň slávy.">
 <meta name="color-scheme" content="light">
 <link rel="icon" href="/img/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/img/favicon.png">
@@ -95,6 +95,49 @@
 
   .kraj-mob { display: none; font-weight: 400; font-size: .85rem; color: var(--slabsi); }
 
+  /* ── 14. 9. 2026: víc kategorií, Moje pozice, koruny ─────────── */
+  .uroven {
+    display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
+    font-size: .72rem; font-weight: 600; color: var(--slabsi);
+    background: var(--jemna); border: 1px solid var(--linka); vertical-align: middle;
+  }
+
+  .koruna { margin-left: 6px; cursor: help; }
+
+  .ja-stitek {
+    display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+    font-size: .72rem; font-weight: 700; color: #3a2405; background: var(--oranzova);
+    vertical-align: middle;
+  }
+
+  tr.ja { background: #fff3dd !important; outline: 2px solid var(--oranzova); outline-offset: -2px; }
+
+  tr.mezera td { text-align: center; color: var(--slabsi); border-bottom: 1px dashed var(--linka); }
+
+  .moje {
+    border: 2px solid var(--oranzova); border-radius: 14px; padding: 16px 18px;
+    margin: 0 0 18px; background: #fffaf1;
+  }
+
+  .moje h2 { margin: 0 0 6px; font-size: 1.15rem; color: var(--tmava); }
+
+  .moje p { margin: 0 0 4px; color: var(--tmava); }
+
+  .moje p:last-child { margin-bottom: 0; }
+
+  .pravidlo { margin: 12px 0 0; font-size: .88rem; color: var(--slabsi); }
+
+  #vyberKraje {
+    font: inherit; font-size: .95rem; padding: 8px 12px; margin-top: 8px;
+    border: 1px solid var(--linka); border-radius: 10px; background: #fff; color: var(--tmava);
+    max-width: 100%;
+  }
+
+  .prepinac button.sin[aria-pressed="true"] { background: var(--oranzova); border-color: var(--oranzova); color: #3a2405; }
+
+  .jak ul { padding-left: 1.2em; }
+  .jak li { margin-bottom: 6px; }
+
 
   .ukazka-pruh {
     background: var(--oranzova); color: #3a2405; font-weight: 600;
@@ -134,8 +177,9 @@ th, td { padding: 8px 6px; }
 
 <main class="uzky">
   <h1>Žebříček</h1>
-  <p class="podtitul">Kdo toho za měsíc nachodil a&nbsp;objevil nejvíc. Soutěží jen ti,
-  kdo se do žebříčku sami přihlásili v&nbsp;aplikaci.</p>
+  <p class="podtitul">Deset měsíčních disciplín, kraje, přátelé a&nbsp;síň slávy. Každý měsíc
+  se začíná od nuly – nováček soutěží s&nbsp;nováčkem. Soutěží jen ti, kdo se do žebříčku sami
+  přihlásili v&nbsp;aplikaci.</p>
 
   <div id="ukazkaPruh" class="ukazka-pruh" hidden>
     UKÁZKA – zobrazená čísla jsou vymyšlená, nejde o&nbsp;skutečná data.
@@ -143,21 +187,33 @@ th, td { padding: 8px 6px; }
 
   <div class="volby">
     <div class="skupina">
-      <p class="popis" id="popisKategorie">Kategorie</p>
-      <div class="prepinac" role="group" aria-labelledby="popisKategorie" id="prepinacKategorie">
-        <button type="button" data-metrika="km" aria-pressed="true">Ušlé kilometry</button>
-        <button type="button" data-metrika="obce" aria-pressed="false">Nové obce</button>
-        <button type="button" data-metrika="vypravy" aria-pressed="false">Fotovýpravy</button>
-      </div>
-    </div>
-    <div class="skupina">
       <p class="popis" id="popisObdobi">Období</p>
       <div class="prepinac" role="group" aria-labelledby="popisObdobi" id="prepinacObdobi">
         <button type="button" data-obdobi="tento" aria-pressed="true">Tento měsíc</button>
         <button type="button" data-obdobi="minuly" aria-pressed="false">Minulý měsíc</button>
+        <button type="button" class="sin" data-obdobi="sin" aria-pressed="false">🏛️ Síň slávy</button>
       </div>
     </div>
+    <div class="skupina">
+      <p class="popis" id="popisKategorie">Disciplína</p>
+      <div class="prepinac" role="group" aria-labelledby="popisKategorie" id="prepinacKategorie">
+        <!-- tlačítka doplní zebricek.js podle období -->
+      </div>
+    </div>
+    <div class="skupina">
+      <p class="popis" id="popisKdo">Kdo</p>
+      <div class="prepinac" role="group" aria-labelledby="popisKdo" id="prepinacKdo">
+        <button type="button" data-kdo="vsichni" aria-pressed="true">Celé Česko</button>
+        <button type="button" data-kdo="kraj" aria-pressed="false">Kraj</button>
+        <button type="button" data-kdo="pratele" aria-pressed="false">Přátelé</button>
+      </div>
+      <select id="vyberKraje" aria-label="Kraj" hidden>
+        <option value="">Vyber kraj…</option>
+      </select>
+    </div>
   </div>
+
+  <div id="mojePozice" hidden></div>
 
   <div id="vysledek" aria-live="polite" aria-busy="true">
     <div class="stav">
@@ -166,18 +222,34 @@ th, td { padding: 8px 6px; }
     </div>
   </div>
 
-  <section class="vysvetlivka">
+  <section class="vysvetlivka jak">
+    <h2>Jak to funguje</h2>
+    <ul>
+      <li><strong>Deset disciplín za měsíc</strong> – kilometry, nové obce, fotovýpravy,
+      doložené návštěvy, vrcholy, malovaná místa, dny venku, série dní, kroky a&nbsp;XP.
+      Nemusíte být nejrychlejší chodec: kdo pravidelně vyráží ven, sbírá vrcholy nebo
+      dokládá návštěvy, má vlastní disciplínu, ve které může být první.</li>
+      <li><strong>Každý měsíc od nuly.</strong> Prvního v&nbsp;měsíci mají všichni stejnou
+      šanci; výsledky minulého měsíce zůstávají k&nbsp;nahlédnutí a&nbsp;vítězové každé
+      disciplíny nosí celý další měsíc <strong>korunku 👑</strong> u&nbsp;jména.</li>
+      <li><strong>Síň slávy</strong> počítá celkové součty za celou dobu hraní – úroveň,
+      kilometry, obce, návštěvy, malovaná místa, vrcholy, XP a&nbsp;úspěchy.</li>
+      <li><strong>Kraj a&nbsp;přátelé.</strong> Přepněte si žebříček na svůj kraj nebo (po
+      přihlášení na Můj Okolník) jen na přátele z&nbsp;aplikace – porovnání s&nbsp;lidmi,
+      které znáte, motivuje nejvíc.</li>
+      <li><strong>Moje pozice.</strong> Po přihlášení vidíte svůj řádek i&nbsp;mimo TOP 100,
+      kolik vám chybí na příčku před vámi, kolik procent hráčů jste předběhli, svůj
+      nejlepší měsíc a&nbsp;loňské umístění.</li>
+    </ul>
     <h2>Jak se do žebříčku dostanu?</h2>
-    <p>V&nbsp;aplikaci Okolník otevřete <strong>Nastavení → Žebříček</strong>, zapněte
-    účast a&nbsp;zvolte si přezdívku. Aplikace pak jednou za čas odešle jen tři čísla
-    za&nbsp;aktuální měsíc – kolik kilometrů jste ušli, kolik nových obcí jste
-    navštívili a&nbsp;kolik jste udělali fotovýprav – plus přezdívku a&nbsp;volitelně kraj.
-    <strong>Bez zapnutí se neodesílá nic</strong> a&nbsp;účast můžete kdykoli vypnout.
-    Neodesílá se poloha, trasa, deník ani fotky.</p>
+    <p>V&nbsp;aplikaci Okolník otevřete <strong>Více → Můj Okolník</strong>, zapněte
+    „Soutěžit v&nbsp;žebříčku" a&nbsp;zvolte si přezdívku. Aplikace pak jednou za čas odešle
+    souhrnná čísla za aktuální měsíc a&nbsp;celkové součty (viz disciplíny výš) plus
+    přezdívku, úroveň a&nbsp;volitelně kraj. <strong>Bez zapnutí se neodesílá nic</strong>
+    a&nbsp;účast můžete kdykoli vypnout. Neodesílá se poloha, trasa, deník ani fotky.</p>
     <p>Žebříček je <strong>dobrovolný a&nbsp;pro zábavu</strong>. Čísla hlásí telefon hráče,
-    takže je nelze nezávisle ověřit; nepřiměřené hodnoty se do žebříčku vůbec
-    nezapíšou. Měsíce se počítají zvlášť, aby nováček nesoutěžil s&nbsp;někým, kdo
-    hraje od začátku.</p>
+    takže je nelze nezávisle ověřit; kroky se počítají jen tam, kde odpovídají
+    kilometrům, a&nbsp;nepřiměřené hodnoty se do žebříčku vůbec nezapíšou.</p>
   </section>
 </main>
 
@@ -202,7 +274,7 @@ th, td { padding: 8px 6px; }
   </div>
 </footer>
 
-<script src="/zebricek/zebricek.js"></script>
+<script src="/zebricek/zebricek.js?v=3"></script>
 <script src="/web.js?v=2"></script>
 </body>
 </html>
