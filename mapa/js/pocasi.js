@@ -1363,6 +1363,15 @@ const Pocasi = (() => {
   /// 5–8 a 19–22 pozvolna) + počasí ve středu mapy: zataženo/déšť/
   /// bouřka ubere za dne stupeň (pošmourno), nikdy ale až do noci.
   /// Test: `window.__vynutKrokNoci = 0..3`.
+  /// engine 319: krok noci JEN ze slunce (0 den … 3 noc), bez příplatku
+  /// za zataženo/déšť – pro lucernu hráče (ta ve dne pod mrakem nesvítí).
+  function krokSlunce() {
+    if (typeof window.__vynutKrokNoci === 'number') {
+      return Math.max(0, Math.min(3, Math.round(window.__vynutKrokNoci)));
+    }
+    return 3 - Math.round(denniFaze() * 3);
+  }
+
   function stavNoci() {
     if (typeof window.__vynutKrokNoci === 'number') {
       return Math.max(0, Math.min(3, Math.round(window.__vynutKrokNoci)));
@@ -1381,6 +1390,6 @@ const Pocasi = (() => {
     return krok;
   }
 
-  return { pripoj, zavri, nastavZvenku, nastavVidno, stavNoci, snihCm,
+  return { pripoj, zavri, nastavZvenku, nastavVidno, stavNoci, krokSlunce, snihCm,
            polohaSlunce, polohaMesice, stavSvetla };
 })();

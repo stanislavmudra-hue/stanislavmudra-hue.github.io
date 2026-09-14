@@ -5886,14 +5886,18 @@ function aplikujNoc() {
             window.__svetluskyAktivni ? 'visible' : 'none');
       }
     }
-    // ⭐ v1.398: lucerna postavy — svítí už od šera (krok >= 1),
-    // se tmou sílí; přes den zhasnutá (visibility = nulová cena)
+    // ⭐ v1.398: lucerna postavy — se tmou sílí; přes den zhasnutá
+    // (visibility = nulová cena). ⛔ engine 319: řídí ji jen SLUNCE
+    // (`krok` má +1 za zataženo/déšť → svítila za oblačného dne) a až
+    // po západu (krok slunce ≥ 2; dřív od šera = slunce ještě 5° nad
+    // obzorem).
     if (mapa.getLayer('hrac-zare')) {
+      const ks = Pocasi.krokSlunce ? Pocasi.krokSlunce() : krok;
       mapa.setLayoutProperty('hrac-zare', 'visibility',
-          krok >= 1 ? 'visible' : 'none');
-      if (krok >= 1) {
+          ks >= 2 ? 'visible' : 'none');
+      if (ks >= 2) {
         mapa.setPaintProperty('hrac-zare', 'icon-opacity',
-            [0, 0.5, 0.8, 1.0][krok]);
+            [0, 0, 0.7, 1.0][ks]);
       }
     }
     // ⭐ v1.399: MLHA MUSÍ TAKY DO TMY („místy prosvítá světlá mapa
@@ -6020,6 +6024,10 @@ function obnovHracSvetlo(lng, lat) {
           'icon-image': 'svetlo-zare-0',
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
+          // engine 319: záře LEŽÍ NA ZEMI kolem nohou (dřív svislá deska
+          // kolem kotvy – při náklonu vypadala „vedle postavy")
+          'icon-pitch-alignment': 'map',
+          'icon-rotation-alignment': 'map',
           visibility: 'none',
           // v1.424: z lucerny „osvětlující okolí“ (2,6/3,8) zpět na
           // DECENTNÍ halo — „hráče trochu zvýrazni, ať je vidět“
@@ -6031,12 +6039,15 @@ function obnovHracSvetlo(lng, lat) {
       // ⚠️ v1.398.1: stav srovnat PŘÍMO — aplikujNoc má bránu „jen
       // při změně kroku“ a vrstva vzniklá PO jeho průchodu by zůstala
       // schovaná až do příští změny kroku (chyceno při ověřování).
-      const k = (typeof krokNoci === 'number' && krokNoci >= 0) ? krokNoci : 0;
+      // engine 319: jen slunce, až po západu (viz aplikujNoc)
+      let k = 0;
+      try { k = (typeof Pocasi !== 'undefined' && Pocasi.krokSlunce) ? Pocasi.krokSlunce() : 0; }
+      catch (eK) { k = 0; }
       mapa.setLayoutProperty('hrac-zare', 'visibility',
-          k >= 1 ? 'visible' : 'none');
-      if (k >= 1) {
+          k >= 2 ? 'visible' : 'none');
+      if (k >= 2) {
         mapa.setPaintProperty('hrac-zare', 'icon-opacity',
-            [0, 0.45, 0.7, 0.95][k]);
+            [0, 0, 0.7, 0.95][k]);
       }
     }
     const z2 = mapa.getSource('hrac-svetlo');
@@ -7435,6 +7446,7 @@ function vykresliPolohu(lng, lat, smer, rychlost, lehce) {
   if (!lehce) {
     obnovSipkuCile();          // v1.602: oranžová šipka k zastávce plánu
     posliVyskuHrace(lng, lat); // v1.602: převýšení k zastávce
+    obnovHracSvetlo(lng, lat); // engine 319: lucerna na KRESLENÉ poloze
   }
   Postavicka.pripoj(mapa);
   if (Postavicka.poloha(lng, lat, smer, rychlost)) {
@@ -7995,7 +8007,9 @@ window.OkolnikMost = {
       // SYROVÝ fix, kamera uskočila naráz, kdežto figurka se teprve
       // rozjížděla dojezdem — svět tedy poskočil a postava se za ním
       // plazila. Teď kotva sleduje TU SAMOU polohu, která se kreslí.
-      obnovHracSvetlo(lng, lat);
+      // engine 319: totéž platí pro LUCERNU (obnovHracSvetlo) – sázela se
+      // sem na syrový fix a při stání (35% vyhlazení) svítila vedle postavy;
+      // teď jde z vykresliPolohu.
       predtahniOkoli(lat, lng);   // jednorázově předehřát okolí (v1.415)
       const start = polohaVykres;
       if (polohaEase) { cancelAnimationFrame(polohaEase); polohaEase = null; }
