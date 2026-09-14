@@ -47,24 +47,27 @@ var REZIMY = {
   cestovatel: {
     nazev: 'Cestovatel',
     metriky: [
-      { pole: 'km', nazev: 'Ušlé kilometry', jednotka: 'km', desetinna: 1 }
+      { pole: 'km', nazev: 'Ušlé kilometry', jednotka: 'km', desetinna: 1 },
+      { pole: 'kroky', nazev: 'Kroky', jednotka: 'kroků', desetinna: 0 }
     ],
     celkem: [['Ušlé km', 'km', 1], ['Obce', 'obce', 0],
-             ['Aktivní dny', 'dny', 0]],
+             ['Dny venku', 'dny', 0]],
     mesic: [['Ušlé km', 'km', 1], ['Nové obce', 'obce', 0],
-            ['Aktivní dny', 'dny', 0], ['Kroky', 'kroky', 0]],
+            ['Dny venku', 'dny', 0], ['Kroky', 'kroky', 0]],
     kroky: true
   },
   objevitel: {
     nazev: 'Objevitel',
+    // 14. 9. 2026: bez fotovýprav (přání), navíc doložené návštěvy a klenoty
     metriky: [
       { pole: 'obce', nazev: 'Nové obce', jednotka: 'obcí', desetinna: 0 },
-      { pole: 'vypravy', nazev: 'Fotovýpravy', jednotka: 'výprav', desetinna: 0 }
+      { pole: 'navstevy', nazev: 'Doložené návštěvy', jednotka: 'návštěv', desetinna: 0 },
+      { pole: 'malovana', nazev: 'Klenoty', jednotka: 'klenotů', desetinna: 0 }
     ],
     celkem: [['Úroveň', 'uroven', 0], ['Doložené návštěvy', 'navstevy', 0],
              ['Fotovýpravy', 'vypravy', 0], ['Obce', 'obce', 0]],
     mesic: [['Navštívená místa', 'navstevy', 0], ['Fotovýpravy', 'vypravy', 0],
-            ['Nové obce', 'obce', 0], ['Aktivní dny', 'dny', 0]],
+            ['Nové obce', 'obce', 0], ['Dny venku', 'dny', 0]],
     kroky: false
   }
 };
@@ -223,7 +226,8 @@ function ctiSoukrome(cesta) {
    (proč ne runQuery: viz /zebricek/zebricek.js – chtělo by složené
    indexy; při dnešních počtech hráčů je výpis levnější a bez pastí).
 --------------------------------------------------------------------- */
-var POLE = ['hrac', 'prezdivka', 'obdobi', 'km', 'obce', 'vypravy', 'kraj'];
+var POLE = ['hrac', 'prezdivka', 'obdobi', 'km', 'obce', 'vypravy', 'kraj',
+            'navstevy', 'malovana', 'kroky', 'podlozeno'];
 var kesZebricku = null;   // Promise se VŠEMI řádky (všechna období)
 
 function naRadek(doc) {
@@ -239,7 +243,11 @@ function naRadek(doc) {
     kraj: ocisti(typeof d.kraj === 'string' ? d.kraj : '', 30),
     km: nezaporne(d.km),
     obce: Math.round(nezaporne(d.obce)),
-    vypravy: Math.round(nezaporne(d.vypravy))
+    vypravy: Math.round(nezaporne(d.vypravy)),
+    navstevy: Math.round(nezaporne(d.navstevy)),
+    malovana: Math.round(nezaporne(d.malovana)),
+    // kroky jen podložené kilometry (viz /zebricek/zebricek.js)
+    kroky: d.podlozeno === true ? Math.round(nezaporne(d.kroky)) : 0
   };
 }
 
@@ -308,7 +316,8 @@ function ukazkoveRadky(obdobi) {
   ];
   return vzor.map(function (v, i) {
     return { uid: 'ukazka' + i, prezdivka: v[0], kraj: v[1], km: v[2],
-             obce: v[3], vypravy: v[4], obdobi: obdobi };
+             obce: v[3], vypravy: v[4], obdobi: obdobi,
+             navstevy: v[3] - 2, malovana: Math.round(v[4] / 2), kroky: Math.round(v[2] * 1300) };
   });
 }
 

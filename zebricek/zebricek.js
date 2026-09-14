@@ -11,9 +11,10 @@
 
    ⭐ 14. 9. 2026 – VÍC KATEGORIÍ A SOUTĚŽIVOST (zadání: „ať jsou
    žebříčky zábavné, vytvářejí soutěživost a hrdost na výsledek"):
-   • deset měsíčních kategorií (km, obce, výpravy, doložené návštěvy,
-     vrcholy, malovaná místa, dny venku, série, kroky, XP) – každý
-     hráč má šanci být nejlepší v NĚČEM, ne jen ten, kdo nejvíc chodí;
+   • sedm měsíčních kategorií (km, obce, doložené návštěvy, vrcholy,
+     klenoty, kroky, XP) – každý hráč má šanci být nejlepší v NĚČEM, ne
+     jen ten, kdo nejvíc chodí (fotovýpravy, dny venku a série dní
+     vyřazeny 14. 9.: „otravná a nicneříkající soutěž");
    • měsíc = nový start (nováček soutěží s nováčkem), Síň slávy =
      celkové součty pro ty, kdo hrají dlouho;
    • „Moje pozice": vlastní řádek i mimo TOP, kolik chybí na příčku
@@ -76,18 +77,12 @@ var KATEGORIE = {
               pravidlo: 'Kilometry vlastní silou z GPS stopy (úseky pomalejší než 32 km/h).' },
   obce:     { nazev: 'Nové obce',          ikona: '🏘️', jednotka: 'obcí',    desetinna: 0, sklon: ['obec', 'obce', 'obcí'],
               pravidlo: 'Obce, do kterých hráč tenhle měsíc poprvé došel nebo dojel (do 160 m od jejich bodu).' },
-  vypravy:  { nazev: 'Fotovýpravy',        ikona: '📷', jednotka: 'výprav',  desetinna: 0, sklon: ['výprava', 'výpravy', 'výprav'],
-              pravidlo: 'Dokončené fotovýpravy (trasa + fotky) za měsíc.' },
   navstevy: { nazev: 'Doložené návštěvy',  ikona: '📍', jednotka: 'návštěv', desetinna: 0, sklon: ['návštěva', 'návštěvy', 'návštěv'],
               pravidlo: 'Návštěvy míst doložené polohou: pět minut u místa nebo „Jsem tady" přímo na místě.' },
   vrcholy:  { nazev: 'Vrcholy',            ikona: '⛰️', jednotka: 'vrcholů', desetinna: 0, sklon: ['vrchol', 'vrcholy', 'vrcholů'],
               pravidlo: 'Doložené vrcholy – potvrzení do 60 m od vrcholu.' },
-  malovana: { nazev: 'Malovaná místa',     ikona: '🖼️', jednotka: 'míst',    desetinna: 0, sklon: ['místo', 'místa', 'míst'],
-              pravidlo: 'Malovaná místa Kroniky doložená návštěvou za měsíc.' },
-  dny:      { nazev: 'Dny venku',          ikona: '📅', jednotka: 'dní',     desetinna: 0, sklon: ['den', 'dny', 'dní'],
-              pravidlo: 'Dny s aspoň 1 km vlastní silou – pravidelnost, ne jednorázový výkon.' },
-  serie:    { nazev: 'Série dní',          ikona: '🔥', jednotka: 'dní',     desetinna: 0, sklon: ['den', 'dny', 'dní'],
-              pravidlo: 'Nejdelší šňůra dní po sobě s aspoň 1 km v tomhle měsíci.' },
+  malovana: { nazev: 'Klenoty',            ikona: '💎', jednotka: 'klenotů', desetinna: 0, sklon: ['klenot', 'klenoty', 'klenotů'],
+              pravidlo: 'Klenoty Česka = ručně malovaná významná místa; počítají se doložené návštěvou za měsíc.' },
   kroky:    { nazev: 'Kroky',              ikona: '👣', jednotka: 'kroků',   desetinna: 0, sklon: ['krok', 'kroky', 'kroků'],
               pravidlo: 'Kroky z krokoměru telefonu; počítají se jen hráči, u kterých kroky odpovídají kilometrům.' },
   xp:       { nazev: 'XP za měsíc',        ikona: '⭐', jednotka: 'XP',      desetinna: 0, sklon: ['XP', 'XP', 'XP'],
@@ -104,8 +99,8 @@ var SIN = {
               pravidlo: 'Objevené obce ze 6 258 obcí Česka.' },
   navstevy: { nazev: 'Doložené návštěvy',  ikona: '📍', jednotka: 'návštěv', desetinna: 0, sklon: ['návštěva', 'návštěvy', 'návštěv'],
               pravidlo: 'Všechna místa doložená polohou.' },
-  malovana: { nazev: 'Malovaná místa',     ikona: '🖼️', jednotka: 'míst',    desetinna: 0, sklon: ['místo', 'místa', 'míst'],
-              pravidlo: 'Navštívená malovaná místa Kroniky (z 393).' },
+  malovana: { nazev: 'Klenoty',            ikona: '💎', jednotka: 'klenotů', desetinna: 0, sklon: ['klenot', 'klenoty', 'klenotů'],
+              pravidlo: 'Navštívené klenoty Česka – ručně malovaná významná místa (z 393).' },
   vrcholy:  { nazev: 'Vrcholy',            ikona: '⛰️', jednotka: 'vrcholů', desetinna: 0, sklon: ['vrchol', 'vrcholy', 'vrcholů'],
               pravidlo: 'Doložené vrcholy za celou dobu.' },
   xp:       { nazev: 'XP celkem',          ikona: '⭐', jednotka: 'XP',      desetinna: 0, sklon: ['XP', 'XP', 'XP'],
