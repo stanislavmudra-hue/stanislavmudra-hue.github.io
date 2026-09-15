@@ -509,7 +509,15 @@
         }
       }
     });
-    out.sort(function (a, b2) { return a.vzd - b2.vzd; });
+    // engine 320: pořadí = PRIORITA pro kolize ikon a rozpočet MAX_BODU (engine
+    // bere pořadí odeslání jako `srt`): významnost kategorie jako v appce
+    // (`kat.vaha` z exportu), teprve pak vzdálenost od středu. Dřív jen
+    // vzdálenost → nabíječka u Lidlu vyhrála nad Lidlem (Prosetice, 14. 9.).
+    var vahy = kat.vaha || {};
+    out.sort(function (a, b2) {
+      var va = vahy[a.d] || 1, vb = vahy[b2.d] || 1;
+      return (vb - va) || (a.vzd - b2.vzd);
+    });
     if (out.length > MAX_BODU) out.length = MAX_BODU;
     return out;
   }
