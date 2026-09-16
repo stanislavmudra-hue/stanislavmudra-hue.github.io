@@ -9,7 +9,7 @@
 <meta name="color-scheme" content="light">
 <link rel="icon" href="/img/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/img/favicon.png">
-<link rel="stylesheet" href="/styl.css?v=2">
+<link rel="stylesheet" href="/styl.css?v=3">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <style>
   .karta {
@@ -169,6 +169,26 @@
   <div class="radek-hlava">
     <h1 id="titulek">Dobyvatel</h1>
     <span class="stitek" id="stavSouteze">…</span>
+  </div>
+  <!-- 16. 9. 2026: přepínač režimů jako v aplikaci (odkazy, aktivní = tato stránka) -->
+  <div class="prepinac-dob">
+    <nav class="prepinac-rezimu" aria-label="Režimy">
+      <a class="volba cest" href="/cestovatel/">
+        <span class="ikona" aria-hidden="true">🧭</span>
+        <span class="jmeno">Cestovatel</span>
+        <span class="popis">Obyčejná mapa bez hry.</span>
+      </a>
+      <a class="volba obj" href="/objevitel/">
+        <span class="ikona" aria-hidden="true">🌫️</span>
+        <span class="jmeno">Objevitel</span>
+        <span class="popis">Odkrývej mlhu, sbírej místa a obce.</span>
+      </a>
+      <a class="volba dob" href="/dobyvatel/" aria-current="page">
+        <span class="ikona" aria-hidden="true">🚩</span>
+        <span class="jmeno">Dobyvatel</span>
+        <span class="popis">Týmy dobývají vlajky – zabírej území pro svůj kraj.</span>
+      </a>
+    </nav>
   </div>
   <!-- v78: popis režimu pro nově příchozí (web ve třech režimech,
        2. 9. 2026). Sbalený, aby jednoobrazovkové rozvržení mapy

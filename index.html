@@ -9,7 +9,7 @@
 <meta name="color-scheme" content="light">
 <link rel="icon" href="/img/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/img/favicon.png">
-<link rel="stylesheet" href="/styl.css?v=2">
+<link rel="stylesheet" href="/styl.css?v=3">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Okolník – objevuj Česko kousek po kousku">
 <meta property="og:description" content="Turistický průvodce po Česku, který z výletu udělá objevování.">
@@ -72,33 +72,99 @@
   <section class="sekce" id="rezimy">
     <p class="nadtitul">Režimy</p>
     <h2>Tři režimy, jedna mapa</h2>
-    <p class="podtitul">Vyberte si, jak chcete Česko procházet. Přepnout jde
-    v&nbsp;aplikaci kdykoli, postup se neztrácí.</p>
-    <div class="karty">
-      <a class="karta rezim cest" href="/cestovatel/">
+    <p class="podtitul">Vyberte si, jak chcete Česko procházet – stejně jako
+    v&nbsp;aplikaci. Přepnout jde kdykoli, postup se neztrácí.</p>
+
+    <!-- 16. 9. 2026: přepínač jako v aplikaci (Cestovatel · Objevitel ·
+         Dobyvatel, podtituly z appky). S JavaScriptem přepíná panel
+         níž (/web.js), bez něj vedou volby rovnou na stránky režimů. -->
+    <nav class="prepinac-rezimu" id="prepinacRezimu" aria-label="Výběr režimu">
+      <a class="volba cest aktivni" href="/cestovatel/" data-rezim="cestovatel">
         <span class="ikona" aria-hidden="true">🧭</span>
-        <h3>Cestovatel</h3>
-        <p>Co je kolem – hned a&nbsp;přehledně: krámek, fastfood po&nbsp;cestě,
-        obchod, parkoviště. Obyčejná mapa bez hry se&nbsp;značkami KČT,
-        plánem výletu a&nbsp;offline okresy.</p>
-        <span class="dal">Popis režimu, žebříček a&nbsp;vaše čísla →</span>
+        <span class="jmeno">Cestovatel</span>
+        <span class="popis">Obyčejná mapa bez hry.</span>
       </a>
-      <a class="karta rezim obj" href="/objevitel/">
+      <a class="volba obj" href="/objevitel/" data-rezim="objevitel">
         <span class="ikona" aria-hidden="true">🌫️</span>
-        <h3>Objevitel</h3>
-        <p>Krásně vybarvovaná mapa s&nbsp;obrázky míst, fotovýpravy jako
-        jednoduchý záznam cesty, poznámky a&nbsp;vzpomínky, přátelé, erby obcí,
-        XP a&nbsp;úrovně.</p>
-        <span class="dal">Popis režimu, žebříček a&nbsp;vaše čísla →</span>
+        <span class="jmeno">Objevitel</span>
+        <span class="popis">Odkrývej mlhu, sbírej místa a obce.</span>
       </a>
-      <a class="karta rezim dob" href="/dobyvatel/">
+      <a class="volba dob" href="/dobyvatel/" data-rezim="dobyvatel">
         <span class="ikona" aria-hidden="true">🚩</span>
-        <h3>Dobyvatel</h3>
-        <p>Soupeří se o&nbsp;17&nbsp;688 vlajek a&nbsp;o&nbsp;další místa
-        po&nbsp;celém Česku – a&nbsp;vlastní soutěže s&nbsp;vlastní mapou pro
-        partu, firmu nebo obec.</p>
-        <span class="dal">Mapa soutěže a&nbsp;moje soutěže →</span>
+        <span class="jmeno">Dobyvatel</span>
+        <span class="popis">Týmy dobývají vlajky – zabírej území pro svůj kraj.</span>
       </a>
+    </nav>
+
+    <div class="panel-rezimu cest" data-rezim="cestovatel">
+      <div>
+        <p class="nadtitul">Cestovatel · obyčejná mapa bez hry</p>
+        <h3>Co je kolem – hned a&nbsp;přehledně</h3>
+        <p>Krámek, fastfood po&nbsp;cestě, obchod, parkoviště nebo benzínka:
+        v&nbsp;Seznamu seřazené podle vzdálenosti, s&nbsp;metry a&nbsp;s&nbsp;tím,
+        jestli mají otevřeno. K&nbsp;tomu turistická mapa se&nbsp;značkami KČT,
+        vrstevnicemi a&nbsp;3D kopci, plán výletu a&nbsp;offline okresy.</p>
+        <ul class="stitky" aria-label="V kostce">
+          <li>co je kolem – hned</li>
+          <li>570&nbsp;000+ míst</li>
+          <li>56 kategorií</li>
+          <li>značky KČT</li>
+          <li>plán výletu</li>
+          <li>offline okresy</li>
+        </ul>
+        <a class="tlacitko" href="/cestovatel/">Otevřít Cestovatel →</a>
+      </div>
+      <figure>
+        <img class="telefon" src="/img/app-turisticka.webp?v=3" alt="Turistická mapa s vrstevnicemi a značenými trasami" width="540" height="1082" loading="lazy">
+      </figure>
+    </div>
+
+    <div class="panel-rezimu obj" data-rezim="objevitel" hidden>
+      <div>
+        <p class="nadtitul">Objevitel · odkrývej mlhu, sbírej místa a obce</p>
+        <h3>Krásně vybarvovaná mapa s&nbsp;obrázky míst</h3>
+        <p>Kudy projdete, tam mlha ustoupí a&nbsp;krajina se vybarví –
+        s&nbsp;kresbami hradů, rozhleden i&nbsp;hospod. Fotovýprava je
+        jednoduchý záznam cesty: trasa, kilometry, počasí a&nbsp;fotky jako
+        jeden výlet v&nbsp;deníku. Poznámky a&nbsp;vzpomínky, přátelé
+        na&nbsp;společné mapě, erby obcí, XP a&nbsp;úrovně.</p>
+        <ul class="stitky" aria-label="V kostce">
+          <li>malovaná mapa</li>
+          <li>fotovýpravy</li>
+          <li>přátelé</li>
+          <li>poznámky a vzpomínky</li>
+          <li>6&nbsp;258 erbů</li>
+          <li>XP a úrovně</li>
+          <li>393 klenotů Česka</li>
+        </ul>
+        <a class="tlacitko" href="/objevitel/">Otevřít Objevitel →</a>
+      </div>
+      <figure>
+        <img class="telefon" src="/img/app-herni.webp?v=3" alt="Herní mapa v noci: kreslená krajina, světla vesnic a postavička hráče" width="540" height="1082" loading="lazy">
+      </figure>
+    </div>
+
+    <div class="panel-rezimu dob" data-rezim="dobyvatel" hidden>
+      <div>
+        <p class="nadtitul">Dobyvatel · týmy dobývají vlajky</p>
+        <h3>Soupeří se o&nbsp;vlajky a&nbsp;o&nbsp;místa</h3>
+        <p>Čtrnáct týmů krajů dobývá 17&nbsp;688 vlajek na&nbsp;hradech,
+        vrcholech a&nbsp;rozhlednách po&nbsp;celém Česku – vlajku obsadíte,
+        když u&nbsp;ní chvíli postojíte. A&nbsp;vlastní soutěže s&nbsp;vlastní
+        mapou: pro partu, firmu nebo obec vyberete místa (i&nbsp;vlastní
+        kamkoli), pojmenujete týmy a&nbsp;pošlete odkaz.</p>
+        <ul class="stitky" aria-label="V kostce">
+          <li>17&nbsp;688 vlajek</li>
+          <li>14 týmů krajů</li>
+          <li>vlastní soutěže</li>
+          <li>vlastní mapa</li>
+          <li>skóre a žebříčky</li>
+        </ul>
+        <a class="tlacitko" href="/dobyvatel/">Mapa soutěže a moje soutěže →</a>
+      </div>
+      <figure>
+        <img src="/img/app-dobyvatel.webp" alt="Mapa Dobyvatele: území vlajek po celém Česku rozdělené mezi kraje" width="1200" height="900" loading="lazy">
+      </figure>
     </div>
   </section>
 
@@ -233,6 +299,6 @@
   </div>
 </footer>
 
-<script src="/web.js?v=2"></script>
+<script src="/web.js?v=3"></script>
 </body>
 </html>

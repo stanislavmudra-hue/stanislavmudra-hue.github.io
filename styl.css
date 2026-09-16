@@ -384,6 +384,123 @@ a.karta.rezim .dal {
 .karta.obj  { --akcent: var(--obj);  --akcent-jemna: var(--obj-jemna); }
 .karta.dob  { --akcent: var(--dob);  --akcent-jemna: var(--dob-jemna); }
 
+/* ── PŘEPÍNAČ REŽIMŮ (16. 9. 2026) ──────────────────────────────────
+   Přání: „kategorie dominantnější, stejný přepínač jako v aplikaci".
+   Tři velké volby jako v appce (ikona, jméno, podtitul z appky), aktivní
+   vyplněná barvou režimu. Na úvodní stránce přepíná panel pod sebou
+   (/web.js), na stránkách režimů jsou to odkazy (aktivní = tato stránka).
+   Bez JavaScriptu jsou to vždy jen odkazy – nic nezmizí. */
+.prepinac-rezimu {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  border-radius: 26px;
+  background: var(--papir);
+  border: 1px solid rgba(13, 43, 46, .07);
+  box-shadow: var(--stin-vyssi);
+  max-width: 940px;
+  margin: 0 auto;
+}
+.prepinac-rezimu .volba {
+  --akcent: var(--zelena); --akcent-jemna: var(--jemna); --akcent-stin: rgba(46, 125, 91, .35);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 13px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: 19px;
+  border: 0;
+  background: transparent;
+  color: var(--tmava);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background .15s, box-shadow .15s, transform .12s;
+}
+.prepinac-rezimu .volba.cest { --akcent: var(--cest); --akcent-jemna: var(--cest-jemna); --akcent-stin: rgba(46, 125, 91, .38); }
+.prepinac-rezimu .volba.obj  { --akcent: var(--obj);  --akcent-jemna: var(--obj-jemna);  --akcent-stin: rgba(217, 130, 43, .38); }
+.prepinac-rezimu .volba.dob  { --akcent: var(--dob);  --akcent-jemna: var(--dob-jemna);  --akcent-stin: rgba(217, 88, 59, .38); }
+.prepinac-rezimu .volba .ikona {
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 17px;
+  background: var(--akcent-jemna);
+  font-size: 1.75rem;
+  line-height: 1;
+  transition: background .15s;
+}
+.prepinac-rezimu .volba .jmeno { font-weight: 800; font-size: 1.15rem; line-height: 1.15; letter-spacing: -.01em; }
+.prepinac-rezimu .volba .popis { font-size: .84rem; line-height: 1.3; color: var(--slabsi); }
+.prepinac-rezimu .volba:hover { background: var(--akcent-jemna); }
+.prepinac-rezimu .volba.aktivni,
+.prepinac-rezimu .volba[aria-current="page"] {
+  background: var(--akcent);
+  color: #fff;
+  box-shadow: 0 10px 24px var(--akcent-stin);
+}
+.prepinac-rezimu .volba.aktivni .ikona,
+.prepinac-rezimu .volba[aria-current="page"] .ikona { background: rgba(255, 255, 255, .2); }
+.prepinac-rezimu .volba.aktivni .popis,
+.prepinac-rezimu .volba[aria-current="page"] .popis { color: rgba(255, 255, 255, .86); }
+.prepinac-rezimu .volba:focus-visible { outline: 3px solid var(--oranzova); outline-offset: 2px; }
+
+/* panel vybraného režimu pod přepínačem (úvodní stránka) */
+.panel-rezimu {
+  --akcent: var(--cest); --akcent-jemna: var(--cest-jemna);
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+  gap: 26px 44px;
+  align-items: center;
+  margin: 26px auto 0;
+  max-width: 940px;
+  padding: clamp(22px, 4vw, 40px);
+  border-radius: var(--radius);
+  background: var(--papir);
+  border: 1px solid var(--linka);
+  border-top: 6px solid var(--akcent);
+  box-shadow: var(--stin);
+}
+.panel-rezimu[hidden] { display: none; }
+.panel-rezimu.cest { --akcent: var(--cest); --akcent-jemna: var(--cest-jemna); }
+.panel-rezimu.obj  { --akcent: var(--obj);  --akcent-jemna: var(--obj-jemna); }
+.panel-rezimu.dob  { --akcent: var(--dob);  --akcent-jemna: var(--dob-jemna); }
+.panel-rezimu .nadtitul { color: var(--akcent); text-align: left; }
+.panel-rezimu h3 { font-size: 1.55rem; line-height: 1.15; margin: 0 0 12px; }
+.panel-rezimu p { color: var(--slabsi); margin: 0; }
+.panel-rezimu .stitky { margin: 16px 0 20px; }
+.panel-rezimu .stitky li { background: var(--akcent-jemna); border-color: transparent; }
+.panel-rezimu .tlacitko { background: var(--akcent); color: #fff; box-shadow: 0 6px 18px var(--akcent-stin, rgba(13, 43, 46, .2)); }
+.panel-rezimu.cest .tlacitko { --akcent-stin: rgba(46, 125, 91, .35); }
+.panel-rezimu.obj  .tlacitko { --akcent-stin: rgba(217, 130, 43, .35); }
+.panel-rezimu.dob  .tlacitko { --akcent-stin: rgba(217, 88, 59, .35); }
+.panel-rezimu figure { margin: 0; display: flex; justify-content: center; }
+.panel-rezimu figure img { max-width: 100%; height: auto; border-radius: 20px; box-shadow: var(--stin-vyssi); }
+.panel-rezimu figure img.telefon { width: min(250px, 68vw); border: 5px solid var(--tmava); border-radius: 26px; }
+.panel-rezimu figcaption { display: none; }
+@media (max-width: 900px) {
+  .panel-rezimu { grid-template-columns: 1fr; }
+  .panel-rezimu figure { order: -1; }
+}
+@media (max-width: 640px) {
+  .prepinac-rezimu { gap: 5px; padding: 6px; border-radius: 20px; }
+  .prepinac-rezimu .volba { grid-template-columns: 1fr; grid-template-rows: auto auto; justify-items: center; text-align: center; padding: 10px 6px 9px; border-radius: 15px; }
+  .prepinac-rezimu .volba .ikona { grid-row: auto; width: 42px; height: 42px; font-size: 1.35rem; border-radius: 13px; margin-bottom: 5px; }
+  .prepinac-rezimu .volba .jmeno { font-size: .92rem; }
+  .prepinac-rezimu .volba .popis { display: none; }
+  .panel-rezimu { padding: 20px 16px; }
+  .panel-rezimu h3 { font-size: 1.3rem; }
+}
+.prepinac-dob { margin: 4px 0 14px; }
+.prepinac-dob .prepinac-rezimu { margin: 0; box-shadow: var(--stin); }
+/* přepínač v pruhu stránky režimu – přes celou šířku, nad ikonou a názvem */
+.pruh-rezimu .prepinac-rezimu { grid-column: 1 / -1; width: 100%; margin-bottom: 10px; }
+
 /* ── SNÍMKY APLIKACE ────────────────────────────────────────────── */
 .snimky {
   display: flex;
