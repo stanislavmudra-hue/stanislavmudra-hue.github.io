@@ -121,23 +121,65 @@
   .zalozka { display: none; flex: 1; min-height: 0; overflow: auto; }
   .zalozka.aktivni { display: block; }
   .zalozka .karta { margin: 0; }
-  #z-mapa.aktivni { display: flex; flex-direction: column; }
-  .mapa-radek { display: flex; gap: 14px; flex: 1; min-height: 0; }
+  /* 16. 9. 2026: skóre týmů je mimo řádek mapy – na počítači vpravo přes
+     celou výšku záložky (mřížka), na mobilu kompaktně POD MENU (před
+     hledáním a mapou; přání: „týmy alespoň pod menu"). */
+  #z-mapa.aktivni { display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    column-gap: 14px; }
+  #z-mapa > * { grid-column: 1; min-width: 0; }
+  #z-mapa > .bocni { grid-column: 2; grid-row: 1 / -1; }
+  .mapa-radek { display: flex; gap: 14px; min-height: 0; }
   .mapa-sloupec { flex: 1; display: flex; flex-direction: column;
                   min-width: 0; }
   #mapa { height: auto; flex: 1; min-height: 300px; }
-  .bocni { width: 340px; flex: none; overflow: auto; margin: 0; }
+  .bocni { width: auto; overflow: auto; margin: 0; }
   .bocni .reklama { margin: 12px 0 0; min-height: 70px; }
   .stavovy { margin: 6px 0 0; }
+  /* plocha zarovnaná s lištou (dřív bez okrajů – text u samé hrany) */
+  main.plocha { max-width: 1200px; margin: 0 auto;
+    padding-left: 20px; padding-right: 20px; }
   @media (max-width: 820px) {
-    .plocha { height: auto !important; }
+    .plocha { height: auto !important; padding-left: 12px;
+      padding-right: 12px; }
     .zalozka { overflow: visible; }
     .telo { flex-direction: column; }
     .bocni-menu { width: auto; flex-direction: row; flex-wrap: wrap; }
     .pod-menu { flex-direction: row; flex-wrap: wrap; margin: 0; }
     .mapa-radek { flex-direction: column; }
-    .bocni { width: auto; }
     #mapa { min-height: 58vh; flex: none; }
+    /* pořadí: soutěž → SKÓRE TÝMŮ → hledání → mapa */
+    #z-mapa.aktivni { display: flex; flex-direction: column; }
+    #soutezVolba { order: 0; }
+    #z-mapa > .bocni { order: 1; margin: 0 0 10px; overflow: visible;
+      padding: 12px 12px 10px; }
+    #hledaniBox { order: 2; }
+    #pridaniBox { order: 3; }
+    .mapa-radek { order: 4; }
+    /* kompaktní skóre: dva sloupce dlaždic, bez hlavičky tabulky */
+    .bocni h2 { font-size: 1.05rem; margin-bottom: 8px; }
+    .bocni .tabulka { display: grid; grid-template-columns: 1fr 1fr;
+      gap: 4px 8px; margin: 0; }
+    .bocni .tabulka tbody { display: contents; }
+    .bocni .tabulka tr { display: flex; align-items: center; gap: 4px;
+      padding: 4px 8px; border-radius: 8px; background: #fffdf6;
+      border: 1px solid var(--linka); min-width: 0; }
+    .bocni .tabulka tr:first-child { display: none; }
+    .bocni .tabulka td { border: 0; padding: 0; font-size: .86rem; }
+    .bocni .tabulka td:first-child { flex: 1; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bocni .tabulka td.body { font-size: .82rem; }
+    .bocni .tabulka td.body:nth-child(2) { color: var(--slabsi);
+      font-weight: 600; margin-right: 10px; }
+    .bocni .znak { height: 20px; width: 20px; margin-right: 4px; }
+    .bocni .tecka { width: 9px; height: 9px; margin-right: 4px; }
+    .bocni .legenda { margin-top: 8px; font-size: .84rem; }
+  }
+  @media (max-width: 480px) {
+    /* na úzkém telefonu jen tečka, jméno a procenta (znak by jméno usekl) */
+    .bocni .tabulka td.body:nth-child(2) { display: none; }
+    .bocni .znak { display: none; }
   }
   .uvod { margin: 0 0 8px; font-size: .93rem; width: 100%;
           align-self: stretch; flex: none; }
@@ -210,7 +252,7 @@
     <div class="drobne" id="soutezVolba"
       style="margin:0 0 8px;display:flex;align-items:center;
              gap:8px;flex-wrap:wrap"></div>
-    <div style="position:relative;margin:0 0 8px;max-width:340px">
+    <div id="hledaniBox" style="position:relative;margin:0 0 8px;max-width:340px">
       <input id="hledani" type="search" placeholder="🔍 Hledat místo…"
         autocomplete="off"
         style="width:100%;padding:7px 12px;border-radius:10px;
@@ -229,7 +271,8 @@
         <div id="mapa" role="img" aria-label="Mapa území týmů"></div>
         <p class="stavovy" id="stav">Načítám mapu…</p>
       </div>
-      <aside class="karta bocni">
+    </div>
+    <aside class="karta bocni">
         <h2>Skóre týmů</h2>
         <table class="tabulka" id="skore">
           <tr><th>Tým</th><th style="text-align:right">Body</th>
@@ -237,8 +280,7 @@
         </table>
         <p class="legenda" id="dobyto"></p>
         <div class="reklama" data-reklama>reklamní plocha</div>
-      </aside>
-    </div>
+    </aside>
   </section>
 
   <section class="zalozka" id="z-zebricky">
