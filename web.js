@@ -18,7 +18,7 @@
   if (!omezitPohyb && 'IntersectionObserver' in window) {
     var prvky = document.querySelectorAll(
       '.sekce .karta, .sekce .snimek, .sekce h2, .sekce > .podtitul, ' +
-      '.sekce .nadtitul, .uzky .karta, .uzky .snimek, .blok, .prepinac-rezimu, .panel-rezimu');
+      '.sekce .nadtitul, .uzky .karta, .uzky .snimek, .blok, .panel-rezimu');
     var pozorovatel = new IntersectionObserver(function (zaznamy) {
       zaznamy.forEach(function (z) {
         if (!z.isIntersecting) return;
@@ -33,41 +33,6 @@
       e.classList.add('odhal');
       e.style.transitionDelay = ((i % 5) * 55) + 'ms';
       pozorovatel.observe(e);
-    });
-  }
-
-  /* ── 3) přepínač režimů na úvodní stránce (16. 9. 2026) ────────── */
-  // Volby jsou odkazy na stránky režimů; tady jen přepínají panel pod
-  // sebou. Výběr si stránka pamatuje (localStorage) a bere ho i z #hash
-  // (/#objevitel), ať jde na režim odkázat. Bez JS: odkazy fungují dál.
-  var prep = document.getElementById('prepinacRezimu');
-  if (prep) {
-    var volby = Array.prototype.slice.call(prep.querySelectorAll('.volba'));
-    var panely = Array.prototype.slice.call(document.querySelectorAll('.panel-rezimu'));
-    var platne = ['cestovatel', 'objevitel', 'dobyvatel'];
-    var nastav = function (k, ulozit) {
-      volby.forEach(function (v) {
-        var on = v.getAttribute('data-rezim') === k;
-        v.classList.toggle('aktivni', on);
-        v.setAttribute('aria-current', on ? 'true' : 'false');
-      });
-      panely.forEach(function (p) { p.hidden = p.getAttribute('data-rezim') !== k; });
-      if (ulozit) { try { localStorage.setItem('okolnikRezimWeb', k); } catch (e) {} }
-    };
-    volby.forEach(function (v) {
-      v.addEventListener('click', function (e) {
-        e.preventDefault();
-        nastav(v.getAttribute('data-rezim'), true);
-      });
-    });
-    var zHashe = (location.hash || '').replace('#', '');
-    var ulozeny = null;
-    try { ulozeny = localStorage.getItem('okolnikRezimWeb'); } catch (e) {}
-    nastav(platne.indexOf(zHashe) >= 0 ? zHashe
-      : (platne.indexOf(ulozeny) >= 0 ? ulozeny : 'cestovatel'), false);
-    window.addEventListener('hashchange', function () {
-      var h = (location.hash || '').replace('#', '');
-      if (platne.indexOf(h) >= 0) nastav(h, true);
     });
   }
 

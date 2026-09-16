@@ -9,7 +9,7 @@
 <meta name="color-scheme" content="light">
 <link rel="icon" href="/img/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/img/favicon.png">
-<link rel="stylesheet" href="/styl.css?v=3">
+<link rel="stylesheet" href="/styl.css?v=4">
 <style>
   .cenik { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin:14px 0 6px; }
   .cenik .karta h3 { margin:0 0 4px; }
@@ -25,11 +25,14 @@
       <img class="emblem" src="/img/emblem-96.webp" alt="" width="38" height="38">
       <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="120" height="30">
     </a>
+    <!-- 16. 9. 2026: režimy jako v aplikaci – hlavní přepínač v liště -->
+    <nav class="rezimy-menu" aria-label="Režimy">
+      <a class="volba cest" href="/cestovatel/"><span class="ikona" aria-hidden="true">🧭</span><span class="jmeno">Cestovatel</span></a>
+      <a class="volba obj" href="/objevitel/"><span class="ikona" aria-hidden="true">🌫️</span><span class="jmeno">Objevitel</span></a>
+      <a class="volba dob" href="/dobyvatel/"><span class="ikona" aria-hidden="true">🚩</span><span class="jmeno">Dobyvatel</span></a>
+    </nav>
     <nav class="menu" aria-label="Hlavní nabídka">
       <a href="/">Domů</a>
-      <a href="/cestovatel/">Cestovatel</a>
-      <a href="/objevitel/">Objevitel</a>
-      <a href="/dobyvatel/">Dobyvatel</a>
       <a href="/zebricek/">Žebříček</a>
       <a href="/ucet/">Můj Okolník</a>
       <a href="/firmy/" class="mimo-mobil" aria-current="page">Pro firmy</a>
@@ -119,6 +122,6 @@
 </footer>
 
 
-<script src="/web.js?v=3"></script>
+<script src="/web.js?v=4"></script>
 </body>
 </html>

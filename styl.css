@@ -116,7 +116,9 @@ p, li { margin: 0 0 12px; }
   box-shadow: 0 1px 0 rgba(255, 255, 255, .06), 0 2px 12px rgba(0, 0, 0, .18);
 }
 .hlava .obal {
-  max-width: var(--sirka);
+  /* 16. 9.: lišta smí být širší než obsah, ať se logo, tři režimy
+     a zbytek nabídky vejdou na počítači do jednoho řádku */
+  max-width: 1200px;
   margin: 0 auto;
   padding: 10px 20px;
   display: flex;
@@ -166,6 +168,57 @@ p, li { margin: 0 0 12px; }
   outline: 3px solid var(--oranzova);
   outline-offset: 2px;
 }
+
+/* ── REŽIMY V LIŠTĚ (16. 9. 2026) ────────────────────────────────────
+   Přání: „kategorie dominantnější, stejný přepínač jako v aplikaci – v horním
+   menu". Tři velké volby Cestovatel · Objevitel · Dobyvatel uprostřed lišty,
+   aktivní vyplněná barvou režimu; zbytek nabídky (Domů, Žebříček, Můj
+   Okolník…) je menší vpravo. Na mobilu má přepínač vlastní řádek. */
+.rezimy-menu {
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .08);
+  border: 1px solid rgba(255, 255, 255, .1);
+  margin-left: 6px;
+}
+.rezimy-menu .volba {
+  --akcent: var(--zelena); --akcent-stin: rgba(46, 125, 91, .45);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px 8px 10px;
+  border-radius: 999px;
+  color: #f4efe2;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -.005em;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .12s, box-shadow .12s;
+}
+.rezimy-menu .volba.cest { --akcent: var(--cest); --akcent-stin: rgba(46, 125, 91, .45); }
+.rezimy-menu .volba.obj  { --akcent: var(--obj);  --akcent-stin: rgba(217, 130, 43, .45); }
+.rezimy-menu .volba.dob  { --akcent: var(--dob);  --akcent-stin: rgba(217, 88, 59, .45); }
+.rezimy-menu .volba .ikona {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .12);
+  font-size: .95rem;
+  line-height: 1;
+}
+.rezimy-menu .volba:hover { background: rgba(255, 255, 255, .12); }
+.rezimy-menu .volba[aria-current="page"] {
+  background: var(--akcent);
+  color: #fff;
+  box-shadow: 0 4px 14px var(--akcent-stin);
+}
+.rezimy-menu .volba[aria-current="page"] .ikona { background: rgba(255, 255, 255, .22); }
+.rezimy-menu .volba:focus-visible { outline: 3px solid var(--oranzova); outline-offset: 2px; }
 
 /* ── ZÁKLADNÍ ROZVRŽENÍ ─────────────────────────────────────────── */
 main { display: block; }
@@ -384,73 +437,7 @@ a.karta.rezim .dal {
 .karta.obj  { --akcent: var(--obj);  --akcent-jemna: var(--obj-jemna); }
 .karta.dob  { --akcent: var(--dob);  --akcent-jemna: var(--dob-jemna); }
 
-/* ── PŘEPÍNAČ REŽIMŮ (16. 9. 2026) ──────────────────────────────────
-   Přání: „kategorie dominantnější, stejný přepínač jako v aplikaci".
-   Tři velké volby jako v appce (ikona, jméno, podtitul z appky), aktivní
-   vyplněná barvou režimu. Na úvodní stránce přepíná panel pod sebou
-   (/web.js), na stránkách režimů jsou to odkazy (aktivní = tato stránka).
-   Bez JavaScriptu jsou to vždy jen odkazy – nic nezmizí. */
-.prepinac-rezimu {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  padding: 8px;
-  border-radius: 26px;
-  background: var(--papir);
-  border: 1px solid rgba(13, 43, 46, .07);
-  box-shadow: var(--stin-vyssi);
-  max-width: 940px;
-  margin: 0 auto;
-}
-.prepinac-rezimu .volba {
-  --akcent: var(--zelena); --akcent-jemna: var(--jemna); --akcent-stin: rgba(46, 125, 91, .35);
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  column-gap: 13px;
-  align-items: center;
-  padding: 14px 16px;
-  border-radius: 19px;
-  border: 0;
-  background: transparent;
-  color: var(--tmava);
-  font: inherit;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-  transition: background .15s, box-shadow .15s, transform .12s;
-}
-.prepinac-rezimu .volba.cest { --akcent: var(--cest); --akcent-jemna: var(--cest-jemna); --akcent-stin: rgba(46, 125, 91, .38); }
-.prepinac-rezimu .volba.obj  { --akcent: var(--obj);  --akcent-jemna: var(--obj-jemna);  --akcent-stin: rgba(217, 130, 43, .38); }
-.prepinac-rezimu .volba.dob  { --akcent: var(--dob);  --akcent-jemna: var(--dob-jemna);  --akcent-stin: rgba(217, 88, 59, .38); }
-.prepinac-rezimu .volba .ikona {
-  grid-row: 1 / span 2;
-  display: grid;
-  place-items: center;
-  width: 54px;
-  height: 54px;
-  border-radius: 17px;
-  background: var(--akcent-jemna);
-  font-size: 1.75rem;
-  line-height: 1;
-  transition: background .15s;
-}
-.prepinac-rezimu .volba .jmeno { font-weight: 800; font-size: 1.15rem; line-height: 1.15; letter-spacing: -.01em; }
-.prepinac-rezimu .volba .popis { font-size: .84rem; line-height: 1.3; color: var(--slabsi); }
-.prepinac-rezimu .volba:hover { background: var(--akcent-jemna); }
-.prepinac-rezimu .volba.aktivni,
-.prepinac-rezimu .volba[aria-current="page"] {
-  background: var(--akcent);
-  color: #fff;
-  box-shadow: 0 10px 24px var(--akcent-stin);
-}
-.prepinac-rezimu .volba.aktivni .ikona,
-.prepinac-rezimu .volba[aria-current="page"] .ikona { background: rgba(255, 255, 255, .2); }
-.prepinac-rezimu .volba.aktivni .popis,
-.prepinac-rezimu .volba[aria-current="page"] .popis { color: rgba(255, 255, 255, .86); }
-.prepinac-rezimu .volba:focus-visible { outline: 3px solid var(--oranzova); outline-offset: 2px; }
-
-/* panel vybraného režimu pod přepínačem (úvodní stránka) */
+/* panely režimů na úvodní stránce (pod sebou; /#objevitel) */
 .panel-rezimu {
   --akcent: var(--cest); --akcent-jemna: var(--cest-jemna);
   display: grid;
@@ -459,6 +446,7 @@ a.karta.rezim .dal {
   align-items: center;
   margin: 26px auto 0;
   max-width: 940px;
+  scroll-margin-top: 110px;
   padding: clamp(22px, 4vw, 40px);
   border-radius: var(--radius);
   background: var(--papir);
@@ -466,7 +454,7 @@ a.karta.rezim .dal {
   border-top: 6px solid var(--akcent);
   box-shadow: var(--stin);
 }
-.panel-rezimu[hidden] { display: none; }
+.panel-rezimu.obracene figure { order: -1; }
 .panel-rezimu.cest { --akcent: var(--cest); --akcent-jemna: var(--cest-jemna); }
 .panel-rezimu.obj  { --akcent: var(--obj);  --akcent-jemna: var(--obj-jemna); }
 .panel-rezimu.dob  { --akcent: var(--dob);  --akcent-jemna: var(--dob-jemna); }
@@ -488,19 +476,9 @@ a.karta.rezim .dal {
   .panel-rezimu figure { order: -1; }
 }
 @media (max-width: 640px) {
-  .prepinac-rezimu { gap: 5px; padding: 6px; border-radius: 20px; }
-  .prepinac-rezimu .volba { grid-template-columns: 1fr; grid-template-rows: auto auto; justify-items: center; text-align: center; padding: 10px 6px 9px; border-radius: 15px; }
-  .prepinac-rezimu .volba .ikona { grid-row: auto; width: 42px; height: 42px; font-size: 1.35rem; border-radius: 13px; margin-bottom: 5px; }
-  .prepinac-rezimu .volba .jmeno { font-size: .92rem; }
-  .prepinac-rezimu .volba .popis { display: none; }
   .panel-rezimu { padding: 20px 16px; }
   .panel-rezimu h3 { font-size: 1.3rem; }
 }
-.prepinac-dob { margin: 4px 0 14px; }
-.prepinac-dob .prepinac-rezimu { margin: 0; box-shadow: var(--stin); }
-/* přepínač v pruhu stránky režimu – přes celou šířku, nad ikonou a názvem */
-.pruh-rezimu .prepinac-rezimu { grid-column: 1 / -1; width: 100%; margin-bottom: 10px; }
-
 /* ── SNÍMKY APLIKACE ────────────────────────────────────────────── */
 .snimky {
   display: flex;
@@ -642,6 +620,15 @@ a.karta.rezim .dal {
 .pruh-rezimu + .uzky { margin-top: -30px; position: relative; }
 
 /* ── MOBIL ──────────────────────────────────────────────────────── */
+/* 16. 9.: pod 1150 px se lišta s Pro firmy/Soukromí do řádku nevejde –
+   ty jsou i v patičce, tak z lišty zmizí dřív než na mobilu */
+@media (max-width: 1150px) { .menu a.mimo-mobil { display: none; } }
+@media (max-width: 960px) {
+  /* lišta: logo + režimy v prvním řádku, zbytek nabídky pod nimi */
+  .hlava .obal { gap: 8px 12px; }
+  .rezimy-menu { margin-left: auto; }
+  .menu { margin-left: 0; width: 100%; justify-content: center; flex-wrap: wrap; }
+}
 @media (max-width: 900px) {
   .hero .obal { grid-template-columns: 1fr; text-align: center; }
   .hero p.lead, .hero .akce, .cisla-pruh { margin-left: auto; margin-right: auto; justify-content: center; }
@@ -664,6 +651,11 @@ a.karta.rezim .dal {
     flex-wrap: wrap;
     justify-content: center;
   }
+  /* 16. 9.: režimy vedle emblému (bez nápisu), tři stejné díly */
+  .znacka img.napis { display: none; }
+  .rezimy-menu { flex: 1 1 auto; margin-left: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px; border-radius: 14px; }
+  .rezimy-menu .volba { justify-content: center; gap: 5px; padding: 7px 4px; border-radius: 11px; font-size: .84rem; }
+  .rezimy-menu .volba .ikona { width: 20px; height: 20px; font-size: .8rem; border-radius: 6px; }
   .menu a { padding: 6px 9px; font-size: .82rem; }
   /* ⭐ 2. 9. 2026: s Cestovatelem a Objevitelem má lišta 9 položek a na
      mobilu se lámala do TŘÍ řádků (159 px). Pro firmy a Soukromí jsou

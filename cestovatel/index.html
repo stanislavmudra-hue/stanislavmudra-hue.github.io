@@ -9,7 +9,7 @@
 <meta name="color-scheme" content="light">
 <link rel="icon" href="/img/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/img/favicon.png">
-<link rel="stylesheet" href="/styl.css?v=3">
+<link rel="stylesheet" href="/styl.css?v=4">
 <link rel="stylesheet" href="/rezimy/rezim.css?v=4">
 </head>
 <body data-rezim="cestovatel">
@@ -19,11 +19,14 @@
       <img class="emblem" src="/img/emblem-96.webp" alt="" width="38" height="38">
       <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="120" height="30">
     </a>
+    <!-- 16. 9. 2026: režimy jako v aplikaci – hlavní přepínač v liště -->
+    <nav class="rezimy-menu" aria-label="Režimy">
+      <a class="volba cest" href="/cestovatel/" aria-current="page"><span class="ikona" aria-hidden="true">🧭</span><span class="jmeno">Cestovatel</span></a>
+      <a class="volba obj" href="/objevitel/"><span class="ikona" aria-hidden="true">🌫️</span><span class="jmeno">Objevitel</span></a>
+      <a class="volba dob" href="/dobyvatel/"><span class="ikona" aria-hidden="true">🚩</span><span class="jmeno">Dobyvatel</span></a>
+    </nav>
     <nav class="menu" aria-label="Hlavní nabídka">
       <a href="/">Domů</a>
-      <a href="/cestovatel/" aria-current="page">Cestovatel</a>
-      <a href="/objevitel/">Objevitel</a>
-      <a href="/dobyvatel/">Dobyvatel</a>
       <a href="/zebricek/">Žebříček</a>
       <a href="/ucet/">Můj Okolník</a>
       <a href="/kontakt/">Kontakt</a>
@@ -35,23 +38,6 @@
 <main>
   <section class="pruh-rezimu cest">
     <div class="obal">
-    <nav class="prepinac-rezimu" aria-label="Režimy">
-      <a class="volba cest" href="/cestovatel/" aria-current="page">
-        <span class="ikona" aria-hidden="true">🧭</span>
-        <span class="jmeno">Cestovatel</span>
-        <span class="popis">Obyčejná mapa bez hry.</span>
-      </a>
-      <a class="volba obj" href="/objevitel/">
-        <span class="ikona" aria-hidden="true">🌫️</span>
-        <span class="jmeno">Objevitel</span>
-        <span class="popis">Odkrývej mlhu, sbírej místa a obce.</span>
-      </a>
-      <a class="volba dob" href="/dobyvatel/">
-        <span class="ikona" aria-hidden="true">🚩</span>
-        <span class="jmeno">Dobyvatel</span>
-        <span class="popis">Týmy dobývají vlajky – zabírej území pro svůj kraj.</span>
-      </a>
-    </nav>
       <span class="velka-ikona" aria-hidden="true">🧭</span>
       <div>
         <p class="nadtitul">Režim Cestovatel</p>
@@ -185,6 +171,6 @@
 </footer>
 
 <script src="/rezimy/rezim.js?v=6"></script>
-<script src="/web.js?v=3"></script>
+<script src="/web.js?v=4"></script>
 </body>
 </html>

@@ -9,7 +9,7 @@
 <meta name="color-scheme" content="light">
 <link rel="icon" href="/img/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/img/favicon.png">
-<link rel="stylesheet" href="/styl.css?v=3">
+<link rel="stylesheet" href="/styl.css?v=4">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Okolník – objevuj Česko kousek po kousku">
 <meta property="og:description" content="Turistický průvodce po Česku, který z výletu udělá objevování.">
@@ -25,11 +25,14 @@
       <img class="emblem" src="/img/emblem-96.webp" alt="" width="38" height="38">
       <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="120" height="30">
     </a>
+    <!-- 16. 9. 2026: režimy jako v aplikaci – hlavní přepínač v liště -->
+    <nav class="rezimy-menu" aria-label="Režimy">
+      <a class="volba cest" href="/cestovatel/"><span class="ikona" aria-hidden="true">🧭</span><span class="jmeno">Cestovatel</span></a>
+      <a class="volba obj" href="/objevitel/"><span class="ikona" aria-hidden="true">🌫️</span><span class="jmeno">Objevitel</span></a>
+      <a class="volba dob" href="/dobyvatel/"><span class="ikona" aria-hidden="true">🚩</span><span class="jmeno">Dobyvatel</span></a>
+    </nav>
     <nav class="menu" aria-label="Hlavní nabídka">
       <a href="/" aria-current="page">Domů</a>
-      <a href="/cestovatel/">Cestovatel</a>
-      <a href="/objevitel/">Objevitel</a>
-      <a href="/dobyvatel/">Dobyvatel</a>
       <a href="/zebricek/">Žebříček</a>
       <a href="/ucet/">Můj Okolník</a>
       <a href="/kontakt/">Kontakt</a>
@@ -72,31 +75,11 @@
   <section class="sekce" id="rezimy">
     <p class="nadtitul">Režimy</p>
     <h2>Tři režimy, jedna mapa</h2>
-    <p class="podtitul">Vyberte si, jak chcete Česko procházet – stejně jako
-    v&nbsp;aplikaci. Přepnout jde kdykoli, postup se neztrácí.</p>
+    <p class="podtitul">Vyberte si, jak chcete Česko procházet – přepínač je
+    nahoře v&nbsp;liště, stejně jako v&nbsp;aplikaci. Přepnout jde kdykoli, postup
+    se neztrácí.</p>
 
-    <!-- 16. 9. 2026: přepínač jako v aplikaci (Cestovatel · Objevitel ·
-         Dobyvatel, podtituly z appky). S JavaScriptem přepíná panel
-         níž (/web.js), bez něj vedou volby rovnou na stránky režimů. -->
-    <nav class="prepinac-rezimu" id="prepinacRezimu" aria-label="Výběr režimu">
-      <a class="volba cest aktivni" href="/cestovatel/" data-rezim="cestovatel">
-        <span class="ikona" aria-hidden="true">🧭</span>
-        <span class="jmeno">Cestovatel</span>
-        <span class="popis">Obyčejná mapa bez hry.</span>
-      </a>
-      <a class="volba obj" href="/objevitel/" data-rezim="objevitel">
-        <span class="ikona" aria-hidden="true">🌫️</span>
-        <span class="jmeno">Objevitel</span>
-        <span class="popis">Odkrývej mlhu, sbírej místa a obce.</span>
-      </a>
-      <a class="volba dob" href="/dobyvatel/" data-rezim="dobyvatel">
-        <span class="ikona" aria-hidden="true">🚩</span>
-        <span class="jmeno">Dobyvatel</span>
-        <span class="popis">Týmy dobývají vlajky – zabírej území pro svůj kraj.</span>
-      </a>
-    </nav>
-
-    <div class="panel-rezimu cest" data-rezim="cestovatel">
+    <div class="panel-rezimu cest" id="cestovatel">
       <div>
         <p class="nadtitul">Cestovatel · obyčejná mapa bez hry</p>
         <h3>Co je kolem – hned a&nbsp;přehledně</h3>
@@ -119,7 +102,7 @@
       </figure>
     </div>
 
-    <div class="panel-rezimu obj" data-rezim="objevitel" hidden>
+    <div class="panel-rezimu obj obracene" id="objevitel">
       <div>
         <p class="nadtitul">Objevitel · odkrývej mlhu, sbírej místa a obce</p>
         <h3>Krásně vybarvovaná mapa s&nbsp;obrázky míst</h3>
@@ -144,7 +127,7 @@
       </figure>
     </div>
 
-    <div class="panel-rezimu dob" data-rezim="dobyvatel" hidden>
+    <div class="panel-rezimu dob" id="dobyvatel">
       <div>
         <p class="nadtitul">Dobyvatel · týmy dobývají vlajky</p>
         <h3>Soupeří se o&nbsp;vlajky a&nbsp;o&nbsp;místa</h3>
@@ -299,6 +282,6 @@
   </div>
 </footer>
 
-<script src="/web.js?v=3"></script>
+<script src="/web.js?v=4"></script>
 </body>
 </html>
