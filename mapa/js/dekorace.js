@@ -319,9 +319,14 @@ const Dekorace = (() => {
   const SIRKA_NASTUPU = 0.35;
 
   /// Předpočítané opacity pro `RAMPA` podle prahu druhu.
+  // ⛔ 16. 9. 2026 (kontrola B3): hodnoty o1…o8 se MUSÍ počítat ze
+  // ZÁKLADNÍ rampy – zarážky interpolace jsou posunuté o DZ, takže se
+  // celá křivka posune o dohled pro staré i nové prvky. Z posunuté
+  // rampy se posun vyrušil a u Dalekého končila rampa na z14,85: kytky,
+  // byliny, balvany a plodiny (z0 ≥ 15) měly všech osm hodnot 0.
   function nastup(z0) {
     const o = {};
-    RAMPA.forEach((z, i) => {
+    RAMPA_ZAKLAD.forEach((z, i) => {
       o['o' + (i + 1)] = Math.max(0, Math.min(1, (z - z0) / SIRKA_NASTUPU));
     });
     return o;
