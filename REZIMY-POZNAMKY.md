@@ -82,3 +82,12 @@ pravidlo bez externích písem a bez knihoven.
   (IntersectionObserver; prvky ve výřezu při načtení se neschovávají;
   ctí „omezit pohyb"), kopírování e-mailu. Bez JS je vše vidět.
 * CSS má v odkazech `?v=2` – prohlížeče držely starou kopii.
+
+## 16. 9. 2026 – zadání textů režimů (uživatel)
+Cestovatel: zdůraznit jednoduchý přehled míst po okolí (krámky, fastfood po cestě, obchody, parkoviště –
+ihned přehledně). Objevitel: krásně vybarvovaná mapa s obrázky míst, záznam výletů, fotorežim (jednoduchý
+záznam cesty), záznam s přáteli, poznámky, vzpomínky, sbírání erbů, XP, levely. Dobyvatel: soupeření
+o zabrání vlajek a různých míst, vlastní soutěže s vlastní mapou. Vše propojené kalendářem, deníkem,
+přehledy, soutěžemi, žebříčky, vlastními místy na mapě. (Trofeje jsou plán, na web nepatří.)
+Nepsat na web: roční ohlédnutí a Kronika (v appce skryté).
+
