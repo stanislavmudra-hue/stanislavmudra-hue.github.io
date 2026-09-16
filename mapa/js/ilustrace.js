@@ -413,9 +413,14 @@ const Ilustrace = (() => {
     return 0;
   }
 
+  // engine 321: DOHLED – kresby se pro rozhodnutí „už je vidět?“ tváří, jako by
+  // byl zoom o DZ větší (daleký dohled = kresby dřív); prolínání u stropu zůstává
+  let DZ = (typeof window.dohledDz === 'function') ? window.dohledDz() : 0;
+  function nastavDohled(dz) { DZ = Number(dz) || 0; try { naplanuj(); } catch (e) { /* nic */ } }
   function viditelnost(p, z, sw) {
-    if (p.imp < prahImp(z)) return null;
-    if (z <= p.zInEff) return null;
+    const ze = z + DZ;
+    if (p.imp < prahImp(ze)) return null;
+    if (ze <= p.zInEff) return null;
     const start = fadeStart(p, sw);
     let op = z <= start ? 1.0 : 1.0 - (z - start) / FADE_SPAN;
     // 5. 9. večer: kresba širší než obrazovka by překryla vše → rozplyne se
@@ -2041,5 +2046,5 @@ const Ilustrace = (() => {
 
   return { pripoj, filtruj, zavri: schovejDetail,
            navstivene: nastavNavstivene, svetlo, stin: stinData,
-           detail: ukazDetail };
+           detail: ukazDetail, nastavDohled };
 })();

@@ -308,7 +308,12 @@ const Dekorace = (() => {
   // vrátit. Jitter i výběr ikony visí na (ix, iy) JEMNÉ mřížky, takže
   // sudé buňky vypadají v obou režimech stejně.
   const Z_JEMNE = 15.2;
-  const RAMPA = [13.2, 13.55, 13.9, 14.25, 14.6, 14.95, 15.3, 15.65];
+  const RAMPA_ZAKLAD = [13.2, 13.55, 13.9, 14.25, 14.6, 14.95, 15.3, 15.65];
+  // engine 321: DOHLED – posun všech prahů dekorací o `DZ` (main.js dohledDz()):
+  // rampa nástupu, minzoom vrstvy i brány generování. Rampa je pole, které se
+  // přepočítá v `nastavDohled`, aby výrazy níž nemusely znát nic dalšího.
+  let DZ = (typeof window.dohledDz === 'function') ? window.dohledDz() : 0;
+  let RAMPA = RAMPA_ZAKLAD.map((z) => z - DZ);
   // Jak široký (v zoomu) je náběh z nuly do plné viditelnosti. 0,35 je
   // zhruba půl štípnutí — „rychleji", jak si uživatel přál.
   const SIRKA_NASTUPU = 0.35;
@@ -454,7 +459,7 @@ const Dekorace = (() => {
     mapa.addLayer({
       id: 'akvarel-dekorace', type: 'symbol', source: 'dekorace',
       // stromy nastupují od z13,25 (54 % ukazatele), vrstva musí být dřív
-      minzoom: 13.2,
+      minzoom: 13.2 - DZ,
       // světla sídel (sv) kreslí vlastní vrstva `dekorace-svetla` níž
       filter: ['!', ['has', 'sv']],
       layout: {
@@ -2201,7 +2206,7 @@ const Dekorace = (() => {
     // ukazatele) A S `minzoom` VRSTVY. Když tu zůstane vyšší číslo, jsou
     // prahy druhů mrtvé písmeno a stromy prostě nikdy nenastoupí —
     // přesně tak tu 8. 8. přežilo 14,0 proti stromům od 13,25.
-    if (z < 13.2) return;            // objekty ještě nejsou na scéně
+    if (z < 13.2 - DZ) return;       // objekty ještě nejsou na scéně (engine 321: dohled)
     const hranice = mapa.getBounds();
     const zapad = hranice.getWest();
     const vychod = hranice.getEast();
@@ -2217,7 +2222,7 @@ const Dekorace = (() => {
     // dosypy po každém zastavení) tak nestojí vůbec nic.
     passId++;
     for (const [druh, cfg] of Object.entries(DRUHY)) {
-      if (z < cfg.z0 - 0.4) continue;
+      if (z < cfg.z0 - 0.4 - DZ) continue;
       // v1.592 rostla v Dobyvateli světla sídel a kotvy roje —
       // v1.599 (přání 2. 9. večer) v Dobyvateli NIC: bojiště je bez
       // dekorací, v noci místo světel oken září vlajky (dobyvatel.js)
@@ -2575,7 +2580,20 @@ const Dekorace = (() => {
   // 2567 bodů, shoda 99,03 %; VŠECH 25 rozdílů leželo do 1,31 m od hrany
   // polygonu — tam se starý dotaz mýlí sám (zpětný průmět přes terén bod
   // posouvá; u jednoho stromu v dálce dokonce o 41 m).
-  return { pripoj, nastavStin, _ladeni: { postavIndex, plochyPodBodem, dopln, casy: () => casy,
+  /// engine 321: změna dohledu – posunout rampu, rozsah vrstvy a dosypat.
+  function nastavDohled(dz) {
+    DZ = Number(dz) || 0;
+    RAMPA = RAMPA_ZAKLAD.map((z) => z - DZ);
+    try {
+      if (mapa && mapa.getLayer('akvarel-dekorace')) {
+        mapa.setLayerZoomRange('akvarel-dekorace', 13.2 - DZ, 24);
+        const f = (typeof window.__nocniFaktorDekorace === 'number') ? window.__nocniFaktorDekorace : 1;
+        if (window.__ztlumDekorace) window.__ztlumDekorace(f);
+      }
+      dopln();
+    } catch (e) { /* styl se zrovna mění */ }
+  }
+  return { pripoj, nastavStin, nastavDohled, _ladeni: { postavIndex, plochyPodBodem, dopln, casy: () => casy,
     stav: () => ({ kes: kesDlazdic.size, mrizka: idxMrizka && idxMrizka.size,
                    velke: idxVelke.length, zoomy: idxZoomy, zCil: idxZCil,
                    dlazdic: idxDlazdice && idxDlazdice.size }) } };

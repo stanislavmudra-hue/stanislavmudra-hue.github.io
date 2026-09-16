@@ -326,7 +326,18 @@ function pridejMaskuZahranici() {
 //   podpisy:    engine 303 – názvy míst jako podpis pod kresbou (Kalam Bold, papírová
 //               záře, barva podle objevování); vypnuto = stužky jako dřív.
 const NASTAVENI_MAPY = { vrstevnice: null, objekty3d: true, ilustrace: true, stiny: true, podpisy: true,
-                         tempo30: false };
+                         tempo30: false, dohled: 2 };
+
+/// ⭐ engine 321: DOHLED (přání 16. 9. 2026: „přidej do nastavení mapy dohled a
+/// třeba 3 stupně"). Posun prahů zoomu, od kterých se ukazují 3D domy, stíny,
+/// stromy a kresby míst: 1 = krátký (−0,5 – slabé telefony, baterie),
+/// 2 = střední (dnešní chování), 3 = daleký (+0,8 – silné telefony). Každý
+/// půlstupeň zoomu = ~2× víc prvků v záběru, proto výchozí zůstává střední.
+function dohledDz() {
+  const d = Number(NASTAVENI_MAPY.dohled) || 2;
+  return d <= 1 ? -0.5 : (d >= 3 ? 0.8 : 0);
+}
+window.dohledDz = dohledDz;
 
 // ⭐ engine 306: STÁLÉ TEMPO PŘI GESTU (experiment 12. 9. 2026, „dost se to
 // posekává dál"). Snímek při tahu na z16,5 trvá průměrně 20–27 ms, takže se
@@ -394,6 +405,29 @@ function nastaveniMapyNeniVychozi() {
   const n = NASTAVENI_MAPY;
   return n.vrstevnice !== null || !n.objekty3d || !n.ilustrace || !n.stiny;
 }
+/// engine 321: po změně dohledu přestavět vrstvy domů (prahy jsou v addLayer),
+/// posunout rozsah stínů, stromů a přepočítat kresby míst.
+function aplikujDohled() {
+  if (!mapa) return;
+  const dz = dohledDz();
+  try {
+    for (const id of ['okolnik-budovy-herni-zdi', 'okolnik-budovy-herni-strecha', 'okolnik-stavby-3d',
+                      'okolnik-vertikaly-3d', 'okolnik-budovy-ploche']) {
+      if (mapa.getLayer(id)) mapa.removeLayer(id);
+    }
+    nasadBudovyHerni();
+  } catch (e) { console.warn('[dohled] domy', e); }
+  try {
+    if (mapa.getLayer('stin-domu')) mapa.setLayerZoomRange('stin-domu', 15 - dz, 24);
+    stinyPodpis = ''; naplanujStinyDomu(50);
+  } catch (e) { console.warn('[dohled] stíny', e); }
+  try { if (typeof Dekorace !== 'undefined' && Dekorace.nastavDohled) Dekorace.nastavDohled(dz); }
+  catch (e) { console.warn('[dohled] dekorace', e); }
+  try { if (typeof Ilustrace !== 'undefined' && Ilustrace.nastavDohled) Ilustrace.nastavDohled(dz); }
+  catch (e) { console.warn('[dohled] kresby', e); }
+  try { pohledPodpisBudovy = ''; naplanujBudovyHerni(); } catch (e) { /* nic */ }
+}
+
 function aplikujNastaveniMapy(jenSkryt) {
   if (!mapa) return;
   let styl = null;
@@ -445,11 +479,12 @@ function aplikujNastaveniMapy(jenSkryt) {
     try {
       const H = ['coalesce', ['get', 'render_height'], 6];
       const ODK = ['boolean', ['feature-state', 'o'], false];
-      mapa.addLayer({ id: 'okolnik-budovy-ploche', type: 'fill', source: 'omt', 'source-layer': 'building', minzoom: 14.5,
+      const dzP = dohledDz();
+      mapa.addLayer({ id: 'okolnik-budovy-ploche', type: 'fill', source: 'omt', 'source-layer': 'building', minzoom: 14.5 - dzP,
         paint: { 'fill-color': ['case', ODK, ['case', ['<=', H, 9.5],
                    ['match', ['%', ['id'], 3], 0, '#B9684A', 1, '#AE6045', '#C0745A'], '#8E8478'], 'rgba(0,0,0,0)'],
                  'fill-outline-color': ['case', ODK, '#5A4632', 'rgba(0,0,0,0)'],
-                 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, 0.9] } }, 'okolnik-budovy-herni-zdi');
+                 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 14.5 - dzP, 0, 15.2 - dzP, 0.9] } }, 'okolnik-budovy-herni-zdi');
     } catch (e) { console.warn('[nastaveni] ploché domy', e); }
   }
   vid('okolnik-budovy-ploche', !n.objekty3d);
@@ -2386,13 +2421,14 @@ function nasadBudovyHerni() {
   // zmizely). Skrývá se proto GEOMETRIÍ: základna i výška 1 000 km – kvádr
   // je nad kamerou a ořízne ho blízká rovina (ověřeno s terénem i bez něj).
   const SKRYTO = 1000000;
-  const nastup = ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.2, 1];
+  const dz = dohledDz();   // engine 321: dohled posouvá práh domů
+  const nastup = ['interpolate', ['linear'], ['zoom'], 14.5 - dz, 0, 15.2 - dz, 1];
   const pred = prvniSymbolovaVrstva();
   budovyFiltrKlic = ''; zabagedFiltrKlice.clear(); pohledPodpisBudovy = ''; pohledPodpisOkna = '';   // nový styl → filtry znovu
   oznacenoOdkryte.clear(); oznacenoZabaged.clear();   // engine 234: feature-state nový styl neznají
   try {
     mapa.addLayer({ id: 'okolnik-budovy-herni-zdi', type: 'fill-extrusion',
-      source: 'omt', 'source-layer': 'building', minzoom: 14.5,
+      source: 'omt', 'source-layer': 'building', minzoom: 14.5 - dz,
       // ⛔⛔ engine 248: STŘECHA ZAČÍNÁ O 15 cm NÍŽ NEŽ KONČÍ ZEĎ. Když obě
       // plochy ležely přesně na sobě (obojí `H − 0,6`), grafická karta na
       // šikmém pohledu nevěděla, která je blíž, a kreslila je po proužcích –
@@ -2402,7 +2438,7 @@ function nasadBudovyHerni() {
                'fill-extrusion-base': ['case', ODK, B, SKRYTO],
                'fill-extrusion-opacity': nastup } }, pred);
     mapa.addLayer({ id: 'okolnik-budovy-herni-strecha', type: 'fill-extrusion',
-      source: 'omt', 'source-layer': 'building', minzoom: 14.5,
+      source: 'omt', 'source-layer': 'building', minzoom: 14.5 - dz,
       paint: { 'fill-extrusion-color': ['case', ODK, ['case', NIZKY,
                  ['match', ['%', ['id'], 3], 0, '#B9684A', 1, '#AE6045', '#C0745A'],
                  '#8E8478'], PRUHLEDNA],
@@ -2417,7 +2453,7 @@ function nasadBudovyHerni() {
     // druhu). Filtr podle `fid` odkrytých (viz prepoctiBudovyHerni), stejně
     // jako domy jen v odkryté mapě – extruze se mlhou nezakryje.
     mapa.addLayer({ id: 'okolnik-stavby-3d', type: 'fill-extrusion',
-      source: 'krajina', 'source-layer': 'stavby', minzoom: 14.5,
+      source: 'krajina', 'source-layer': 'stavby', minzoom: 14.5 - dz,
       filter: ['!=', ['get', 't'], 'most'],          // mosty kreslí okolnik-mosty-3d
       paint: { 'fill-extrusion-color': ['case', ODK, ['match', ['get', 't'],
                  'kulna', '#A78F6B', 'sklenik', '#D6E8EC', 'vezstavba', '#A89C8C',
@@ -2729,7 +2765,7 @@ function zajistiVrstvuStinu() {
     if (!mapa.getLayer('stin-domu')) {
       const ls = mapa.getStyle().layers.map((l) => l.id);
       const za = ls[ls.indexOf('budovy-vypln') + 1];
-      mapa.addLayer({ id: 'stin-domu', type: 'raster', source: 'stiny-domu', minzoom: 15,
+      mapa.addLayer({ id: 'stin-domu', type: 'raster', source: 'stiny-domu', minzoom: 15 - dohledDz(),
                       paint: { 'raster-fade-duration': 0, 'raster-opacity': 1 } }, za);
     }
   } catch (e) { console.warn('[stíny domů] vrstva', e); return false; }
@@ -3014,7 +3050,7 @@ function prepoctiStinyDomu() {
   // během gesta nepřepočítávat (50 ms v hustém městě = trhnutí) – až po něm
   if (mapa.isMoving && mapa.isMoving()) { naplanujStinyDomu(400); return; }
   const z = mapa.getZoom();
-  if (z < 14.9 || stinSvetlo.sila <= 0) { stinyPodpis = ''; return; }
+  if (z < 14.9 - dohledDz() || stinSvetlo.sila <= 0) { stinyPodpis = ''; return; }
   const t0 = performance.now();
   // --- rozsah plátna: pohled v Mercatoru, strop 3× rozměr pohledu, okraj 30 %
   const stred = mapa.getCenter();
@@ -4585,7 +4621,7 @@ function prepoctiBudovyHerni() {
       }
     }
   } catch (e) { /* styl se zrovna mění */ }
-  if (mapa.getZoom() < 14) return;
+  if (mapa.getZoom() < 14 - dohledDz()) return;
   const prvky = budovyVPohledu();
   const pp = podpisPohledu() + '|' + prvky.length;
   if (pp === pohledPodpisBudovy) return;          // engine 232: v klidu nic
@@ -7910,6 +7946,10 @@ window.OkolnikMost = {
             ? null : Math.max(0, Math.min(1000, Number(v) || 0));
       }
       for (const k of ['objekty3d', 'ilustrace', 'stiny', 'podpisy', 'tempo30']) if (k in c) NASTAVENI_MAPY[k] = !!c[k];
+      if ('dohled' in c) {
+        const d = Math.max(1, Math.min(3, Math.round(Number(c.dohled) || 2)));
+        if (d !== NASTAVENI_MAPY.dohled) { NASTAVENI_MAPY.dohled = d; aplikujDohled(); }
+      }
       aplikujNastaveniMapy(false);
       if (NASTAVENI_MAPY.tempo30) TempoGesta.nasad();
       if (NASTAVENI_MAPY.stiny) { stinyPodpis = ''; naplanujStinyDomu(50); }
