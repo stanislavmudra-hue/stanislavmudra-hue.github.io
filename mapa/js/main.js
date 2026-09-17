@@ -2150,6 +2150,8 @@ let posledniVypravy = [];   // [[[lng,lat], …], …]
 
 /// Poslední poloha uživatele z mostu ({lng, lat}) – pro hlášení kamery.
 let poslednPolohaUziv = null;
+// engine 324: přesnost posledního fixu (m) – kruh kolem postavičky
+let presnostUziv = 0;
 
 /// Poslední turistické značky z aplikace ([{b, body:[[lng,lat]…]}]).
 /// ⚠️ MUSÍ SE PAMATOVAT: `setStyle` zdroj zahodí a appka je posílá jen při
@@ -3543,12 +3545,39 @@ const POD_ZARI_OKEN = ['ink-ilustrace-stuhy', 'ink-ilustrace-pata', 'ink-ilustra
                        'ink-ilustrace', 'ink-ilustrace-odznaky', 'okolnik-mista-shluk-ikona',
                        'okolnik-mista-pata', 'okolnik-mista-ikona', 'okolnik-moje-ikona'];
 function predZariOken() {
-  return POD_ZARI_OKEN.find((id) => mapa.getLayer(id));
+  // engine 325: NEJNIŽŠÍ z existujících vrstev (ne první v seznamu) –
+  // stuhy kreseb bývají až ZA obrázky míst, takže záře „před stuhami"
+  // pořád ležela nad obrázky a podpisy míst
+  let poradi = null;
+  try { poradi = mapa.style._order; } catch (e) { /* nic */ }
+  let nej = null, iNej = Infinity;
+  for (const id of POD_ZARI_OKEN) {
+    if (!mapa.getLayer(id)) continue;
+    const i = poradi ? poradi.indexOf(id) : POD_ZARI_OKEN.indexOf(id);
+    if (i >= 0 && i < iNej) { iNej = i; nej = id; }
+  }
+  return nej;
 }
 function srovnejZariOken() {
-  if (!mapa || !mapa.getLayer('okolnik-okna-zare')) return;
+  if (!mapa) return;
   try {
-    const poradi = mapa.style._order || mapa.getStyle().layers.map((l) => l.id);
+    let poradi = mapa.style._order || mapa.getStyle().layers.map((l) => l.id);
+    // engine 325 („názvy míst jsou překrývané okny budov"): kvádry oken
+    // vznikají v `nasadOkna3d` PŘED `akvarel-dekorace` – jenže když stromy
+    // ještě nejsou (dekorace čekají na sprite), přidají se NA KONEC stylu,
+    // tedy až ZA obrázky a podpisy míst. Fill-extrusion za symbolem ho
+    // přemaluje (symbol hloubku nezapisuje), a protože podpis stojí u paty
+    // obrázku, právě on mizel pod okny přízemí. Kvádry patří před stromy,
+    // a když stromy nejsou, aspoň před první z vrstev míst/kreseb.
+    if (mapa.getLayer('okolnik-okna-3d')) {
+      const iOkna = poradi.indexOf('okolnik-okna-3d');
+      const pred = mapa.getLayer('akvarel-dekorace') ? 'akvarel-dekorace' : predZariOken();
+      if (pred && poradi.indexOf(pred) < iOkna) {
+        mapa.moveLayer('okolnik-okna-3d', pred);
+        poradi = mapa.style._order || poradi;
+      }
+    }
+    if (!mapa.getLayer('okolnik-okna-zare')) return;
     const iZare = poradi.indexOf('okolnik-okna-zare');
     const pred = predZariOken();
     if (pred && poradi.indexOf(pred) < iZare) mapa.moveLayer('okolnik-okna-zare', pred);
@@ -3562,7 +3591,8 @@ function nasadOkna3d() {
       mapa.addSource('okna-3d', { type: 'geojson', data: OKNA_PRAZDNE, generateId: true });
     }
     if (!mapa.getLayer('okolnik-okna-3d')) {
-      const pred = mapa.getLayer('akvarel-dekorace') ? 'akvarel-dekorace' : undefined;
+      // engine 325: bez stromů aspoň před vrstvy míst/kreseb (viz srovnejZariOken)
+      const pred = mapa.getLayer('akvarel-dekorace') ? 'akvarel-dekorace' : (predZariOken() || undefined);
       mapa.addLayer({ id: 'okolnik-okna-3d', type: 'fill-extrusion', source: 'okna-3d', minzoom: OKNA_OD_Z,
         filter: ['!', ['has', 'z']],                     // engine 264: aury mají z: 1
         paint: { 'fill-extrusion-color': vyrazBarvyOken(typeof krokNoci === 'number' && krokNoci >= 2),
@@ -4616,7 +4646,7 @@ function prepoctiBudovyHerni() {
     if (iS >= 0 && iD > iS) {
       mapa.moveLayer('okolnik-budovy-herni-zdi', 'akvarel-dekorace');
       mapa.moveLayer('okolnik-budovy-herni-strecha', 'akvarel-dekorace');
-      for (const id of ['okolnik-stavby-3d', 'okolnik-vertikaly-3d']) {
+      for (const id of ['okolnik-stavby-3d', 'okolnik-vertikaly-3d', 'okolnik-okna-3d']) {
         if (mapa.getLayer(id)) mapa.moveLayer(id, 'akvarel-dekorace');
       }
     }
@@ -6097,6 +6127,49 @@ function obnovHracSvetlo(lng, lat) {
   } catch (e) { /* styl se zrovna mění — příští poloha */ }
 }
 
+/// ⭐ engine 324 (GPS doporučení 2, 17. 9. 2026): KRUH PŘESNOSTI kolem
+/// postavičky – jako Komoot/Mapy.cz/Strava (halo). Kreslí se jako polygon
+/// v zeměpisných souřadnicích (roste a klesá se zoomem sám), jen když je
+/// přesnost > 15 m (dobrý fix ruší); nad 300 m se strop drží, ať kruh
+/// nezalije celou mapu. Zdroj se po výměně stylu založí znovu (guard).
+function obnovKruhPresnosti(lng, lat) {
+  try {
+    if (!mapa || !mapa.getStyle || !mapa.getStyle()) return;
+    if (!mapa.getSource('presnost-kruh')) {
+      mapa.addSource('presnost-kruh', { type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] } });
+      const pred = (typeof prvniSymbolovaVrstva === 'function')
+          ? prvniSymbolovaVrstva() : undefined;
+      mapa.addLayer({
+        id: 'presnost-kruh-plocha', type: 'fill', source: 'presnost-kruh',
+        paint: { 'fill-color': '#1E88E5', 'fill-opacity': 0.10 },
+      }, pred);
+      mapa.addLayer({
+        id: 'presnost-kruh-obrys', type: 'line', source: 'presnost-kruh',
+        paint: { 'line-color': '#1E88E5', 'line-opacity': 0.45, 'line-width': 1.2 },
+      }, pred);
+    }
+    const zdroj = mapa.getSource('presnost-kruh');
+    if (!zdroj) return;
+    const r = Math.min(300, presnostUziv || 0);
+    if (r <= 15) {
+      zdroj.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+    const kroky = 48;
+    const dLat = r / 111320;
+    const dLng = r / (111320 * Math.cos(lat * Math.PI / 180));
+    const ring = [];
+    for (let i = 0; i <= kroky; i++) {
+      const a = (i / kroky) * 2 * Math.PI;
+      ring.push([lng + dLng * Math.cos(a), lat + dLat * Math.sin(a)]);
+    }
+    zdroj.setData({ type: 'FeatureCollection', features: [{
+      type: 'Feature', properties: { m: Math.round(r) },
+      geometry: { type: 'Polygon', coordinates: [ring] } }] });
+  } catch (e) { /* styl se zrovna mění — příští poloha */ }
+}
+
 /// ⭐ v1.392: ZAPEČENÝ LOVEC SKOKŮ. Injektovaný záznamník umíral s každým
 /// restartem stránky — přesně tam, kde se skáče nejvíc (start, návrat
 /// z pozadí). Teď běží vždy: prstenec kamery per frame + detekce skoku
@@ -7483,6 +7556,7 @@ function vykresliPolohu(lng, lat, smer, rychlost, lehce) {
     obnovSipkuCile();          // v1.602: oranžová šipka k zastávce plánu
     posliVyskuHrace(lng, lat); // v1.602: převýšení k zastávce
     obnovHracSvetlo(lng, lat); // engine 319: lucerna na KRESLENÉ poloze
+    obnovKruhPresnosti(lng, lat); // engine 324: kruh přesnosti polohy
   }
   Postavicka.pripoj(mapa);
   if (Postavicka.poloha(lng, lat, smer, rychlost)) {
@@ -8038,6 +8112,7 @@ window.OkolnikMost = {
       // s nastaveným atlasem, kdežto modrá šipka k uživateli ji
       // potřebuje i pro prostou tečku (cíl, ne mezikroky dojezdu)
       poslednPolohaUziv = { lng, lat };
+      presnostUziv = (presnost > 0 && isFinite(presnost)) ? presnost : 0;
       if (window.__sipkaTik) window.__sipkaTik();   // engine 292: šipka bez rAF
       // odstup fixů — z něj se počítá délka dojezdu (viz níž)
       const tedFix = performance.now();

@@ -138,7 +138,8 @@ const Postavicka = (() => {
     // proto se nad 4 m/s (≈ 15 km/h) na něj už neptáme; kdo jede, ten
     // se určitě hýbe a cedulka nemá proč blikat.
     if (rychlostHladka < 0.5) return '';
-    if (!jdeStav && rychlostHladka < 4.0) return '';
+    // engine 323: chůzi dokládají i kroky (`krokyJdou`) – dřív jen GNSS stav
+    if (!jdeStav && !krokyJdou && rychlostHladka < 4.0) return '';
     const kmh = rychlostHladka * 3.6;
     return kmh >= 10
         ? Math.round(kmh) + ' km/h'
