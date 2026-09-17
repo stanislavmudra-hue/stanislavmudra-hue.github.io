@@ -22,8 +22,11 @@
      X % hráčů, tvůj nejlepší měsíc, loňské umístění;
    • filtr Můj kraj a Přátelé – nejsilnější motivace je porovnání
      s lidmi, které znám (vzor Strava);
-   • koruny za 1. místa v minulém měsíci zůstávají celý měsíc vidět
-     u jména (uznání, které nezmizí s novým měsícem).
+   • odznaky za 1.–3. místo v minulém měsíci (ikona disciplíny ve zlatém,
+     stříbrném či bronzovém kroužku), korunka pro celkového vítěze a trvalý
+     vavřín „🏆 RRRR" pro vítěze roku – uznání, které nezmizí s novým měsícem
+     (17. 9. 2026);
+   • „Celkově" = body ze všech disciplín měsíce (viz BODY_ZA_MISTO).
    ===================================================================== */
 'use strict';
 
@@ -73,6 +76,10 @@ var POLE = ['prezdivka', 'obdobi', 'km', 'obce', 'vypravy', 'kraj', 'aktualizova
 /* Měsíční kategorie – pořadí = pořadí tlačítek. `pravidlo` je jedna
    věta „co se počítá" (hráč musí vědět, čím vyhraje). */
 var KATEGORIE = {
+  // 17. 9. 2026: CELKOVÉ POŘADÍ – body ze všech disciplín měsíce (1. místo 10,
+  // 2. 7, 3. 5, 4. 4, 5. 3, 6. 2, 7.–10. 1). Vítěz nosí celý další měsíc korunku.
+  celkove:  { nazev: 'Celkově',            ikona: '🏆', jednotka: 'bodů',    desetinna: 0, sklon: ['bod', 'body', 'bodů'],
+              pravidlo: 'Součet bodů za umístění ve všech disciplínách měsíce: 1. místo 10 bodů, 2. místo 7, 3. místo 5, 4. 4, 5. 3, 6. 2, 7.–10. 1 bod.' },
   km:       { nazev: 'Kilometry',          ikona: '🥾', jednotka: 'km',      desetinna: 1, sklon: ['km', 'km', 'km'],
               pravidlo: 'Kilometry vlastní silou z GPS stopy (úseky pomalejší než 32 km/h).' },
   obce:     { nazev: 'Nové obce',          ikona: '🏘️', jednotka: 'obcí',    desetinna: 0, sklon: ['obec', 'obce', 'obcí'],
@@ -151,7 +158,7 @@ function dniDoKonceMesice() {
 
 /* ── stav stránky ───────────────────────────────────────────────── */
 
-var stav = { metrika: 'km', obdobi: 'tento', kdo: 'vsichni', kraj: '' };
+var stav = { metrika: 'celkove', obdobi: 'tento', kdo: 'vsichni', kraj: '' };
 var kes = {};          // klíč → Promise s řádky (jedno stažení pro všechno)
 var behZmena = 0;      // pořadové číslo požadavku, ať starší odpověď nepřepíše novější
 var UKAZKA = /[?&]ukazka=1(&|$)/.test(location.search);
@@ -416,7 +423,30 @@ function nactiPratele() {
 /* ── výběr, řazení, pořadí ──────────────────────────────────────── */
 
 function hodnota(r, metrika, sin) {
+  if (!sin && metrika === 'celkove') return r.celkove || 0;
   return sin ? (r.celkem[metrika] || 0) : (r[metrika] || 0);
+}
+
+/* ── celkové pořadí měsíce (17. 9. 2026) ───────────────────────── */
+
+var BODY_ZA_MISTO = { 1: 10, 2: 7, 3: 5, 4: 4, 5: 3, 6: 2, 7: 1, 8: 1, 9: 1, 10: 1 };
+var DISCIPLINY = ['km', 'obce', 'navstevy', 'vrcholy', 'malovana', 'kroky', 'xp'];
+var celkoveHotovo = {};
+
+/** Dopočítá `r.celkove` (body) všem řádkům daného měsíce – jednou za období. */
+function dopocitejCelkove(radky, obdobi) {
+  if (celkoveHotovo[obdobi]) return;
+  celkoveHotovo[obdobi] = true;
+  var body = {};
+  DISCIPLINY.forEach(function (m) {
+    seradVse(radky, obdobi, m).forEach(function (r) {
+      var b = BODY_ZA_MISTO[r.poradi] || 0;
+      if (b) body[r.uid] = (body[r.uid] || 0) + b;
+    });
+  });
+  radky.forEach(function (r) {
+    if (r.obdobi === obdobi) r.celkove = body[r.uid] || 0;
+  });
 }
 
 /** Síň slávy: z každého hráče jen NEJNOVĚJŠÍ řádek (má aktuální součty). */
@@ -453,6 +483,7 @@ function bezDuplicit(radky) {
  */
 function seradVse(radky, obdobi, metrika) {
   var sin = obdobi === 'sin';
+  if (!sin && metrika === 'celkove') dopocitejCelkove(radky, obdobi);
   var vybrane = sin
     ? posledniZaHrace(radky)
     : radky.filter(function (r) { return r.obdobi === obdobi; });
@@ -497,21 +528,99 @@ function precisluj(radky) {
   return radky;
 }
 
-/* ── koruny za minulý měsíc ─────────────────────────────────────── */
+/* ── odznaky u jména (17. 9. 2026) ──────────────────────────────── */
+/*  • 1.–3. místo v každé disciplíně MINULÉHO měsíce = ikona disciplíny
+      ve zlatém / stříbrném / bronzovém kroužku, celý tento měsíc;
+    • celkový vítěz minulého měsíce = zlatá korunka 👑 (2. a 3. celkově
+      stříbrná / bronzová korunka);
+    • vítěz roku (celkové body za všechny měsíce uzavřeného roku) =
+      trvalý vavřín „🏆 RRRR" u jména – za kterýkoli rok.            */
 
-/** uid → [názvy kategorií], kde byl hráč v minulém měsíci první. */
-function koruny(radky) {
+var KOV = ['', 'zlata', 'stribrna', 'bronzova'];
+var KOV_NAZEV = ['', 'zlatá', 'stříbrná', 'bronzová'];
+
+/** uid → [{typ: 'celkove'|'kat'|'rok', kat, poradi, rok}] */
+function odznaky(radky) {
   var ven = {};
-  Object.keys(KATEGORIE).forEach(function (m) {
-    var s = seradVse(radky, OBDOBI.minuly, m);
-    s.forEach(function (r) {
-      if (r.poradi !== 1) return;
-      if (!ven[r.uid]) ven[r.uid] = [];
-      ven[r.uid].push(KATEGORIE[m].nazev.toLowerCase());
+  function pridej(uid, o) { (ven[uid] = ven[uid] || []).push(o); }
+  // celkové pořadí minulého měsíce – korunky
+  seradVse(radky, OBDOBI.minuly, 'celkove').forEach(function (r) {
+    if (r.poradi <= 3) pridej(r.uid, { typ: 'celkove', poradi: r.poradi, obdobi: OBDOBI.minuly });
+  });
+  // disciplíny minulého měsíce – ikona v kovu
+  DISCIPLINY.forEach(function (m) {
+    seradVse(radky, OBDOBI.minuly, m).forEach(function (r) {
+      if (r.poradi <= 3) pridej(r.uid, { typ: 'kat', kat: m, poradi: r.poradi, obdobi: OBDOBI.minuly });
     });
+  });
+  // vítězové uzavřených roků
+  var roky = {};
+  radky.forEach(function (r) {
+    var rok = parseInt(String(r.obdobi).slice(0, 4), 10);
+    if (rok && rok < ted.getFullYear()) roky[rok] = true;
+  });
+  Object.keys(roky).sort().forEach(function (rok) {
+    var body = {};
+    for (var m = 1; m <= 12; m++) {
+      var ob = rok + '-' + String(m).padStart(2, '0');
+      seradVse(radky, ob, 'celkove').forEach(function (r) {
+        if (r.celkove > 0) body[r.uid] = (body[r.uid] || 0) + r.celkove;
+      });
+    }
+    var nej = null;
+    Object.keys(body).forEach(function (uid) { if (nej === null || body[uid] > body[nej]) nej = uid; });
+    if (nej !== null) pridej(nej, { typ: 'rok', rok: rok, poradi: 1 });
   });
   return ven;
 }
+
+/** Vykreslí odznaky hráče (ke jménu). */
+function pridejOdznaky(kam, uid, mapa) {
+  var seznam = mapa && mapa[uid];
+  if (!seznam || !seznam.length) return;
+  // nejvýš 4 odznaky vidět (korunka a rok mají přednost), zbytek jako „+N"
+  var poradiTypu = { rok: 0, celkove: 1, kat: 2 };
+  seznam = seznam.slice().sort(function (a, b) {
+    return (poradiTypu[a.typ] - poradiTypu[b.typ]) || (a.poradi - b.poradi);
+  });
+  var MAX = 4;
+  var skryte = seznam.length > MAX ? seznam.slice(MAX) : [];
+  if (skryte.length) seznam = seznam.slice(0, MAX);
+  seznam.forEach(function (o) {
+    var el = document.createElement('span');
+    if (o.typ === 'rok') {
+      el.className = 'odznak rok';
+      el.textContent = '🏆 ' + o.rok;
+      el.title = 'Vítěz roku ' + o.rok + ' (nejvíc bodů za celý rok)';
+    } else if (o.typ === 'celkove') {
+      el.className = 'odznak koruna ' + KOV[o.poradi];
+      el.textContent = '👑';
+      el.title = (o.poradi === 1 ? 'Celkový vítěz' : o.poradi + '. místo celkově') +
+        ' – ' + nazevObdobi(o.obdobi) + ' (' + KOV_NAZEV[o.poradi] + ' korunka)';
+    } else {
+      var k = KATEGORIE[o.kat] || {};
+      el.className = 'odznak ' + KOV[o.poradi];
+      el.textContent = k.ikona || '🏅';
+      el.title = o.poradi + '. místo – ' + (k.nazev || o.kat) + ' – ' + nazevObdobi(o.obdobi);
+    }
+    el.setAttribute('aria-label', el.title);
+    kam.appendChild(el);
+  });
+  if (skryte.length) {
+    var dal = document.createElement('span');
+    dal.className = 'odznak dalsi';
+    dal.textContent = '+' + skryte.length;
+    dal.title = skryte.map(function (o) {
+      var k = KATEGORIE[o.kat] || {};
+      return o.typ === 'kat' ? o.poradi + '. ' + (k.nazev || o.kat) : (o.typ === 'celkove' ? o.poradi + '. celkově' : 'vítěz roku ' + o.rok);
+    }).join(', ') + ' – ' + nazevObdobi(OBDOBI.minuly);
+    dal.setAttribute('aria-label', dal.title);
+    kam.appendChild(dal);
+  }
+}
+
+/** Zpětná kompatibilita názvu (volá se z nacti). */
+function koruny(radky) { return odznaky(radky); }
 
 /* ── vykreslení ─────────────────────────────────────────────────── */
 
@@ -605,13 +714,7 @@ function stupenVitezu(r, kat, korunky) {
   var jm = document.createElement('span');
   jm.className = 'jm';
   jm.textContent = r.prezdivka;
-  if (korunky && korunky[r.uid] && korunky[r.uid].length) {
-    var kor = document.createElement('span');
-    kor.className = 'koruna';
-    kor.textContent = '👑';
-    kor.title = '1. místo v ' + nazevObdobiKde(OBDOBI.minuly) + ': ' + korunky[r.uid].join(', ');
-    jm.appendChild(kor);
-  }
+  pridejOdznaky(jm, r.uid, korunky);
   d.appendChild(jm);
   var hod = document.createElement('span');
   hod.className = 'hod';
@@ -705,14 +808,7 @@ function ukazTabulku(radky, celkemHracu, korunky) {
         ur.title = 'Úroveň hráče';
         jmeno.appendChild(ur);
       }
-      if (korunky && korunky[r.uid] && korunky[r.uid].length) {
-        var kor = document.createElement('span');
-        kor.className = 'koruna';
-        kor.textContent = '👑';
-        kor.title = '1. místo v ' + nazevObdobiKde(OBDOBI.minuly) + ': ' + korunky[r.uid].join(', ');
-        kor.setAttribute('aria-label', kor.title);
-        jmeno.appendChild(kor);
-      }
+      pridejOdznaky(jmeno, r.uid, korunky);
       if (relace && r.uid === relace.uid) {
         var ja = document.createElement('span');
         ja.className = 'ja-stitek';

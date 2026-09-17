@@ -11,30 +11,39 @@
 <link rel="apple-touch-icon" href="/img/favicon.png">
 <link rel="stylesheet" href="/styl.css?v=4">
 <style>
-/* ── rozložení: levý sloupec (období · disciplína · kdo) + obsah ──── */
+/* ── rozložení (17. 9. 2026): KOMPAKTNÍ FILTRY NAHOŘE, pořadí hned pod nimi ──
+     Přání: „filtry menší, spíš hned vidět pořadí s jednoduchým přepnutím
+     kategorií". Tři řádky malých čipů (období · disciplína · kdo), disciplíny
+     se na úzkém displeji posouvají do strany. */
   .uzky.zeb { max-width: 1040px; }
 
-  .zeb-rozlozeni { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 30px; align-items: start; }
+  .zeb-rozlozeni { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: start; }
 
-  .zeb-bok { position: sticky; top: 16px; display: grid; gap: 18px; }
+  .zeb-bok { display: grid; gap: 6px; padding: 10px 12px; border-radius: 14px;
+             background: var(--jemna); border: 1px solid var(--linka); }
+
+  .skupina { display: flex; align-items: center; gap: 8px; min-width: 0; }
 
   .skupina .popis {
-    font-size: .74rem; text-transform: uppercase; letter-spacing: .08em;
-    color: var(--slabsi); margin: 0 0 6px; font-weight: 700;
+    font-size: .68rem; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--slabsi); margin: 0; font-weight: 700; flex: none; width: 5.2em;
   }
 
-  .svisle { display: flex; flex-direction: column; gap: 4px; }
+  .svisle { display: flex; flex-direction: row; gap: 4px; flex-wrap: nowrap; min-width: 0;
+            overflow-x: auto; scrollbar-width: none; padding: 2px 0; }
+  .svisle::-webkit-scrollbar { display: none; }
+  #prepinacObdobi, #prepinacKdo { flex-wrap: wrap; }
 
   .svisle button {
-    font: inherit; font-size: .95rem; line-height: 1.25; text-align: left;
-    display: flex; align-items: center; gap: 10px;
-    padding: 9px 12px; cursor: pointer; width: 100%;
-    background: transparent; color: var(--tmava);
-    border: 1px solid transparent; border-radius: 10px;
+    font: inherit; font-size: .84rem; line-height: 1.2; text-align: left;
+    display: inline-flex; align-items: center; gap: 5px; flex: none;
+    padding: 5px 10px; cursor: pointer;
+    background: #fff; color: var(--tmava);
+    border: 1px solid var(--linka); border-radius: 999px; white-space: nowrap;
     transition: background .12s, border-color .12s, color .12s;
   }
 
-  .svisle button .ik { width: 1.5em; text-align: center; flex: none; font-size: 1.05em; }
+  .svisle button .ik { width: auto; text-align: center; flex: none; font-size: 1em; }
 
   .svisle button:hover { background: var(--jemna); border-color: var(--linka); }
 
@@ -47,8 +56,8 @@
   .svisle button.sin[aria-pressed="true"] { background: var(--oranzova); border-color: var(--oranzova); color: #3a2405; }
 
   #vyberKraje {
-    font: inherit; font-size: .95rem; padding: 8px 12px; margin-top: 6px; width: 100%;
-    border: 1px solid var(--linka); border-radius: 10px; background: #fff; color: var(--tmava);
+    font: inherit; font-size: .84rem; padding: 4px 10px; margin: 0;
+    border: 1px solid var(--linka); border-radius: 999px; background: #fff; color: var(--tmava);
   }
 
   /* ── stavy ─────────────────────────────────────────────────── */
@@ -150,7 +159,26 @@
     background: var(--jemna); border: 1px solid var(--linka); vertical-align: middle;
   }
 
-  .koruna { margin-left: 6px; cursor: help; }
+  /* ── odznaky u jména (17. 9. 2026): kov = pořadí, ikona = disciplína ── */
+  .odznak {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.55em; height: 1.55em; margin-left: 4px; border-radius: 50%;
+    font-size: .82em; line-height: 1; vertical-align: middle; cursor: help;
+    border: 2px solid transparent; background: #fff;
+  }
+  .odznak.zlata    { border-color: #d4a017; background: #fff3c4; box-shadow: 0 0 0 1px #f6dd8a inset; }
+  .odznak.stribrna { border-color: #9aa4ad; background: #f1f4f7; }
+  .odznak.bronzova { border-color: #b87333; background: #f7e3d3; }
+  .odznak.koruna   { width: 1.75em; height: 1.75em; font-size: .9em; }
+  .odznak.koruna.zlata { box-shadow: 0 0 0 2px #fbe9a6, 0 2px 6px rgba(212, 160, 23, .45); }
+  .odznak.rok {
+    width: auto; height: auto; border-radius: 999px; padding: 1px 8px; font-size: .74em;
+    font-weight: 800; color: #3a2405; background: linear-gradient(135deg, #ffe08a, #f2b134);
+    border-color: #d4a017; letter-spacing: .02em;
+  }
+  .odznak.dalsi { width: auto; border-radius: 999px; padding: 0 6px; font-size: .7em; font-weight: 700;
+                  color: var(--slabsi); border-color: var(--linka); background: var(--jemna); }
+  .stupen .odznak { vertical-align: -.1em; }
 
   .ja-stitek {
     display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
@@ -184,15 +212,11 @@
   .jak li { margin-bottom: 6px; }
 
   @media (max-width: 760px) {
-    .zeb-rozlozeni { grid-template-columns: 1fr; gap: 14px; }
+    .zeb-bok { padding: 8px 10px; gap: 5px; }
 
-    .zeb-bok { position: static; gap: 12px; }
+    .skupina .popis { display: none; }
 
-    .svisle { flex-direction: row; flex-wrap: wrap; }
-
-    .svisle button { width: auto; padding: 7px 11px; font-size: .9rem; border-color: var(--linka); border-radius: 999px; }
-
-    .svisle button .ik { width: auto; }
+    .svisle button { padding: 5px 9px; font-size: .8rem; }
 
     #vyberKraje { width: auto; }
 
@@ -237,7 +261,7 @@
 
 <main class="uzky zeb">
   <h1>Žebříček</h1>
-  <p class="podtitul">Sedm měsíčních disciplín, kraje, přátelé a&nbsp;síň slávy. Každý měsíc
+  <p class="podtitul">Celkové pořadí, sedm měsíčních disciplín, kraje, přátelé a&nbsp;síň slávy. Každý měsíc
   se začíná od nuly – nováček soutěží s&nbsp;nováčkem. Soutěží jen ti, kdo se do žebříčku sami
   přihlásili v&nbsp;aplikaci.</p>
 
@@ -294,8 +318,14 @@
       Nemusíte být nejrychlejší chodec: kdo sbírá vrcholy, klenoty nebo dokládá
       návštěvy, má vlastní disciplínu, ve které může být první.</li>
       <li><strong>Každý měsíc od nuly.</strong> Prvního v&nbsp;měsíci mají všichni stejnou
-      šanci; výsledky minulého měsíce zůstávají k&nbsp;nahlédnutí a&nbsp;vítězové každé
-      disciplíny nosí celý další měsíc <strong>korunku 👑</strong> u&nbsp;jména.</li>
+      šanci; výsledky minulého měsíce zůstávají k&nbsp;nahlédnutí.</li>
+      <li><strong>Celkově a&nbsp;odznaky.</strong> „Celkově" sčítá body za umístění ve všech
+      disciplínách měsíce (1.&nbsp;místo 10, 2.&nbsp;místo 7, 3.&nbsp;místo 5, dál 4–3–2–1).
+      Kdo byl minulý měsíc v&nbsp;některé disciplíně první, druhý nebo třetí, nosí celý další
+      měsíc u&nbsp;jména <strong>ikonu té disciplíny ve zlatém, stříbrném nebo bronzovém
+      kroužku</strong>; celkový vítěz měsíce má <strong>zlatou korunku 👑</strong> (druhý
+      a&nbsp;třetí stříbrnou a&nbsp;bronzovou). <strong>Vítěz roku</strong> – nejvíc bodů za
+      celý rok – má u&nbsp;jména natrvalo vavřín <strong>🏆 s&nbsp;vítězným rokem</strong>.</li>
       <li><strong>Síň slávy</strong> počítá celkové součty za celou dobu hraní – úroveň,
       kilometry, obce, návštěvy, klenoty, vrcholy, XP a&nbsp;úspěchy.</li>
       <li><strong>Kraj a&nbsp;přátelé.</strong> Přepněte si žebříček na svůj kraj nebo (po
@@ -339,7 +369,7 @@
   </div>
 </footer>
 
-<script src="/zebricek/zebricek.js?v=7"></script>
+<script src="/zebricek/zebricek.js?v=8"></script>
 <script src="/web.js?v=4"></script>
 </body>
 </html>
