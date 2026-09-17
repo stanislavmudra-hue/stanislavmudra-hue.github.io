@@ -121,21 +121,28 @@
   .zalozka { display: none; flex: 1; min-height: 0; overflow: auto; }
   .zalozka.aktivni { display: block; }
   .zalozka .karta { margin: 0; }
-  /* 16. 9. 2026: skóre týmů je mimo řádek mapy – na počítači vpravo přes
-     celou výšku záložky (mřížka), na mobilu kompaktně POD MENU (před
-     hledáním a mapou; přání: „týmy alespoň pod menu"). */
-  #z-mapa.aktivni { display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
-    grid-template-rows: auto auto auto minmax(0, 1fr);
-    column-gap: 14px; }
-  #z-mapa > * { grid-column: 1; min-width: 0; }
-  #z-mapa > .bocni { grid-column: 2; grid-row: 1 / -1; }
-  .mapa-radek { display: flex; gap: 14px; min-height: 0; }
+  /* 17. 9. 2026: skóre týmů POD LEVÝM MENU – levý sloupec drží menu
+     i skóre, mapa má celý zbytek šířky (přání: „na zmenšené obrazovce
+     nepřehledné – týmy alespoň pod menu"). */
+  #z-mapa.aktivni { display: flex; flex-direction: column; }
+  .levy { width: 286px; flex: none; display: flex; flex-direction: column;
+          gap: 10px; min-height: 0; align-self: stretch; }
+  .levy .bocni-menu { width: auto; align-self: stretch; }
+  .mapa-radek { display: flex; gap: 14px; flex: 1; min-height: 0; }
   .mapa-sloupec { flex: 1; display: flex; flex-direction: column;
                   min-width: 0; }
   #mapa { height: auto; flex: 1; min-height: 300px; }
-  .bocni { width: auto; overflow: auto; margin: 0; }
+  .bocni { width: auto; overflow: auto; margin: 0; min-height: 0;
+           padding: 12px 12px 10px; }
+  .bocni h2 { font-size: 1.05rem; margin-bottom: 6px; }
+  .bocni .tabulka th, .bocni .tabulka td { padding: 4px 4px;
+    font-size: .86rem; }
+  .bocni .tabulka td:first-child { white-space: nowrap; }
+  .bocni .znak { height: 22px; width: 22px; margin-right: 5px; }
+  .bocni .tecka { width: 10px; height: 10px; margin-right: 5px; }
+  .bocni .legenda { font-size: .82rem; margin-top: 6px; }
   .bocni .reklama { margin: 12px 0 0; min-height: 70px; }
+  .rezim-editace .levy { display: none; }
   .stavovy { margin: 6px 0 0; }
   /* plocha zarovnaná s lištou (dřív bez okrajů – text u samé hrany) */
   main.plocha { max-width: 1200px; margin: 0 auto;
@@ -149,16 +156,11 @@
     .pod-menu { flex-direction: row; flex-wrap: wrap; margin: 0; }
     .mapa-radek { flex-direction: column; }
     #mapa { min-height: 58vh; flex: none; }
-    /* pořadí: soutěž → SKÓRE TÝMŮ → hledání → mapa */
-    #z-mapa.aktivni { display: flex; flex-direction: column; }
-    #soutezVolba { order: 0; }
-    #z-mapa > .bocni { order: 1; margin: 0 0 10px; overflow: visible;
-      padding: 12px 12px 10px; }
-    #hledaniBox { order: 2; }
-    #pridaniBox { order: 3; }
-    .mapa-radek { order: 4; }
+    /* levý sloupec = řádek menu + skóre pod ním, pak obsah záložky */
+    .levy { width: auto; gap: 8px; }
+    .bocni { overflow: visible; margin: 0 0 4px; }
     /* kompaktní skóre: dva sloupce dlaždic, bez hlavičky tabulky */
-    .bocni h2 { font-size: 1.05rem; margin-bottom: 8px; }
+    .bocni h2 { margin-bottom: 8px; }
     .bocni .tabulka { display: grid; grid-template-columns: 1fr 1fr;
       gap: 4px 8px; margin: 0; }
     .bocni .tabulka tbody { display: contents; }
@@ -237,6 +239,9 @@
   </details>
 
   <div class="telo">
+    <!-- 17. 9. 2026: levý sloupec = menu + skóre týmů (přání: „týmy alespoň
+         pod menu"); mapa má zbytek šířky -->
+    <div class="levy">
     <nav class="bocni-menu" id="zalozky" aria-label="Části Dobyvatele">
       <button data-z="mapa" class="aktivni">Mapa</button>
       <button data-z="zebricky">Žebříčky</button>
@@ -246,6 +251,16 @@
         <button data-p="zalozit">Založení</button>
       </div>
     </nav>
+    <aside class="karta bocni">
+        <h2>Skóre týmů</h2>
+        <table class="tabulka" id="skore">
+          <tr><th>Tým</th><th style="text-align:right">Body</th>
+            <th style="text-align:right">%</th></tr>
+        </table>
+        <p class="legenda" id="dobyto"></p>
+        <div class="reklama" data-reklama>reklamní plocha</div>
+    </aside>
+    </div>
     <div class="obsah">
 
   <section class="zalozka aktivni" id="z-mapa">
@@ -272,15 +287,6 @@
         <p class="stavovy" id="stav">Načítám mapu…</p>
       </div>
     </div>
-    <aside class="karta bocni">
-        <h2>Skóre týmů</h2>
-        <table class="tabulka" id="skore">
-          <tr><th>Tým</th><th style="text-align:right">Body</th>
-            <th style="text-align:right">%</th></tr>
-        </table>
-        <p class="legenda" id="dobyto"></p>
-        <div class="reklama" data-reklama>reklamní plocha</div>
-    </aside>
   </section>
 
   <section class="zalozka" id="z-zebricky">
