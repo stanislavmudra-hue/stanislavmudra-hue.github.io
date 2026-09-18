@@ -217,24 +217,24 @@ const Pocasi = (() => {
     // data z aplikace mají přednost – vlastní dotaz je jen záloha pro demo
     if (data.length && Date.now() - dataCas < OBNOVA_MS) return;
     dataCas = Date.now();
-    const lat = KRAJE.map((k) => k[1]).join(',');
-    const lng = KRAJE.map((k) => k[0]).join(',');
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat
-          + '&longitude=' + lng + '&current=weather_code,cloud_cover'
-          + ',wind_speed_10m,wind_direction_10m,wind_gusts_10m')
+    // engine 330 (18. 9. 2026): místo Open-Meteo NÁŠ server (Cloud Function
+    // `pocasi` = MET Norway přes keš) – týž JSON jako dostává appka
+    fetch('https://europe-west1-sarcher-b32a1.cloudfunctions.net/pocasi')
       .then((r) => r.json())
       .then((d) => {
-        const pole = Array.isArray(d) ? d : [d];
-        data = pole.map((m, i) => ({
-          lng: KRAJE[i][0],
-          lat: KRAJE[i][1],
-          druh: druhZKodu((m.current && m.current.weather_code) || 0),
-          oblacnost: ((m.current && m.current.cloud_cover) || 0) / 100,
-          vitr: (m.current && +m.current.wind_speed_10m) || 0,
-          vitrSmer: (m.current && +m.current.wind_direction_10m) || 0,
-          naraz: (m.current && +m.current.wind_gusts_10m) || 0,
-        }));
-        console.log('[Pocasi] načteno bodů:', data.length);
+        const body = (d && Array.isArray(d.body)) ? d.body : [];
+        data = body.map((p) => ({
+          lng: +p.lon, lat: +p.lat,
+          druh: druhZKodu(+p.kod || 0),
+          oblacnost: Math.max(0, Math.min(1, +p.oblacnost || 0)),
+          den: p.den !== false,
+          snih: isFinite(+p.snih) ? Math.max(0, +p.snih) : 0,
+          teplota: isFinite(+p.teplota) ? +p.teplota : null,
+          vitr: +p.vitr || 0, vitrSmer: +p.vitrSmer || 0, naraz: +p.naraz || 0,
+        })).filter((p) => isFinite(p.lat) && isFinite(p.lng));
+        console.log('[Pocasi] načteno bodů (MET Norway):', data.length);
+        obloha.klic = '';
+        try { if (window.aktualizujSezonu) window.aktualizujSezonu(); } catch (e) { /* nic */ }
       })
       .catch((e) => console.warn('[Pocasi] stažení selhalo', e));
   }

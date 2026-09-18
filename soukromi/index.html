@@ -329,10 +329,11 @@ s aktualizacemi, které nevyžadují novou verzi – např. průměrné ceny pal
 (zdroj: Český statistický úřad) a provozní nastavení. Jde o stažení obsahu;
 poskytovateli se předá jen běžný síťový požadavek (IP adresa), žádné vaše
 osobní údaje.</p>
-<p><strong>Počasí:</strong> pro atmosférické efekty v Objevování (mraky, mlha) stahuje
-aplikace aktuální počasí ze služby <strong>Open-Meteo</strong>. Dotaz obsahuje <strong>pevný
-seznam bodů</strong> rozmístěných po ČR, stejný pro všechny uživatele – vaše poloha
-ani výřez mapy se neodesílají. Počasí pro vaše okolí se vybere z už
+<p><strong>Počasí:</strong> pro atmosférické efekty v Objevování (mraky, mlha, vítr) stahuje
+aplikace aktuální počasí <strong>z našeho serveru</strong> (Firebase Cloud Functions, Google, region EU),
+který ho pro <strong>pevný seznam bodů</strong> rozmístěných po ČR – stejný pro všechny uživatele –
+přebírá ze služby <strong>MET Norway</strong> (Norský meteorologický institut, licence CC BY 4.0).
+Vaše poloha ani výřez mapy se neodesílají; počasí pro vaše okolí se vybere z už
 stažených dat přímo v telefonu.</p>
 <p><strong>Srážkový radar:</strong> protože předpověď se občas mýlí, ověřuje aplikace déšť
 ještě podle <strong>radarových snímků služby RainViewer</strong>. Stahuje se seznam
@@ -361,8 +362,8 @@ reklamy a povolí zakládání soutěží v Dobyvateli.</p>
   snímky).</li>
 <li><strong>Wikimedia / Wikipedia</strong> – popisek zobrazovaného místa.</li>
 <li><strong>GitHub</strong> (Microsoft) – stažení datového kanálu.</li>
-<li><strong>Open-Meteo</strong> – aktuální počasí pro pevné body v ČR (bez odeslání vaší
-  polohy).</li>
+<li><strong>MET Norway</strong> (přes náš server) – aktuální počasí pro pevné body v ČR (bez odeslání
+  vaší polohy).</li>
 <li><strong>RainViewer</strong> – snímky srážkového radaru (bez odeslání vaší polohy).</li>
 <li><strong>Navigační služby dle vaší volby</strong> – Google Mapy, Mapy.com / Seznam.cz,
   Waze (jen když spustíte navigaci).</li>

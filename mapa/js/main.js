@@ -8588,6 +8588,43 @@ window.OkolnikMost = {
     return out;
   },
 
+  /// ⭐ engine 330 (18. 9. 2026): VÝŠKY BODŮ Z VÝŠKOPISU (DMR 5G, náš archiv)
+  /// místo Open-Meteo elevation (jen nekomerční). body = [{id, lat, lng}] →
+  /// {id: metry|null}; čte DEM z13 jako `stoupaniTrasy`, funguje kdekoli v ČR.
+  async vyskyBodu(body) {
+    const out = {};
+    const dem = window.__okolnikDem;
+    if (!dem || !dem.getDemTile || !body || !body.length) return out;
+    const Z = 13, n = Math.pow(2, Z);
+    const kes = new Map();
+    const dlazdice = (tx, ty) => {
+      const k = tx + '/' + ty;
+      if (!kes.has(k)) {
+        kes.set(k, Promise.race([
+          dem.getDemTile(Z, tx, ty).then((t) => (t && t.data && t.width === 256) ? t : null),
+          new Promise((r) => setTimeout(() => r(null), 5000)),
+        ]).catch(() => null));
+      }
+      return kes.get(k);
+    };
+    for (const b of body) {
+      const lat = +b.lat, lng = +b.lng;
+      out[b.id] = null;
+      if (!isFinite(lat) || !isFinite(lng)) continue;
+      const x = (lng + 180) / 360 * n;
+      const r = lat * Math.PI / 180;
+      const y = (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n;
+      const tx = Math.floor(x), ty = Math.floor(y);
+      const t = await dlazdice(tx, ty);
+      if (!t) continue;
+      const px = Math.min(255, Math.max(0, Math.floor((x - tx) * 256)));
+      const py = Math.min(255, Math.max(0, Math.floor((y - ty) * 256)));
+      const v = t.data[py * 256 + px];
+      if (isFinite(v) && v > -1000) out[b.id] = Math.round(v);
+    }
+    return out;
+  },
+
   /// ⭐ engine 314: PŘEVÝŠENÍ TRASY Z VÝŠKOPISU. Čte DEM dlaždice z13 přímo
   /// (`__okolnikDem.getDemTile`, tj. z archivu terénu, ne z toho, co je
   /// zrovna na mapě), takže funguje i pro výpravu na druhém konci kraje.
