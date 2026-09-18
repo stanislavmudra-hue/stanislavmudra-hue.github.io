@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Návod – Okolník</title>
+<meta name="description" content="Jak používat Okolník: tři režimy (Cestovatel, Objevitel, Dobyvatel), jak se přepínají a co který umí. Krátce a jasně – stejný průvodce, jaký najdete v aplikaci.">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="/img/favicon.ico" sizes="32x32">
+<link rel="apple-touch-icon" href="/img/favicon.png">
+<link rel="stylesheet" href="/styl.css?v=4">
+<link rel="stylesheet" href="/rezimy/rezim.css?v=4">
+<style>
+  /* Návod: krátké kroky po režimech – stejná slova jako Průvodce režimy
+     v aplikaci (lib/pruvodce_rezimy.dart). Když se změní jedno, změň i druhé. */
+  .navod-uvod { max-width: 800px; margin: 0 auto; padding: clamp(28px, 5vw, 50px) 24px 10px; }
+  .navod-uvod h1 { margin: 0 0 10px; }
+  .navod-uvod p.lead { font-size: 1.08rem; color: var(--slabsi); max-width: 640px; margin: 0 0 18px; }
+  .navod-obsah { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .navod-obsah a {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 999px; text-decoration: none; font-weight: 600; font-size: .92rem;
+    background: var(--jemna); color: var(--tmava); border: 1px solid var(--linka);
+  }
+  .navod-obsah a:hover { border-color: var(--zelena); }
+  .rezim-blok { scroll-margin-top: 110px; }
+  .rezim-blok .pruh-rezimu .obal { padding-top: clamp(22px, 4vw, 36px); padding-bottom: clamp(36px, 5vw, 52px); }
+  .kroky { counter-reset: krok; list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .kroky li {
+    counter-increment: krok; position: relative;
+    padding: 14px 16px 14px 58px; border-radius: 14px;
+    background: var(--jemna); border: 1px solid var(--linka);
+  }
+  .kroky li::before {
+    content: counter(krok); position: absolute; left: 14px; top: 12px;
+    width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--akcent, var(--zelena)); color: #fff; font-weight: 800; font-size: .95rem;
+  }
+  .kroky strong { color: var(--tmava); }
+  .kroky .tl {
+    display: inline-block; padding: 1px 8px; border-radius: 8px; font-weight: 700; font-size: .9em;
+    background: var(--papir); border: 1px solid rgba(13, 43, 46, .14); color: var(--tmava); white-space: nowrap;
+  }
+  .uzky.cest { --akcent: var(--cest); } .uzky.obj { --akcent: var(--obj); } .uzky.dob { --akcent: var(--dob); }
+  .uzky .pozn { margin: 14px 0 0; font-size: .92rem; color: var(--slabsi); }
+  .uzky .dal-rezim { margin: 16px 0 0; font-weight: 700; }
+</style>
+</head>
+<body>
+<header class="hlava">
+  <div class="obal">
+    <a class="znacka" href="/">
+      <img class="emblem" src="/img/emblem-96.webp" alt="" width="38" height="38">
+      <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="120" height="30">
+    </a>
+    <nav class="rezimy-menu" aria-label="Režimy">
+      <a class="volba cest" href="/cestovatel/"><span class="ikona" aria-hidden="true">🧭</span><span class="jmeno">Cestovatel</span></a>
+      <a class="volba obj" href="/objevitel/"><span class="ikona" aria-hidden="true">🌫️</span><span class="jmeno">Objevitel</span></a>
+      <a class="volba dob" href="/dobyvatel/"><span class="ikona" aria-hidden="true">🚩</span><span class="jmeno">Dobyvatel</span></a>
+    </nav>
+    <nav class="menu" aria-label="Hlavní nabídka">
+      <a href="/">Domů</a>
+      <a href="/navod/" aria-current="page">Návod</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/kontakt/">Kontakt</a>
+      <a href="/soukromi/" class="mimo-mobil">Soukromí</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="navod-uvod">
+    <p class="nadtitul">Návod</p>
+    <h1>Tři režimy, jedna mapa</h1>
+    <p class="lead">Zlaté tlačítko <strong>uprostřed horní lišty</strong> aplikace přepíná režim: <strong>Cestovatel</strong> (obyčejná mapa), <strong>Objevitel</strong> (vybarvovaná mapa a sbírky) a <strong>Dobyvatel</strong> (týmové dobývání vlajek). Přepnout můžete kdykoli – mapa, deník s kalendářem, vlastní místa i žebříčky jsou společné a nic se neztratí.</p>
+    <ul class="navod-obsah" aria-label="Obsah">
+      <li><a href="#cestovatel">🧭 Cestovatel</a></li>
+      <li><a href="#objevitel">🌫️ Objevitel</a></li>
+      <li><a href="#dobyvatel">🚩 Dobyvatel</a></li>
+      <li><a href="#spolecne">🔗 Společné</a></li>
+    </ul>
+  </section>
+
+  <!-- ── CESTOVATEL ─────────────────────────────────────────────── -->
+  <section id="cestovatel" class="rezim-blok">
+    <div class="pruh-rezimu cest">
+      <div class="obal">
+        <span class="velka-ikona" aria-hidden="true">🧭</span>
+        <div>
+          <p class="nadtitul">Režim</p>
+          <h2 style="margin:0">Cestovatel: co je kolem</h2>
+        </div>
+        <p class="lead">Mapa bez hry. Krámek, benzínka, hospoda, parkoviště – hned a seřazené od nejbližšího.</p>
+      </div>
+    </div>
+    <div class="uzky cest">
+      <ol class="kroky">
+        <li><strong>Co hledáte</strong> – klepněte na <span class="tl">Filtry</span> a zapněte druhy míst (krámy, benzínky, studánky…).</li>
+        <li><strong>Od nejbližšího</strong> – <span class="tl">Seznam</span> je seřadí podle vzdálenosti; v jeho hlavičce nastavíte okruh, jak daleko hledat.</li>
+        <li><strong>Hledat</strong> – napište jméno místa nebo prostě druh: „krám“, „benzínka“, „zverimex“. Dostanete nejbližší místa toho druhu.</li>
+        <li><strong>Karta místa</strong> – klepněte na značku nebo řádek: adresa, otevírací doba, odkazy. <span class="tl">Navigovat</span> vede po cestách.</li>
+        <li><strong>Plán výletu</strong> – v Deníku → <span class="tl">Kalendář</span> naklikáte zastávky, aplikace spočítá kilometry, stoupání a čas. Mezizastávky a offline s Premiem.</li>
+        <li><strong>Tipy do okolí</strong> – widget na ploše telefonu nabízí výlety podle vaší polohy: Navigovat · Info · Na mapě.</li>
+      </ol>
+      <p class="pozn">Bez signálu: tlačítko vrstev → <strong>Balíčky</strong> stáhne okres do telefonu.</p>
+      <p class="dal-rezim"><a href="/cestovatel/">Víc o Cestovateli →</a></p>
+    </div>
+  </section>
+
+  <!-- ── OBJEVITEL ──────────────────────────────────────────────── -->
+  <section id="objevitel" class="rezim-blok">
+    <div class="pruh-rezimu obj">
+      <div class="obal">
+        <span class="velka-ikona" aria-hidden="true">🌫️</span>
+        <div>
+          <p class="nadtitul">Režim</p>
+          <h2 style="margin:0">Objevitel: vybarvuj mapu</h2>
+        </div>
+        <p class="lead">Malovaná mapa v mlze. Kudy projdete, tam se krajina vybarví – a za obec máte její erb.</p>
+      </div>
+    </div>
+    <div class="uzky obj">
+      <ol class="kroky">
+        <li><strong>Choďte</strong> – mlha ustupuje tam, kudy projdete. Kraje a okresy ukazují, kolik už máte odkryto. V Nastavení zapněte <span class="tl">Záznam trasy na pozadí</span>, ať se objevuje i se zhasnutým displejem.</li>
+        <li><strong>Erby</strong> – za každou pořádně prochozenou obec získáte její znak (6 258 obcí).</li>
+        <li><strong>Úroveň</strong> – odznak <span class="tl">Úroveň</span> = Sbírky · Úspěchy · Výzvy. Za ně sbíráte XP a rostete v úrovních. <strong>Klenoty</strong> jsou malovaná místa, která doložíte, když u nich chvíli pobudete.</li>
+        <li><strong>Foto výprava</strong> – klepněte na <span class="tl">Foto výprava</span>, jděte a foťte. Trasa, kilometry, počasí a fotky se uloží jako jeden výlet do deníku.</li>
+        <li><strong>Poznámky</strong> – na kartě místa si zapíšete poznámku nebo klepnete <span class="tl">Byl jsem tady</span>.</li>
+        <li><strong>Přátelé</strong> – Více → <span class="tl">Přátelé</span>, přítele přidáte šestimístným kódem. Společná mapa objevených obcí a jeho poloha, dokud jste ve spojení.</li>
+      </ol>
+      <p class="dal-rezim"><a href="/objevitel/">Víc o Objeviteli →</a></p>
+    </div>
+  </section>
+
+  <!-- ── DOBYVATEL ──────────────────────────────────────────────── -->
+  <section id="dobyvatel" class="rezim-blok">
+    <div class="pruh-rezimu dob">
+      <div class="obal">
+        <span class="velka-ikona" aria-hidden="true">🚩</span>
+        <div>
+          <p class="nadtitul">Režim</p>
+          <h2 style="margin:0">Dobyvatel: vlajky a týmy</h2>
+        </div>
+        <p class="lead">Týmové dobývání. Čtrnáct týmů krajů soupeří o vlajky na hradech, vrcholech a rozhlednách.</p>
+      </div>
+    </div>
+    <div class="uzky dob">
+      <ol class="kroky">
+        <li><strong>Tým</strong> – při prvním vstupu si vyberete tým (kraj). Změna: zlaté tlačítko → Dobyvatel → <span class="tl">Změnit tým</span>.</li>
+        <li><strong>Vlajka</strong> – dojděte k vlajce (do 150 m) a klepněte <span class="tl">Obsadit vlajku</span>. Hrad je za 4 body, vrchol 3, vyhlídka 2, bunkr 1; sebrání držené vlajky a ubráněný útok +1.</li>
+        <li><strong>Kraj</strong> – je dobytý, když váš tým drží nadpoloviční hodnotu jeho vlajek. Místo Seznamu vidíte v aplikaci <strong>skóre týmů</strong>; mapa a žebříčky jsou i <a href="/dobyvatel/">tady na webu</a>.</li>
+        <li><strong>Vlastní soutěž</strong> – pro partu, firmu nebo obec: založíte ji na webu v <a href="/dobyvatel/">Dobyvateli</a> (s Premiem), vyberete místa a týmy a pošlete odkaz. V aplikaci pak <span class="tl">Změnit tým</span> → <span class="tl">Jiná soutěž</span> → <span class="tl">Zadat kód soutěže</span>.</li>
+      </ol>
+      <p class="dal-rezim"><a href="/dobyvatel/">Víc o Dobyvateli →</a></p>
+    </div>
+  </section>
+
+  <!-- ── SPOLEČNÉ ───────────────────────────────────────────────── -->
+  <section id="spolecne" class="rezim-blok">
+    <div class="uzky">
+      <h2>Společné pro všechny režimy</h2>
+      <ol class="kroky">
+        <li><strong>Deník</strong> – <span class="tl">Kalendář</span> (co bylo kdy + plán výletu), <span class="tl">Zápisy</span> a <span class="tl">Fotovýpravy</span>. Dá se v něm hledat.</li>
+        <li><strong>Úroveň</strong> – sbírky, úspěchy, výzvy, erby, kraje a okresy.</li>
+        <li><strong>Žebříčky</strong> – měsíce i roku na <a href="/zebricek/">okolnik.cz/zebricek</a>. Účast zapnete v aplikaci: Více → <span class="tl">Můj Okolník</span>. Posílají se jen souhrnná čísla a přezdívka; fotky a přesná trasa zůstávají v telefonu.</li>
+        <li><strong>Vlastní místo</strong> – podržte prst na mapě: váš kopeček, studánka nebo altán s fotkou a popisem.</li>
+        <li><strong>Průvodce v aplikaci</strong> – Více → Nastavení → <span class="tl">Rychlý průvodce</span> a <span class="tl">Průvodce režimy</span>; nebo zlaté tlačítko → <span class="tl">Co který režim umí?</span></li>
+      </ol>
+    </div>
+  </section>
+</main>
+
+<footer class="pata">
+  <div class="obal">
+    <div>
+      <strong style="color:#f2ede0">Okolník</strong>
+      <p class="drobne">© 2026 Stanislav Mudra</p>
+    </div>
+    <nav class="odkazy" aria-label="Odkazy v patičce">
+      <a href="/">Domů</a>
+      <a href="/navod/">Návod</a>
+      <a href="/cestovatel/">Cestovatel</a>
+      <a href="/objevitel/">Objevitel</a>
+      <a href="/dobyvatel/">Dobyvatel</a>
+      <a href="/zebricek/">Žebříček</a>
+      <a href="/ucet/">Můj Okolník</a>
+      <a href="/smazani-uctu/">Smazání účtu</a>
+      <a href="/soukromi/">Zásady soukromí</a>
+      <a href="/kontakt/">Kontakt</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="/web.js?v=4"></script>
+</body>
+</html>
