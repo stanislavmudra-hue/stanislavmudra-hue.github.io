@@ -6168,7 +6168,17 @@ function obnovHracSvetlo(lng, lat) {
     const zdroj = mapa.getSource('hrac-svetlo');
     if (!zdroj) {
       if (!mapa.hasImage || !mapa.hasImage('svetlo-zare-0')) return;
-      mapa.addSource('hrac-svetlo', { type: 'geojson', maxzoom: 10,
+      // ⛔⛔ engine 330 („světlo bylo nade mnou, ne na mé pozici ve stejné
+      // výšce" – u tečky, 18. 9. 2026): `maxzoom: 10` = dlaždice zdroje má
+      // kanonické z10 a na z17 je „overzoomed" – MapLibre pro ni NEUMÍ
+      // najít jemný DEM (terrain.ts: `cannot resolve terrain: overzoomed
+      // tile`, dz jen když canonical.z ≥ maxzoom terénu 13) → výška záře
+      // z hrubé dlaždice z10 (~95 m/px) nebo 0. Na svahu tak záře PLULA
+      // ~30 m nad zemí = při náklonu 42° o 78 px NAD tečkou (změřeno TT);
+      // u postavičky to zakrývala kresba. Navíc z10 kvantuje bod na ~3 m.
+      // maxzoom 16 ≥ 13 → správný DEM z13 + mřížka 0,05 m; jeden bod se
+      // tiluje zadarmo. Ověřeno: střed záře = střed tečky (0 px) i v náklonu.
+      mapa.addSource('hrac-svetlo', { type: 'geojson', maxzoom: 16,
         data: { type: 'FeatureCollection', features: [] } });
       mapa.addLayer({
         id: 'hrac-zare', type: 'symbol', source: 'hrac-svetlo',
