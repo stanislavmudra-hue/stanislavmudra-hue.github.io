@@ -45,6 +45,11 @@
   .uzky.cest { --akcent: var(--cest); } .uzky.obj { --akcent: var(--obj); } .uzky.dob { --akcent: var(--dob); }
   .uzky .pozn { margin: 14px 0 0; font-size: .92rem; color: var(--slabsi); }
   .uzky .dal-rezim { margin: 16px 0 0; font-weight: 700; }
+  .navod-snimky { margin-top: 0; padding-top: 10px; padding-bottom: 10px; background: transparent; box-shadow: none; }
+  .uzky .snimky { margin: 20px 0 6px; gap: 18px; }
+  .uzky .snimek { width: 200px; }
+  .uzky .snimek.siroky { width: 100%; max-width: 520px; }
+  .uzky .snimek.siroky img { border-radius: 14px; border-width: 4px; }
 </style>
 </head>
 <body>
@@ -64,7 +69,7 @@
       <a href="/navod/" aria-current="page">Návod</a>
       <a href="/zebricek/">Žebříček</a>
       <a href="/ucet/">Můj Okolník</a>
-      <a href="/kontakt/">Kontakt</a>
+      <a href="/kontakt/" class="mimo-mobil">Kontakt</a>
       <a href="/soukromi/" class="mimo-mobil">Soukromí</a>
     </nav>
   </div>
@@ -82,6 +87,18 @@
       <li><a href="#spolecne">🔗 Společné</a></li>
     </ul>
   </section>
+  <div class="uzky navod-snimky">
+  <div class="snimky">
+    <figure class="snimek">
+      <img src="/img/navod-rezimy.webp" alt="Výběr režimu v aplikaci: Cestovatel, Objevitel, Dobyvatel a řádek Co který režim umí" width="540" height="1080" loading="lazy">
+      <figcaption>Zlaté tlačítko → výběr režimu</figcaption>
+    </figure>
+    <figure class="snimek">
+      <img src="/img/navod-pruvodce.webp" alt="Průvodce režimy v aplikaci – první strana" width="540" height="1080" loading="lazy">
+      <figcaption>Průvodce režimy přímo v aplikaci</figcaption>
+    </figure>
+  </div>
+  </div>
 
   <!-- ── CESTOVATEL ─────────────────────────────────────────────── -->
   <section id="cestovatel" class="rezim-blok">
@@ -104,6 +121,20 @@
         <li><strong>Plán výletu</strong> – v Deníku → <span class="tl">Kalendář</span> naklikáte zastávky, aplikace spočítá kilometry, stoupání a čas. Mezizastávky a offline s Premiem.</li>
         <li><strong>Tipy do okolí</strong> – widget na ploše telefonu nabízí výlety podle vaší polohy: Navigovat · Info · Na mapě.</li>
       </ol>
+      <div class="snimky">
+    <figure class="snimek">
+      <img src="/img/navod-hledani.webp" alt="Hledání „potraviny“: nejbližší krám první, i bez jména" width="540" height="702" loading="lazy">
+      <figcaption>Hledat: „potraviny“ – od nejbližšího</figcaption>
+    </figure>
+    <figure class="snimek">
+      <img src="/img/navod-krizek.webp" alt="Po klepnutí na výsledek je místo přesně na křížku mapy" width="540" height="930" loading="lazy">
+      <figcaption>Vybrané místo je na křížku mapy</figcaption>
+    </figure>
+    <figure class="snimek">
+      <img src="/img/app-turisticka.webp?v=3" alt="Turistická mapa se značkami KČT a vrstevnicemi" width="540" height="1082" loading="lazy">
+      <figcaption>Turistická mapa se značkami KČT</figcaption>
+    </figure>
+      </div>
       <p class="pozn">Bez signálu: tlačítko vrstev → <strong>Balíčky</strong> stáhne okres do telefonu.</p>
       <p class="dal-rezim"><a href="/cestovatel/">Víc o Cestovateli →</a></p>
     </div>
@@ -130,6 +161,20 @@
         <li><strong>Poznámky</strong> – na kartě místa si zapíšete poznámku nebo klepnete <span class="tl">Byl jsem tady</span>.</li>
         <li><strong>Přátelé</strong> – Více → <span class="tl">Přátelé</span>, přítele přidáte šestimístným kódem. Společná mapa objevených obcí a jeho poloha, dokud jste ve spojení.</li>
       </ol>
+      <div class="snimky">
+    <figure class="snimek">
+      <img src="/img/navod-objevitel.webp" alt="Objevitel: malovaná mapa, mlha ustupuje kolem prochozené cesty" width="540" height="930" loading="lazy">
+      <figcaption>Mlha ustupuje tam, kudy projdeš</figcaption>
+    </figure>
+    <figure class="snimek">
+      <img src="/img/navod-uroven.webp" alt="Obrazovka Úspěchy a výzvy: úroveň, XP, sbírky" width="540" height="930" loading="lazy">
+      <figcaption>Úroveň: sbírky, úspěchy a výzvy</figcaption>
+    </figure>
+    <figure class="snimek">
+      <img src="/img/app-herni.webp?v=3" alt="Herní mapa v noci se světly vesnic" width="540" height="1082" loading="lazy">
+      <figcaption>Herní mapa – tady v noci</figcaption>
+    </figure>
+      </div>
       <p class="dal-rezim"><a href="/objevitel/">Víc o Objeviteli →</a></p>
     </div>
   </section>
@@ -153,6 +198,12 @@
         <li><strong>Kraj</strong> – je dobytý, když váš tým drží nadpoloviční hodnotu jeho vlajek. Místo Seznamu vidíte v aplikaci <strong>skóre týmů</strong>; mapa a žebříčky jsou i <a href="/dobyvatel/">tady na webu</a>.</li>
         <li><strong>Vlastní soutěž</strong> – pro partu, firmu nebo obec: založíte ji na webu v <a href="/dobyvatel/">Dobyvateli</a> (s Premiem), vyberete místa a týmy a pošlete odkaz. V aplikaci pak <span class="tl">Změnit tým</span> → <span class="tl">Jiná soutěž</span> → <span class="tl">Zadat kód soutěže</span>.</li>
       </ol>
+      <div class="snimky">
+    <figure class="snimek siroky">
+      <img src="/img/app-dobyvatel.webp" alt="Dobyvatel: mapa krajů s vlajkami a skóre týmů" width="1200" height="900" loading="lazy">
+      <figcaption>Vlajky a území týmů</figcaption>
+    </figure>
+      </div>
       <p class="dal-rezim"><a href="/dobyvatel/">Víc o Dobyvateli →</a></p>
     </div>
   </section>
@@ -168,6 +219,12 @@
         <li><strong>Vlastní místo</strong> – podržte prst na mapě: váš kopeček, studánka nebo altán s fotkou a popisem.</li>
         <li><strong>Průvodce v aplikaci</strong> – Více → Nastavení → <span class="tl">Rychlý průvodce</span> a <span class="tl">Průvodce režimy</span>; nebo zlaté tlačítko → <span class="tl">Co který režim umí?</span></li>
       </ol>
+      <div class="snimky">
+    <figure class="snimek">
+      <img src="/img/navod-denik.webp" alt="Deník s kalendářem: záznamy, fotovýpravy a plán výletu" width="540" height="930" loading="lazy">
+      <figcaption>Deník: kalendář, zápisy, fotovýpravy</figcaption>
+    </figure>
+      </div>
     </div>
   </section>
 </main>
