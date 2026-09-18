@@ -69,7 +69,7 @@ const Dekorace = (() => {
               'deko-strom-16', 'deko-strom-17', 'deko-strom-19',
               'deko-strom-20', 'deko-strom-22', 'deko-strom-25'],
       k: 1.15,                    // 5. 9. večer: k = podíl výšky stromu (~25 m)
-      hustota: 0.56,              // v1.425: „stromů uber o 20 %“ (0,70→0,56)
+      hustota: 0.70,              // v1.425: 0,70→0,56 („uber o 20 %“); 18. 9. 2026 zpět 0,70 („přidej více stromů“)
     },
     // ⭐ 5. 9. noc: OVOCNÉ STROMY v sadech a zahradách (ZABAGED v2) – menší
     // než lesní strom, hustě (zahrada u domu mívá pár stromů). Dřív byly
@@ -861,11 +861,12 @@ const Dekorace = (() => {
     if (taktRoje) return;
     taktRoje = true;
     if (window.KlidovyTakt) {
-      KlidovyTakt.pridej('roj', tikRoje, 2);
+      // engine 329: roj každý tik (≈15 Hz) – kroky se škálují časem (T v rojSvetlusek)
+      KlidovyTakt.pridej('roj', tikRoje, 1);
       KlidovyTakt.pridej('kridla', () => { if (document.visibilityState === 'visible') krokKridel(); }, 1);
     } else {
-      setInterval(tikRoje, 250);
-      setInterval(krokKridel, 100);
+      setInterval(tikRoje, 66);
+      setInterval(krokKridel, 66);
     }
   }
 
@@ -1254,6 +1255,14 @@ const Dekorace = (() => {
 
   function rojSvetlusek(rezim) {
     rojSvetlusek._tik = (rojSvetlusek._tik || 0) + 1;
+    // engine 329: T = násobek proti původnímu kroku 200 ms (5 Hz). Při 15 Hz je
+    // T ≈ 0,33 – posun, zatáčení, dech i přerod se škálují, takže hmyz letí
+    // stejně rychle jako dřív, jen po jemnějších krocích.
+    const tedMs = performance.now();
+    const T = Math.min(2, Math.max(0.15,
+        (rojSvetlusek._posledniMs ? tedMs - rojSvetlusek._posledniMs : 200) / 200));
+    rojSvetlusek._posledniMs = tedMs;
+    const tikT = rojSvetlusek._tik * T;   // „tik v měřítku 5 Hz“ pro vlnění a přerod
     if (mapa.getZoom() < 13.2) rezim = null;   // jako mívala vrstva
     // ⭐ engine 301 (přání 11. 9. večer: „včelky a mouchy ať se ukazují až při
     // přiblížení, z dálky vypadají velké jako domy"): denní hmyz až od z16;
@@ -1351,29 +1360,29 @@ const Dekorace = (() => {
         zatoc = 0.22; krokM = (1.0 + Math.random() * 0.9) * silaVetru(); gumaOd = 90;
         const dv = Math.atan2(Math.sin(VITR - m.smer),
             Math.cos(VITR - m.smer));
-        m.smer += dv * 0.02;
+        m.smer += dv * 0.02 * T;
       } else if (m.typ === 'list') {
         // list poskakuje větrem a kymácí se
         const VITR = smerVetru();
         zatoc = 0.5; krokM = (2.0 + Math.random() * 1.4) * silaVetru(); gumaOd = 80;
         const dv = Math.atan2(Math.sin(VITR - m.smer),
             Math.cos(VITR - m.smer));
-        m.smer += dv * 0.03
-            + Math.sin((rojSvetlusek._tik + (m.rozfaze || 0)) / 5)
-              * 0.22;
+        m.smer += (dv * 0.03
+            + Math.sin((tikT + (m.rozfaze || 0)) / 5)
+              * 0.22) * T;
       } else if (m.typ === 'vlocka') {
         // vločka se snáší zvolna, s jemným kolébáním po větru
         const VITR = smerVetru();
         zatoc = 0.3; krokM = (0.7 + Math.random() * 0.6) * silaVetru(); gumaOd = 100;
         const dv = Math.atan2(Math.sin(VITR - m.smer),
             Math.cos(VITR - m.smer));
-        m.smer += dv * 0.02
-            + Math.sin((rojSvetlusek._tik + (m.rozfaze || 0)) / 8)
-              * 0.12;
+        m.smer += (dv * 0.02
+            + Math.sin((tikT + (m.rozfaze || 0)) / 8)
+              * 0.12) * T;
       }
-      m.smer += (Math.random() - 0.5) * zatoc;
-      m.x += Math.cos(m.smer) * krokM * mLon;
-      m.y += Math.sin(m.smer) * krokM * mLat;
+      m.smer += (Math.random() - 0.5) * zatoc * Math.sqrt(T);
+      m.x += Math.cos(m.smer) * krokM * T * mLon;
+      m.y += Math.sin(m.smer) * krokM * T * mLat;
       const dx = (m.x - m.kx) / mLon, dy = (m.y - m.ky) / mLat;
       const dal = Math.hypot(dx, dy);
       if (dal > gumaOd) {
@@ -1382,7 +1391,7 @@ const Dekorace = (() => {
       // dech jasu; po zhasnutí přerod u jiné kotvy
       // ⭐ v1.419: denní hmyz NEMIZÍ („ať přes den nemizí“) — jen
       // věčně krouží u kotvy s drobným třepetáním jasu 0,85–1,0.
-      const dechKrok = m.typ === 'svetluska' ? 0.027 : 0.09;
+      const dechKrok = (m.typ === 'svetluska' ? 0.027 : 0.09) * T;
       const dj = m.cil - m.jas;
       m.jas += Math.abs(dj) <= dechKrok ? dj : Math.sign(dj) * dechKrok;
       // ⚠️ DENNÍ HMYZ, KTERÝ ULETĚL Z VÝŘEZU, SE PŘERODÍ V DOHLEDU.
@@ -1395,7 +1404,7 @@ const Dekorace = (() => {
       // pole `m.rozfaze`, ať se všechny mušky nepřerozují naráz.
       if (m.rozfaze === undefined) m.rozfaze = (Math.random() * 15) | 0;
       if (rezim !== 'noc'
-          && ((rojSvetlusek._tik + m.rozfaze) % 15) === 0
+          && ((rojSvetlusek._tik + m.rozfaze) % Math.max(1, Math.round(15 / T))) === 0
           && !naObrazovce(m.x, m.y, 80)) {
         const zk = (m.typ === 'mura' && okna && okna.length)
             ? okna : (kotvy.length ? kotvy : okna);

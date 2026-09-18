@@ -407,6 +407,7 @@ function nastaveniMapyNeniVychozi() {
 }
 /// engine 321: po změně dohledu přestavět vrstvy domů (prahy jsou v addLayer),
 /// posunout rozsah stínů, stromů a přepočítat kresby míst.
+let dohledStylAplikovan = '';   // engine 329: pro který styl už dohled platí
 function aplikujDohled() {
   if (!mapa) return;
   const dz = dohledDz();
@@ -3689,7 +3690,7 @@ function prepoctiOkna3d() {
     if (!okna) {
       okna = spocitejOknaDomu(dm, vyska, kxM, kyM);
       if (okna === null) continue;                   // terén u domu ještě není – příště
-      if (oknaKes.size > 4000) oknaKes.clear();
+      if (oknaKes.size > 12000) oknaKes.clear();   // engine 329: 4000 → 12000 (los domu ať drží)
       oknaKes.set(dm.klic, okna);
       spocitano++;
     }
@@ -3709,6 +3710,13 @@ function prepoctiOkna3d() {
   if (nov === oknaPodpis) return;
   oknaPodpis = nov;
   try { window.__oknaR = features.map((f) => f.properties.r); } catch (e) { /* nic */ }   // engine 268: pro blikání
+  // ⛔ engine 329 („v noci se při každém posunu přepočítávají světla domů"):
+  // okna dostávají id podle POŘADÍ v setData (generateId) a stav blikání
+  // (`sv` ve feature-state) zůstával přilepený na ČÍSLA – po posunu mapy se
+  // pořadí domů změnilo a rozsvícená okna přeskočila na cizí domy, takže
+  // celá vesnice „přeblikla“. Stav blikání se proto před novými daty smaže;
+  // základní vzor světel drží `r` v keši domu (oknaKes), ten posun nemění.
+  try { mapa.removeFeatureState({ source: 'okna-3d' }); } catch (e) { /* nic */ }
   try { zdroj.setData(features.length ? { type: 'FeatureCollection', features: features.concat(zare) } : OKNA_PRAZDNE); }
   catch (e) { /* zdroj se zrovna mění */ }
   try {
@@ -7567,7 +7575,10 @@ window.startZUrl = startZUrl;
 // Při pohybu mapy si moduly dál jedou po rAF (musí sedět na krajině).
 // ---------------------------------------------------------------------------
 const KlidovyTakt = (() => {
-  const KROK_MS = 100;
+  // engine 329 (přání „posouvat můry, včely a netopýry plynuleji, třeba 15 Hz"):
+  // 100 → 66 ms. Odběratelé, kteří nemají zůstat rychlejší, si zvedli `kazdy`
+  // (obloha 2 → 3 = 5 Hz); roj jede každý tik a krok škáluje časem (T).
+  const KROK_MS = 66;
   const odberatele = [];       // {jmeno, fn, kazdy}
   let tik = 0;
   let casovac = null;
@@ -8120,7 +8131,16 @@ window.OkolnikMost = {
       for (const k of ['objekty3d', 'ilustrace', 'stiny', 'podpisy', 'tempo30']) if (k in c) NASTAVENI_MAPY[k] = !!c[k];
       if ('dohled' in c) {
         const d = Math.max(1, Math.min(3, Math.round(Number(c.dohled) || 2)));
-        if (d !== NASTAVENI_MAPY.dohled) { NASTAVENI_MAPY.dohled = d; aplikujDohled(); }
+        // engine 329 („appka si nepamatuje nastavení mapy"): po VÝMĚNĚ STYLU
+        // (Cestovatel ↔ Objevitel, den/noc) vznikají vrstvy s výchozími prahy
+        // a `dohled` v paměti se rovnal tomu z appky → nic se nepřepočítalo
+        // a mapa jela na středním dohledu, i když bylo uloženo jinak.
+        const stylTed = typeof aktualniKod !== 'undefined' ? aktualniKod : '';
+        if (d !== NASTAVENI_MAPY.dohled || (d !== 2 && dohledStylAplikovan !== stylTed)) {
+          NASTAVENI_MAPY.dohled = d;
+          aplikujDohled();
+        }
+        dohledStylAplikovan = stylTed;
       }
       aplikujNastaveniMapy(false);
       if (NASTAVENI_MAPY.tempo30) TempoGesta.nasad();

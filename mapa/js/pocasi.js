@@ -1377,7 +1377,7 @@ const Pocasi = (() => {
       if (!klid || tikac) return;       // při pohybu kreslí vlastní časovač
       if (Date.now() - posledniPohybMs <= KLID_PO_MS) return;
       tikOblohy();
-    }, 2);
+    }, 3);   // engine 329: takt 66 ms → každý 3. tik ≈ 5 Hz jako dřív
   }
   function rozjedTikac() {
     clearTimeout(tikac);
