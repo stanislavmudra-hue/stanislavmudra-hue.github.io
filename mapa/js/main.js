@@ -4910,6 +4910,83 @@ function vykresliStopuDne() {
   }
 }
 
+// ⭐ engine 327 (18. 9. 2026): UKÁZAT FOTOVÝPRAVU S FOTKAMI („když bude
+// zaplý 3D režim, ať se trasa s fotkami ukáže i v náhledu 3D"). Appka pošle
+// trasu a body fotek (`OkolnikMost.vyprava`), engine je nakreslí fialově
+// (jako trasa výpravy na OSM podkladu v appce) s očíslovanými kolečky
+// fotek; klepnutí na kolečko hlásí appce `onVypravaFoto(i)` → prohlížeč
+// fotky. Prázdná trasa = smazat. Kamera se nastaví na celou výpravu.
+let vypravaUkaz = null;   // { trasa: [[lng,lat]…], fotky: [{lng,lat,i}] }
+const VYPRAVA_UKAZ_BARVA = '#7B1FA2';
+function vykresliVypravuUkaz(sPrelety) {
+  if (!mapa || !mapa.getStyle()) {
+    clearTimeout(vykresliVypravuUkaz._t);
+    vykresliVypravuUkaz._t = setTimeout(() => vykresliVypravuUkaz(sPrelety), 250);
+    return;
+  }
+  try {
+    const v = vypravaUkaz;
+    const trasa = { type: 'FeatureCollection', features: (!v || v.trasa.length < 2) ? [] : [{
+      type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: v.trasa } }] };
+    const fotky = { type: 'FeatureCollection', features: !v ? [] : v.fotky.map((f) => ({
+      type: 'Feature', properties: { i: f.i, n: String(f.i + 1) },
+      geometry: { type: 'Point', coordinates: [f.lng, f.lat] } })) };
+    const zT = mapa.getSource('okolnik-vyprava-ukaz');
+    const zF = mapa.getSource('okolnik-vyprava-ukaz-foto');
+    if (zT && zF) { zT.setData(trasa); zF.setData(fotky); }
+    else {
+      mapa.addSource('okolnik-vyprava-ukaz', { type: 'geojson', data: trasa, maxzoom: 14 });
+      mapa.addSource('okolnik-vyprava-ukaz-foto', { type: 'geojson', data: fotky });
+      mapa.addLayer({ id: 'okolnik-vyprava-ukaz-podklad', type: 'line', source: 'okolnik-vyprava-ukaz',
+        paint: { 'line-color': '#FFFFFF', 'line-width': 8, 'line-opacity': 0.75 },
+        layout: { 'line-cap': 'round', 'line-join': 'round' } }, prvniNedrapovanaVrstva());
+      mapa.addLayer({ id: 'okolnik-vyprava-ukaz-linka', type: 'line', source: 'okolnik-vyprava-ukaz',
+        paint: { 'line-color': VYPRAVA_UKAZ_BARVA, 'line-width': 4.2, 'line-opacity': 0.95 },
+        layout: { 'line-cap': 'round', 'line-join': 'round' } }, prvniNedrapovanaVrstva());
+      // fotky NAD vším (symbolová vrstva bez beforeId = na konci stylu)
+      mapa.addLayer({ id: 'okolnik-vyprava-ukaz-foto', type: 'circle', source: 'okolnik-vyprava-ukaz-foto',
+        paint: { 'circle-radius': 13, 'circle-color': VYPRAVA_UKAZ_BARVA,
+                 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 3,
+                 'circle-pitch-alignment': 'viewport' } });
+      mapa.addLayer({ id: 'okolnik-vyprava-ukaz-cislo', type: 'symbol', source: 'okolnik-vyprava-ukaz-foto',
+        layout: { 'text-field': ['get', 'n'], 'text-font': ['Noto Sans Bold'], 'text-size': 12,
+                  'text-allow-overlap': true, 'text-ignore-placement': true },
+        paint: { 'text-color': '#FFFFFF' } });
+      mapa.on('click', 'okolnik-vyprava-ukaz-foto', (e) => {
+        const ev = e.originalEvent || e;
+        if (ev.__vypravaFoto) return;
+        ev.__vypravaFoto = true;
+        const f = e.features && e.features[0];
+        if (f) mostHlas('onVypravaFoto', Number(f.properties.i));
+      });
+    }
+    if (v && sPrelety) {
+      const body = [...v.trasa, ...v.fotky.map((f) => [f.lng, f.lat])];
+      if (body.length) {
+        let z = 999, v2 = -999, j = 999, s = -999;
+        for (const [lng, lat] of body) { if (lng < z) z = lng; if (lng > v2) v2 = lng; if (lat < j) j = lat; if (lat > s) s = lat; }
+        if (v2 - z < 0.002 && s - j < 0.0012) { z -= 0.002; v2 += 0.002; j -= 0.0012; s += 0.0012; }
+        zrusKotvu && zrusKotvu('vyprava');
+        mapa.fitBounds([[z, j], [v2, s]], { padding: 70, maxZoom: 16.4, duration: 900, essential: true });
+      }
+    }
+  } catch (e) {
+    clearTimeout(vykresliVypravuUkaz._t);
+    vykresliVypravuUkaz._t = setTimeout(() => vykresliVypravuUkaz(sPrelety), 400);
+  }
+}
+/// Je pod bodem klepnutí kolečko fotky? (sběrač klepnutí ho pak spolkne –
+/// ať se k fotce neotevře ještě detail místa pod ní)
+function vypravaUkazSpolklKlik(e) {
+  if (!vypravaUkaz || !mapa.getLayer('okolnik-vyprava-ukaz-foto')) return false;
+  try {
+    const p = e.point;
+    const f = mapa.queryRenderedFeatures([[p.x - 8, p.y - 8], [p.x + 8, p.y + 8]],
+        { layers: ['okolnik-vyprava-ukaz-foto'] });
+    return f.length > 0;
+  } catch (err) { return false; }
+}
+
 // ⭐ engine 277 (v1.613.50): PŘÁTELÉ – značky s jménem (kolečko v barvě
 // přítele + přezdívka a stáří polohy) a jejich objevené obce jako barevné
 // území („společná mapa"). Data drží appka (`Pratele.proEngine`), engine
@@ -8365,6 +8442,15 @@ window.OkolnikMost = {
 
   /// TRASA VYBRANÉHO DNE (v1.450): appka pošle body z kalendáře,
   /// prázdné pole trasu smaže. Na mapě se sama neobjeví.
+  // engine 327: fotovýprava s fotkami (trasa [[lat,lng]], fotky [{lat,lng,i}]); [] = smazat
+  vyprava(trasa, fotky) {
+    try {
+      const t = (trasa || []).map((b) => [b[1], b[0]]);
+      const f = (fotky || []).map((x) => ({ lng: x.lng ?? x.lon, lat: x.lat, i: x.i }));
+      vypravaUkaz = t.length || f.length ? { trasa: t, fotky: f } : null;
+      vykresliVypravuUkaz(!!vypravaUkaz);
+    } catch (e) { console.warn('[most] vyprava', e); }
+  },
   stopaDne(trasa) {
     try {
       stopaDne = (trasa || []).map((b) => [b[1], b[0]]);
@@ -10223,6 +10309,7 @@ function registrujKlikMista() {
     // vlajka Dobyvatele pod prstem má přednost před vším – celé klepnutí
     // se spolkne (26. 8.), i pro posluchače, kteří přijdou po tomhle
     let spolknuto = !!(window.Dobyvatel && Dobyvatel.spolklKlik(e));
+    if (!spolknuto && vypravaUkazSpolklKlik(e)) spolknuto = true;   // engine 327
     const ted = performance.now();
     const pt = e.point || { x: 0, y: 0 };
     const dvojity = !!(posledniKlep && ted - posledniKlep.t < DVOJKLIK_MS + 40
