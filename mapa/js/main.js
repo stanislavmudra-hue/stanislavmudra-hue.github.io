@@ -7999,6 +7999,25 @@ function zrusPlanStopu() {
   } catch (e) { }
 }
 
+// engine 326: po doletu (flyTo) s terénem a náklonem srovnat střed na cíl –
+// viz OkolnikMost.letNa. Jen pro poslední vyžádaný let a jen bez prstu na mapě.
+let dorovnaniLetuId = 0;
+function dorovnejStredPoDoletu(lng, lat) {
+  if (!mapa || !mapa.getTerrain || !mapa.getTerrain()) return;
+  const id = ++dorovnaniLetuId;
+  mapa.once('moveend', () => {
+    if (id !== dorovnaniLetuId || prstyDole > 0) return;
+    try {
+      if (mapa.getPitch() < 1) return;
+      const c = mapa.getCenter();
+      const d = Math.hypot((lat - c.lat) * 111320,
+          (lng - c.lng) * 111320 * Math.cos(lat * Math.PI / 180));
+      // pár metrů = šum; přes 400 m = kamera je už jinde (uživatel, kotva)
+      if (d > 0.5 && d < 400) mapa.jumpTo({ center: [lng, lat] });
+    } catch (e) { /* styl v přestavbě */ }
+  });
+}
+
 window.OkolnikMost = {
   /// v1.601.2: dynamické rozlišení při gestu zapnout/vypnout za běhu
   /// (ladění; výchozí vypnuto kvůli mizení symbolů).
@@ -8595,6 +8614,13 @@ window.OkolnikMost = {
         }
       }
       mapa.flyTo(cil);
+      // engine 326 („místo z hledání má být přesně na křížku"): s terénem a
+      // náklonem skončí přelet o desítky px vedle – MapLibre po doletu
+      // přepočítá střed na výšku terénu (recalculateZoom: kamera zůstane,
+      // střed sklouzne podél pohledu; změřeno 64 px při z15,5 / 42°).
+      // Skok po doletu už výšku bere a sedí na pixel (jen vědomé přelety
+      // se zoomem/tlačítkem, ne sledování polohy – to by při chůzi cukalo).
+      if (cil.zoom || vynutit) dorovnejStredPoDoletu(lng, lat);
     } catch (e) { console.warn('[most] letNa', e); }
   },
 
