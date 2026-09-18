@@ -943,8 +943,24 @@ const Dekorace = (() => {
     + '<path d="M4 2 L5 2.9 L6 2 M4 8 L5 7.1 L6 8"/></g>'
     + '<circle cx="5" cy="5" r="0.8" fill="#FFFFFF"/></svg>';
 
-  // směr „větru" pro babí léto a listí — jeden na celý běh appky
-  const VITR = Math.random() * Math.PI * 2;
+  // směr „větru" pro babí léto a listí — náhodný jen jako záloha; engine 328
+  // bere SKUTEČNÝ vítr z počasí (`Pocasi.vitr().smerRoj`), když nějaký fouká
+  const VITR_ZALOHA = Math.random() * Math.PI * 2;
+  function smerVetru() {
+    try {
+      const v = typeof Pocasi !== 'undefined' && Pocasi.vitr && Pocasi.vitr();
+      if (v && !v.bezvetri) return v.smerRoj;
+    } catch (e) { /* nic */ }
+    return VITR_ZALOHA;
+  }
+  /// násobek kroku po větru: bezvětří 0,6 → 15 km/h 1,0 → 40+ km/h 1,5
+  function silaVetru() {
+    try {
+      const v = typeof Pocasi !== 'undefined' && Pocasi.vitr && Pocasi.vitr();
+      if (v) return 0.6 + Math.min(1, v.kmh / 40) * 0.9;
+    } catch (e) { /* nic */ }
+    return 1;
+  }
   const LISTI_BARVY = ['#C9862B', '#B4541E', '#8E6B1F', '#C7A22F'];
 
   // ⭐ v1.530: VČELA PODLE FOTOGRAFIE (uživatel poslal předlohu).
@@ -1331,13 +1347,15 @@ const Dekorace = (() => {
         zatoc = 1.05; krokM = 4.2 + Math.random() * 2.6; gumaOd = 140;
       } else if (m.typ === 'babileto') {
         // vlákno se nese větrem, skoro rovně
-        zatoc = 0.22; krokM = 1.0 + Math.random() * 0.9; gumaOd = 90;
+        const VITR = smerVetru();
+        zatoc = 0.22; krokM = (1.0 + Math.random() * 0.9) * silaVetru(); gumaOd = 90;
         const dv = Math.atan2(Math.sin(VITR - m.smer),
             Math.cos(VITR - m.smer));
         m.smer += dv * 0.02;
       } else if (m.typ === 'list') {
         // list poskakuje větrem a kymácí se
-        zatoc = 0.5; krokM = 2.0 + Math.random() * 1.4; gumaOd = 80;
+        const VITR = smerVetru();
+        zatoc = 0.5; krokM = (2.0 + Math.random() * 1.4) * silaVetru(); gumaOd = 80;
         const dv = Math.atan2(Math.sin(VITR - m.smer),
             Math.cos(VITR - m.smer));
         m.smer += dv * 0.03
@@ -1345,7 +1363,8 @@ const Dekorace = (() => {
               * 0.22;
       } else if (m.typ === 'vlocka') {
         // vločka se snáší zvolna, s jemným kolébáním po větru
-        zatoc = 0.3; krokM = 0.7 + Math.random() * 0.6; gumaOd = 100;
+        const VITR = smerVetru();
+        zatoc = 0.3; krokM = (0.7 + Math.random() * 0.6) * silaVetru(); gumaOd = 100;
         const dv = Math.atan2(Math.sin(VITR - m.smer),
             Math.cos(VITR - m.smer));
         m.smer += dv * 0.02

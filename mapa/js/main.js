@@ -2118,6 +2118,8 @@ function aplikujDoplnky() {
     try { Trpyt.pripoj(mapa); } catch (e) { console.warn('[trpyt]', e); }
     // ⭐ 5. 9. 2026: káně kroužící nad krajinou (den, herní styl)
     try { Ptaci.pripoj(mapa); } catch (e) { console.warn('[ptaci]', e); }
+    // engine 328: větrné kudrlinky při silném větru (vitr.js)
+    try { if (window.Vitr) Vitr.pripoj(mapa); } catch (e) { console.warn('[vitr]', e); }
     try { nasadDomalovani(); } catch (e) { console.warn('[domalovani]', e); }
   } else {
     Pocasi.zavri();

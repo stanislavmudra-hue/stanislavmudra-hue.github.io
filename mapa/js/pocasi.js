@@ -144,6 +144,8 @@ const Pocasi = (() => {
   let dataCas = 0;
   let tikac = null;
   let faze = 0;
+  // engine 328: vítr pro drift mraků (obrazovkový vektor, síla 0..1) – v tiku oblohy
+  let vitrMrakySila = 0, vitrMrakyX = 0, vitrMrakyY = 0;
   let posledniKresba = 0;
   // plátno mraků kreslíme v polovičním rozlišení (roztažené CSS)
   const MERITKO_PLATNA = 0.5;
@@ -176,6 +178,10 @@ const Pocasi = (() => {
       // v1.606: sníh na zemi (cm) a teplota – pro sezónu malby
       snih: isFinite(+p.snih) ? Math.max(0, +p.snih) : 0,
       teplota: isFinite(+p.teplota) ? +p.teplota : null,
+      // engine 328: vítr km/h, směr ° ODKUD, nárazy km/h
+      vitr: isFinite(+p.vitr) ? Math.max(0, +p.vitr) : 0,
+      vitrSmer: isFinite(+p.vitrSmer) ? +p.vitrSmer : 0,
+      naraz: isFinite(+p.naraz) ? Math.max(0, +p.naraz) : 0,
     })).filter((p) => isFinite(p.lat) && isFinite(p.lng));
     if (!nova.length) return;
     data = nova;
@@ -214,7 +220,8 @@ const Pocasi = (() => {
     const lat = KRAJE.map((k) => k[1]).join(',');
     const lng = KRAJE.map((k) => k[0]).join(',');
     fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat
-          + '&longitude=' + lng + '&current=weather_code,cloud_cover')
+          + '&longitude=' + lng + '&current=weather_code,cloud_cover'
+          + ',wind_speed_10m,wind_direction_10m,wind_gusts_10m')
       .then((r) => r.json())
       .then((d) => {
         const pole = Array.isArray(d) ? d : [d];
@@ -223,6 +230,9 @@ const Pocasi = (() => {
           lat: KRAJE[i][1],
           druh: druhZKodu((m.current && m.current.weather_code) || 0),
           oblacnost: ((m.current && m.current.cloud_cover) || 0) / 100,
+          vitr: (m.current && +m.current.wind_speed_10m) || 0,
+          vitrSmer: (m.current && +m.current.wind_direction_10m) || 0,
+          naraz: (m.current && +m.current.wind_gusts_10m) || 0,
         }));
         console.log('[Pocasi] načteno bodů:', data.length);
       })
@@ -338,11 +348,36 @@ const Pocasi = (() => {
       druh: w ? w.druh : 'jasno',
       snih: w && isFinite(w.snih) ? w.snih : 0,
       mokro: Date.now() - poslDestMs < 3 * 3600e3,
+      // engine 328
+      vitr: w && isFinite(w.vitr) ? w.vitr : 0,
+      vitrSmer: w && isFinite(w.vitrSmer) ? w.vitrSmer : 0,
+      naraz: w && isFinite(w.naraz) ? w.naraz : 0,
     };
     if (window.__vynutSvetlo && typeof window.__vynutSvetlo === 'object') {
       Object.assign(st, window.__vynutSvetlo);
     }
     return st;
+  }
+
+  /// engine 328: VÍTR u středu mapy – {kmh, naraz, smerOdkud (°), sila 0..1,
+  /// smerRoj (matematický úhel v lon/lat, kam fouká – pro roj v dekorace.js)}.
+  /// Čte přes stavSvetla, takže `__vynutSvetlo = {vitr, vitrSmer, naraz}`
+  /// funguje jako u světla. Pamatuje si výsledek na 2 s (tiká to 10×/s).
+  let vitrKes = null, vitrKesMs = 0;
+  function vitr() {
+    const ted = Date.now();
+    if (vitrKes && ted - vitrKesMs < 2000) return vitrKes;
+    let st;
+    try { st = stavSvetla(); } catch (e) { st = null; }
+    const kmh = st && isFinite(st.vitr) ? Math.max(0, st.vitr) : 0;
+    const naraz = st && isFinite(st.naraz) ? Math.max(0, st.naraz) : 0;
+    const odkud = st && isFinite(st.vitrSmer) ? ((st.vitrSmer % 360) + 360) % 360 : 0;
+    // kam fouká: kompas (odkud + 180) → matematický úhel (0 = východ, π/2 = sever)
+    const smerRoj = (90 - (odkud + 180)) * Math.PI / 180;
+    vitrKes = { kmh, naraz, smerOdkud: odkud,
+      sila: Math.max(0, Math.min(1, kmh / 40)), smerRoj, bezvetri: kmh < 3 };
+    vitrKesMs = ted;
+    return vitrKes;
   }
 
   function denniFaze() {
@@ -768,8 +803,15 @@ const Pocasi = (() => {
       if (sila <= 0.01) continue;
       // drift počítáme zvlášť, ať ho stín a mokro na zemi kopírují —
       // jinak by mrak plul a jeho stín stál
-      const driftX = Math.cos(faze * 0.13 + m.f1) * m.g * 0.09;
-      const driftY = Math.sin(faze * 0.17 + m.f2) * m.g * 0.05;
+      let driftX = Math.cos(faze * 0.13 + m.f1) * m.g * 0.09;
+      let driftY = Math.sin(faze * 0.17 + m.f2) * m.g * 0.05;
+      // engine 328: mraky se za větru pohupují DÁL a po směru větru (pomalá
+      // vlna ~140 s ve směru, kam fouká, síla podle rychlosti) – bez snímků navíc
+      if (vitrMrakySila > 0.05) {
+        const vlna = Math.sin(faze * 0.045 + m.f1) * m.g * 0.35 * vitrMrakySila;
+        driftX += vlna * vitrMrakyX;
+        driftY += vlna * vitrMrakyY;
+      }
       // v1.599: dojezd z polohy před přepočtem + nástup nových mraků
       const kD = m.t0 ? Math.min(1, (performance.now() - m.t0) / DOJEZD_MS) : 1;
       const eD = 1 - Math.pow(1 - kD, 3);
@@ -1312,6 +1354,12 @@ const Pocasi = (() => {
       // ⚠️ Strop 1 s: po návratu z pozadí (nebo po uspání časovačů) by
       // jinak mraky skokem přeletěly půl obrazovky.
       faze += Math.min(1.0, (posledniTikMs ? t - posledniTikMs : TIK_MS) / 1000);
+      try {
+        const v = vitr();
+        vitrMrakySila = v.sila;
+        const kam = ((v.smerOdkud + 180) - (mapa && mapa.getBearing ? mapa.getBearing() : 0)) * Math.PI / 180;
+        vitrMrakyX = Math.sin(kam); vitrMrakyY = -Math.cos(kam);
+      } catch (e) { vitrMrakySila = 0; }
       posledniTikMs = t;
       kresli();
     } else {
@@ -1391,5 +1439,5 @@ const Pocasi = (() => {
   }
 
   return { pripoj, zavri, nastavZvenku, nastavVidno, stavNoci, krokSlunce, snihCm,
-           polohaSlunce, polohaMesice, stavSvetla };
+           polohaSlunce, polohaMesice, stavSvetla, vitr };
 })();
