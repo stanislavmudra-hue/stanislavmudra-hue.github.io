@@ -28,7 +28,7 @@
   const STUPEN2 = { vitr: 25, naraz: 50 };
   const OD_Z = 15;
   let mapa = null;
-  let kudrlinky = [];        // { el, x, y, vx, vy, zivot, t, opac, meritko }
+  let kudrlinky = [];        // { el, x, y, vx, vy, zivot, spin, t, maxOpac, meritko }
   let dalsiPoryvMs = 0;
   let poryvDoMs = 0;
   let bazenek = [];          // recyklované divy
@@ -78,7 +78,7 @@
     if (!el) {
       el = document.createElement('div');
       el.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;'
-        + 'width:48px;height:20px;margin:-10px 0 0 -24px;will-change:transform,opacity;';
+        + 'width:48px;height:20px;margin:-10px 0 0 -24px;will-change:transform,opacity,filter;';
       el.innerHTML = SVG;
     }
     return el;
@@ -97,8 +97,11 @@
     for (let i = 0; i < pocet; i++) {
       // zrod na návětrném okraji: střed − směr·R + kolmý rozptyl
       const k = (Math.random() - 0.5) * Math.min(W, H) * 0.9;
-      const x = W / 2 - s.x * R + kolmo.x * k;
-      const y = H / 2 - s.y * R + kolmo.y * k;
+      // engine 332 („ať se točí a rozplývá"): rodí se blíž (0,55–0,95 R
+      // proti větru), žije jen 2,8–4,3 s a mezitím se otáčí a rozplyne
+      const rr = R * (0.55 + Math.random() * 0.4);
+      const x = W / 2 - s.x * rr + kolmo.x * k;
+      const y = H / 2 - s.y * rr + kolmo.y * k;
       const el = prvek();
       const meritko = 0.8 + Math.random() * 0.5 + (st === 2 ? 0.2 : 0);
       el.style.opacity = '0';
@@ -112,6 +115,9 @@
         kolmo, uhel: s.uhelDeg - 90,
         zpozdeni: i * (0.25 + Math.random() * 0.35),   // s – ať neletí v řadě
         t: 0, maxOpac: (noc ? 0.4 : 0.85) * (0.8 + Math.random() * 0.2),
+        zivot: 2.8 + Math.random() * 1.5,                // s – délka života
+        // otáčení: ±(70–150) °/s, každá jinam; ke konci zvolní (viz tik)
+        spin: (Math.random() < 0.5 ? -1 : 1) * (70 + Math.random() * 80),
         W, H,
       });
     }
@@ -150,15 +156,25 @@
         const mimo = px < -60 || py < -60 || px > k.W + 60 || py > k.H + 60;
         if (!mimo) k.bylVidet = true;
         const nastup = Math.min(1, ziv / 0.5);
-        const opac = k.maxOpac * nastup;
-        // pryč až po průletu obrazovkou (rodí se za jejím okrajem), nejdéle 12 s
-        if ((mimo && k.bylVidet) || ziv > 12) {
-          k.el.remove(); k.el.style.opacity = '0'; bazenek.push(k.el);
+        // engine 332: f = podíl života; posledních 45 % se kudrlinka
+        // ROZPLÝVÁ – krytí klesá, roste (×1,7) a rozostří se (blur do 3 px);
+        // celou dobu se TOČÍ (spin), ke konci pomaleji (√ brzda)
+        const f = Math.min(1, ziv / k.zivot);
+        const doz = f < 0.55 ? 1 : 1 - (f - 0.55) / 0.45;
+        const opac = k.maxOpac * nastup * doz;
+        const rust = 1 + 0.7 * Math.max(0, f - 0.55) / 0.45;
+        const rozostreni = 3 * Math.max(0, f - 0.55) / 0.45;
+        const otoc = k.uhel + k.spin * ziv * (1 - 0.5 * f);
+        // pryč po dožití (nebo po opuštění obrazovky)
+        if ((mimo && k.bylVidet) || f >= 1) {
+          k.el.remove(); k.el.style.opacity = '0'; k.el.style.filter = '';
+          bazenek.push(k.el);
           continue;
         }
         k.el.style.opacity = opac.toFixed(2);
+        k.el.style.filter = rozostreni > 0.05 ? 'blur(' + rozostreni.toFixed(1) + 'px)' : '';
         k.el.style.transform = 'translate(' + px.toFixed(1) + 'px,' + py.toFixed(1) + 'px) '
-          + 'rotate(' + k.uhel.toFixed(0) + 'deg) scale(' + k.meritko.toFixed(2) + ')';
+          + 'rotate(' + otoc.toFixed(0) + 'deg) scale(' + (k.meritko * rust).toFixed(2) + ')';
         zbyva.push(k);
       }
       kudrlinky = zbyva;
