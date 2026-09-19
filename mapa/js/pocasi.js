@@ -2,7 +2,8 @@
 //
 // Přenos chování z 2D Okolníku (atmosphere.dart + weather.dart, laděno
 // uživatelem ve v1.248 – „mraky menší, ale sytější"):
-//   · počasí z Open-Meteo pro 14 krajských bodů (jeden dotaz, bez klíče),
+//   · počasí z NAŠEHO serveru (MET Norway, 77 středů okresů; do engine 330
+//     Open-Meteo pro 14 krajských bodů) – jeden dotaz, bez klíče,
 //   · mrak visí NAD SVÝM KRAJEM (ne nad kamerou), pomalu se pohupuje,
 //   · velikost ve světě ~28 km (roste s mapou, s pojistkami vůči displeji),
 //   · základní síla 0,80; skoro jasno (< 30 % oblačnosti) = žádný mrak,
@@ -27,41 +28,13 @@ const Pocasi = (() => {
   const OBNOVA_MS = 30 * 60 * 1000;   // počasí stačí po půlhodinách
   // ⭐ 5. 9. 2026: 25 Hz – při 10 Hz mraky viditelně poskakovaly
   const TIK_MS = 40;
-  // ⭐ 5. 9. 2026: MRAKY NA SKUTEČNÝCH MÍSTECH – jemnější pevná mřížka
-  // bodů po ČR (0,45° × 0,3°, ~120 bodů) jen pro oblačnost; bez polohy
-  // uživatele (stejně jako KRAJE). Krajská data z aplikace zůstávají
-  // zdrojem pro světlo, sníh a déšť.
-  const MRAKY_MRIZKA = (() => {
-    const out = [];
-    for (let lat = 48.6; lat <= 51.05; lat += 0.3) {
-      for (let lng = 12.15; lng <= 18.85; lng += 0.45) {
-        out.push([+lng.toFixed(2), +lat.toFixed(2)]);
-      }
-    }
-    return out;
-  })();
-  let dataMraky = [];                 // [{lng, lat, druh, oblacnost}]
-  let dataMrakyCas = 0;
-  function stahniMraky() {
-    if (Date.now() - dataMrakyCas < 15 * 60 * 1000) return;
-    dataMrakyCas = Date.now();
-    const lat = MRAKY_MRIZKA.map((k) => k[1]).join(',');
-    const lng = MRAKY_MRIZKA.map((k) => k[0]).join(',');
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat
-          + '&longitude=' + lng + '&current=weather_code,cloud_cover')
-      .then((r) => r.json())
-      .then((d) => {
-        const pole = Array.isArray(d) ? d : [d];
-        dataMraky = pole.map((m, i) => ({
-          lng: MRAKY_MRIZKA[i][0],
-          lat: MRAKY_MRIZKA[i][1],
-          druh: druhZKodu((m.current && m.current.weather_code) || 0),
-          oblacnost: ((m.current && m.current.cloud_cover) || 0) / 100,
-        }));
-        console.log('[Pocasi] mřížka mraků:', dataMraky.length);
-      })
-      .catch((e) => console.warn('[Pocasi] mřížka mraků', e));
-  }
+  // ⛔ engine 331 (19. 9. 2026, audit licencí): druhý dotaz na Open-Meteo
+  // (mřížka ~120 bodů jen pro oblačnost) ZRUŠEN – Open-Meteo je zdarma jen
+  // nekomerčně. Mraky berou oblačnost z týchž bodů jako zbytek počasí
+  // (`data` = 77 středů okresů z našeho serveru / MET Norway – hustota
+  // srovnatelná s bývalou mřížkou 0,45° × 0,3° z 5. 9. 2026).
+  let dataMraky = [];                 // prázdné = mraky z `data`
+  function stahniMraky() { /* záměrně nic – viz engine 331 výše */ }
   const VELIKOST_KM = 28.0;           // v1.248: 45 → 28 km
   const SILA = 0.62;                  // v1.248: 0,55 → 0,80; engine 286: 0,62 („mraky otravné")
 

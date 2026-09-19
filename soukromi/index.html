@@ -8,7 +8,7 @@
 <meta name="color-scheme" content="light">
 <link rel="icon" href="/img/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/img/favicon.png">
-<link rel="stylesheet" href="/styl.css?v=4">
+<link rel="stylesheet" href="/styl.css?v=2">
 <style>
   /* jen to, co je vlastní zásadám; zbytek řeší /styl.css */
   .uzky h2 {
@@ -32,18 +32,15 @@
       <img class="emblem" src="/img/emblem-96.webp" alt="" width="38" height="38">
       <img class="napis" src="/img/wordmark.webp" alt="Okolník" width="120" height="30">
     </a>
-    <!-- 16. 9. 2026: režimy jako v aplikaci – hlavní přepínač v liště -->
-    <nav class="rezimy-menu" aria-label="Režimy">
-      <a class="volba cest" href="/cestovatel/"><span class="ikona" aria-hidden="true">🧭</span><span class="jmeno">Cestovatel</span></a>
-      <a class="volba obj" href="/objevitel/"><span class="ikona" aria-hidden="true">🌫️</span><span class="jmeno">Objevitel</span></a>
-      <a class="volba dob" href="/dobyvatel/"><span class="ikona" aria-hidden="true">🚩</span><span class="jmeno">Dobyvatel</span></a>
-    </nav>
     <nav class="menu" aria-label="Hlavní nabídka">
       <a href="/">Domů</a>
-      <a href="/navod/">Návod</a>
+      <a href="/cestovatel/">Cestovatel</a>
+      <a href="/objevitel/">Objevitel</a>
+      <a href="/dobyvatel/">Dobyvatel</a>
       <a href="/zebricek/">Žebříček</a>
       <a href="/ucet/">Můj Okolník</a>
-      <a href="/kontakt/" class="mimo-mobil">Kontakt</a>
+      <a href="/firmy/" class="mimo-mobil">Pro firmy</a>
+      <a href="/kontakt/">Kontakt</a>
       <a href="/soukromi/" class="mimo-mobil" aria-current="page">Soukromí</a>
     </nav>
   </div>
@@ -152,12 +149,9 @@ Pokud si v aplikaci („Více → Můj Okolník“) zapnete účast v žebříč
 platí navíc toto:</p>
 <ul>
 <li><strong>Co je veřejné.</strong> Na stránce okolnik.cz/zebricek se zobrazí vaše
-  <strong>přezdívka</strong>, úroveň a souhrnná čísla za aktuální měsíc – ušlé
-  kilometry, nové obce, fotovýpravy, doložené návštěvy, vrcholy, klenoty
-  (malovaná místa), dny venku, nejdelší série dní, kroky (s příznakem, zda odpovídají
-  kilometrům) a body za úspěchy – a celkové součty za celou dobu hraní (síň
-  slávy); případně kraj, pokud si ho zvolíte. Přezdívku si volíte sami –
-  nemusí to být vaše jméno.</li>
+  <strong>přezdívka</strong>, počet ušlých kilometrů, počet nových obcí a počet
+  fotovýprav za aktuální měsíc, případně kraj, pokud si ho zvolíte.
+  Přezdívku si volíte sami – nemusí to být vaše jméno.</li>
 <li><strong>Co je a co není veřejné.</strong> Veřejná jsou jen výše uvedená souhrnná
   čísla pod přezdívkou; počítají se přímo v telefonu. Vaše poloha,
   přesná trasa, fotky ani e-mail se do žebříčku neposílají. Deník,
@@ -329,12 +323,13 @@ s aktualizacemi, které nevyžadují novou verzi – např. průměrné ceny pal
 (zdroj: Český statistický úřad) a provozní nastavení. Jde o stažení obsahu;
 poskytovateli se předá jen běžný síťový požadavek (IP adresa), žádné vaše
 osobní údaje.</p>
-<p><strong>Počasí:</strong> pro atmosférické efekty v Objevování (mraky, mlha, vítr) stahuje
-aplikace aktuální počasí <strong>z našeho serveru</strong> (Firebase Cloud Functions, Google, region EU),
-který ho pro <strong>pevný seznam bodů</strong> rozmístěných po ČR – stejný pro všechny uživatele –
-přebírá ze služby <strong>MET Norway</strong> (Norský meteorologický institut, licence CC BY 4.0).
-Vaše poloha ani výřez mapy se neodesílají; počasí pro vaše okolí se vybere z už
-stažených dat přímo v telefonu.</p>
+<p><strong>Počasí:</strong> pro atmosférické efekty v Objevování (mraky, mlha) stahuje
+aplikace aktuální počasí z <strong>našeho serveru</strong> (Google Cloud Functions,
+region EU), který je jednou za 15 minut přebírá ze služby <strong>MET Norway</strong>
+(api.met.no, licence CC BY 4.0) pro <strong>pevný seznam bodů</strong> rozmístěných po
+ČR, stejný pro všechny uživatele – vaše poloha ani výřez mapy se
+neodesílají. Počasí pro vaše okolí se vybere z už stažených dat přímo
+v telefonu.</p>
 <p><strong>Srážkový radar:</strong> protože předpověď se občas mýlí, ověřuje aplikace déšť
 ještě podle <strong>radarových snímků služby RainViewer</strong>. Stahuje se seznam
 dostupných snímků a obrázkové dlaždice radaru; jde o běžné stažení obsahu,
@@ -362,8 +357,8 @@ reklamy a povolí zakládání soutěží v Dobyvateli.</p>
   snímky).</li>
 <li><strong>Wikimedia / Wikipedia</strong> – popisek zobrazovaného místa.</li>
 <li><strong>GitHub</strong> (Microsoft) – stažení datového kanálu.</li>
-<li><strong>MET Norway</strong> (přes náš server) – aktuální počasí pro pevné body v ČR (bez odeslání
-  vaší polohy).</li>
+<li><strong>MET Norway</strong> (přes náš server) – aktuální počasí pro pevné body v ČR
+  (bez odeslání vaší polohy).</li>
 <li><strong>RainViewer</strong> – snímky srážkového radaru (bez odeslání vaší polohy).</li>
 <li><strong>Navigační služby dle vaší volby</strong> – Google Mapy, Mapy.com / Seznam.cz,
   Waze (jen když spustíte navigaci).</li>
@@ -442,7 +437,6 @@ změnách budeme informovat v popisu aktualizace aplikace.</p>
     </div>
     <nav class="odkazy" aria-label="Odkazy v patičce">
       <a href="/">Domů</a>
-      <a href="/navod/">Návod</a>
       <a href="/cestovatel/">Cestovatel</a>
       <a href="/objevitel/">Objevitel</a>
       <a href="/dobyvatel/">Dobyvatel</a>
