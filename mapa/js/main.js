@@ -2606,7 +2606,8 @@ let stinyPodpis = '';
 let stinyPlatno = null;          // HTMLCanvasElement (mimo DOM)
 let stinyRozsah = null;          // { x0, y0, x1, y1, z } v Mercatoru 0..1
 const STINY_ROZ = 1024;          // delší strana plátna (px); engine 218: 2048 → 1024 (měkčí, levnější)
-let stinyPlatnoTmp = null;       // pomocné plátno – tvary ostře, výsledek přes blur
+let stinyPlatnoTmp = null;
+let stinyPlatnoMale = null;   // engine 333: zmenšené plátno pro levné rozmazání       // pomocné plátno – tvary ostře, výsledek přes blur
 const STINY_KRYTI_MAX = 0.5;   // engine 217: „malinko utlumit" (0,6 → 0,5)
 const STINY_MAX_PRSTENCU = 4000;
 // ⭐ engine 333 (výtka T 22. 9.: „stíny nabíhají až při větším přiblížení;
@@ -2770,7 +2771,14 @@ function registrujProtokolStinu() {
     // sub-rect plátna pro dlaždici; části mimo plátno oříznout (dest úměrně)
     let sx = (tx0 - r.x0) * kx, sy = (ty0 - r.y0) * ky;
     let sw = (tx1 - tx0) * kx, sh = (ty1 - ty0) * ky;
-    let dx = 0, dy = 0, dw = STINY_DLAZDICE, dh = STINY_DLAZDICE;
+    // ⭐ engine 333 (výkon, profil gest TT 22. 9.: řezání dlaždic drawImage +
+    // createImageBitmap 2,2 s za sadu gest): dlaždice má jen tolik pixelů,
+    // kolik jich na ni připadá ze zdrojového plátna (mocnina 2, 64–512) – víc
+    // detailu dlaždice mít nemůže, MapLibre ji roztáhne na tileSize sám.
+    // Dřív vždy 512×512 = 1 MB na dlaždici i tam, kde zdroj dal ~150 px.
+    let D = 64;
+    while (D < STINY_DLAZDICE && D < Math.max(sw, sh) * 1.15) D *= 2;
+    let dx = 0, dy = 0, dw = D, dh = D;
     if (sx < 0) { dx = -sx / sw * dw; dw -= dx; sw += sx; sx = 0; }
     if (sy < 0) { dy = -sy / sh * dh; dh -= dy; sh += sy; sy = 0; }
     if (sx + sw > stinyPlatno.width) { const o = sx + sw - stinyPlatno.width; dw -= o / sw * dw; sw -= o; }
@@ -2783,7 +2791,7 @@ function registrujProtokolStinu() {
     // PNG dekóduje Chrome mimo hlavní vlákno, kdežto megabajtový
     // nekomprimovaný se dekóduje draho v něm. Měřit celou sadu, ne kodér.
     const c = document.createElement('canvas');
-    c.width = STINY_DLAZDICE; c.height = STINY_DLAZDICE;
+    c.width = D; c.height = D;
     c.getContext('2d').drawImage(stinyPlatno, sx, sy, sw, sh, dx, dy, dw, dh);
     // engine 272 ("stiny domu se nacitaji hrozne pomalu"): misto PNG (toBlob
     // + dekodovani, ~60 ms na dlazdici, 17 dlazdic = 1,1 s) rovnou ImageBitmap –
@@ -3114,6 +3122,9 @@ function prepoctiStinyDomu() {
   if (!NASTAVENI_MAPY.stiny) { stinyPodpis = ''; return; }   // engine 268: stíny vypnuté v nastavení mapy
   // během gesta nepřepočítávat (50 ms v hustém městě = trhnutí) – až po něm
   if (mapa.isMoving && mapa.isMoving()) { naplanujStinyDomu(400); return; }
+  // engine 333: prst na mapě = za chvíli další tah → nepřepočítávat (až 200 ms
+  // dlouhá úloha by zasekla začátek gesta)
+  if (typeof prstNaMape === 'function' && prstNaMape()) { naplanujStinyDomu(500); return; }
   const z = mapa.getZoom();
   if (z < STINY_OD_Z - 0.1 - dohledDz() || stinSvetlo.sila <= 0) { stinyPodpis = ''; return; }
   const t0 = performance.now();
@@ -3235,20 +3246,29 @@ function prepoctiStinyDomu() {
   // (Ústí z15,6: 1 560 prstenců = 1,2 s; po domech 11 ms + rasterizace ~30–70
   // ms). Výplň je neprůhledná, průhlednost dává raster-opacity vrstvy, takže
   // se překryvy nesčítají ani bez sjednocení; nonzero drží jen tah zdí domu.
-  if (stinyPlatno.width !== W || stinyPlatno.height !== H) {
-    stinyPlatno.width = W; stinyPlatno.height = H;
-  }
+  // (engine 333: výsledné plátno stinyPlatno se velikostí nastavuje až při
+  //  skládání níž – může být zmenšené, viz „levné rozmazání“)
+  // ⭐⭐ engine 333 (výkon, TT 22. 9.): plátno 2D se tu rastruje PROCESOREM,
+  // takže se tvary kreslí rovnou do ZMENŠENÉHO plátna (1/F, F = 2 nebo 4 podle
+  // poloměru rozmazání 1,2 m) se škálovací transformací – 4–16× méně pixelů
+  // a žádný zmenšovací krok. Vyhlazení hran na malém plátně dává měkký okraj
+  // ~F px plné velikosti (dřív blur 1,2 m) a zpět se roztahuje až při řezání
+  // dlaždic stiny://. Souřadnice všeho níž zůstávají v px PLNÉ velikosti.
+  const blurPxPred = Math.max(1, Math.min(10, 1.2 * mpu * kx));
+  const F = blurPxPred >= 4 ? 4 : 2;
+  const S = 1 / F;
+  const w2 = Math.max(1, Math.ceil(W / F)), h2 = Math.max(1, Math.ceil(H / F));
   if (!stinyPlatnoTmp) stinyPlatnoTmp = document.createElement('canvas');
-  if (stinyPlatnoTmp.width !== W || stinyPlatnoTmp.height !== H) {
-    stinyPlatnoTmp.width = W; stinyPlatnoTmp.height = H;
+  if (stinyPlatnoTmp.width !== w2 || stinyPlatnoTmp.height !== h2) {
+    stinyPlatnoTmp.width = w2; stinyPlatnoTmp.height = h2;
   }
-  // engine 218: tvary ostře do pomocného plátna, výsledek jedním drawImage
-  // s blur (penumbra) – „stíny příliš ostré"
   const ctx = stinyPlatnoTmp.getContext('2d');
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.filter = 'none';
   ctx.globalCompositeOperation = 'source-over';
-  ctx.clearRect(0, 0, W, H);
+  ctx.clearRect(0, 0, w2, h2);
+  ctx.imageSmoothingEnabled = true;
+  ctx.setTransform(S, 0, 0, S, 0, 0);          // kreslí se v px plné velikosti
   // engine 226: stíny kopců pod vším (chybí-li DEM, přijde přepočet po dojití)
   try {
     const exT = (mapa.getTerrain && mapa.getTerrain() && +mapa.getTerrain().exaggeration) || 1;
@@ -3313,11 +3333,11 @@ function prepoctiStinyDomu() {
       if (sil) {
         const A = (t.Hm / sil.h) * pxNaMetr;               // px plátna na px spritu (do stran)
         const B = A * tg;                                   // … na px výšky (po směru stínu)
-        ctx.setTransform(A * pX, A * pY, -B * dX, -B * dY,
-                         t.bx - (sil.w / 2) * A * pX + sil.h * B * dX,
-                         t.by - (sil.w / 2) * A * pY + sil.h * B * dY);
+        ctx.setTransform(S * A * pX, S * A * pY, -S * B * dX, -S * B * dY,
+                         S * (t.bx - (sil.w / 2) * A * pX + sil.h * B * dX),
+                         S * (t.by - (sil.w / 2) * A * pY + sil.h * B * dY));
         ctx.drawImage(sil.platno, 0, 0);
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.setTransform(S, 0, 0, S, 0, 0);    // engine 333: zpět na základní škálu
         continue;
       }
       // záloha (sprite ještě není v atlasu): elipsa koruny + kmen
@@ -3342,19 +3362,21 @@ function prepoctiStinyDomu() {
   ctx.globalCompositeOperation = 'source-over';
   // engine 218: měkký okraj – jeden průchod blur (Chrome/WebView GPU; kde
   // filter chybí, zůstane ostré)
+  const metrNaPx = 1 / (mpu * kx);
+  const blurPx = Math.max(1, Math.min(10, 1.2 / metrNaPx));   // (u budov asi ok: 1,2 m)
+  // engine 333: pomocné plátno už je zmenšené (viz F výš) → výsledek = kopie
+  // se zapečeným krytím, bez filtru a bez škálování
+  if (stinyPlatno.width !== w2 || stinyPlatno.height !== h2) {
+    stinyPlatno.width = w2; stinyPlatno.height = h2;
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   const vctx = stinyPlatno.getContext('2d');
   vctx.setTransform(1, 0, 0, 1, 0, 0);
   vctx.globalCompositeOperation = 'source-over';
-  vctx.clearRect(0, 0, W, H);
-  // engine 220: polostín ~1,2 m bez ohledu na zoom (dřív 1,6 px plátna –
-  // při přiblížení ostrá hrana); 1–10 px
-  const metrNaPx = 1 / (mpu * kx);
-  const blurPx = Math.max(1, Math.min(10, 1.2 / metrNaPx));   // (u budov asi ok: 1,2 m)
-  try { vctx.filter = 'blur(' + blurPx.toFixed(1) + 'px)'; } catch (e) { /* bez filtru */ }
+  vctx.clearRect(0, 0, w2, h2);
   vctx.globalAlpha = kryti;                       // engine 222: krytí v plátně, ne ve vrstvě
   vctx.drawImage(stinyPlatnoTmp, 0, 0);
   vctx.globalAlpha = 1;
-  try { vctx.filter = 'none'; } catch (e) { /* nic */ }
   stinyPodpis = podpis;
   stinyRozsah = r;
   // engine 221: nová verze v URL → dlaždice se přenačtou z plátna (staré drží
@@ -3572,6 +3594,12 @@ function prebarviDomyNoci(krok) {
     }
   } catch (e) { /* styl se zrovna mění */ }
 }
+/// ⛔⛔ engine 333 (změřeno na TT 22. 9.): NEPOSOUVAT `placement.commitTime`
+/// (ZKOUŠENO A VRÁCENO). MapLibre při hotovém a ještě „čerstvém“ rozmístění
+/// volá `placement.setStale()` a kreslí DOKOLA, dokud čerstvost (300 ms)
+/// nevyprší – klid se tím zhoršil ze ~37 na ~150 překreslení za 5 s.
+function bezPrerozmisteniSymbolu() { /* záměrně nic – viz výše */ }
+window.bezPrerozmisteniSymbolu = bezPrerozmisteniSymbolu;
 let oknaBlikaniCasovac = null;
 function nastavBlikaniOken(noc) {
   if (oknaBlikaniCasovac) { clearInterval(oknaBlikaniCasovac); oknaBlikaniCasovac = null; }
@@ -3593,6 +3621,7 @@ function nastavBlikaniOken(noc) {
         mapa.setFeatureState({ source: 'okna-3d', id }, { sv });
         mapa.setFeatureState({ source: 'okna-3d', id: id + n }, { sv });       // záře okna (engine 266: sprite)
       }
+      bezPrerozmisteniSymbolu();   // engine 333: jen krytí → bez nového rozmístění
     } catch (e) { /* zdroj se zrovna mění */ }
   }, 4000);
 }
@@ -10328,7 +10357,9 @@ function naplanujSkryteMista() {
     const odPohybu = performance.now() - (window.__posledniPohybMs || 0);
     // engine 316: dřív 400 ms klidu + opakování 450 ms („počítadlo shluků
     // počítá pomalu") – teď 150 / 200 ms; dotaz stojí ~20 ms, jednou po zastavení
-    if (prstNaMape() || odPohybu < 150 || (mapa && mapa.isMoving && mapa.isMoving())) {
+    // engine 333: 150 → 500 ms klidu – dotazy do GPU (readPixels) se trefovaly
+    // do pauz mezi tahy a zasekávaly začátek dalšího gesta
+    if (prstNaMape() || odPohybu < 500 || (mapa && mapa.isMoving && mapa.isMoving())) {
       skryteMistaT = setTimeout(zkus, 200);
       return;
     }
@@ -10336,8 +10367,36 @@ function naplanujSkryteMista() {
   };
   skryteMistaT = setTimeout(zkus, 100);
 }
+// ⭐⭐ engine 333 (výkon v klidu, profil TT 22. 9.): přepočet běžel po KAŽDÉM
+// `idle` (v noci ~každých 700 ms kvůli mihotání oken) a dělal pro každé
+// viditelné místo `queryRenderedFeatures` → s terénem `readPixels` (synchronní
+// čtení z GPU): 544 ms z 12 s klidu + brzdění GPU. Beze změny pohledu a dat se
+// výsledek nemění → nejvýš 2× po změně a pak jednou za 5 s (pojistka pro
+// dojetí dlaždic).
+let skryteSig = '';
+let skryteSigN = 0;
+let skryteSigMs = 0;
+let mistaVerze = 0;
 function synchronizujSkryteMista() {
   if (!mapa || !posledniMistaGj || !mapa.getLayer('okolnik-mista-ikona')) return;
+  {
+    let sig = '';
+    try {
+      const c = mapa.getCenter();
+      sig = [c.lng.toFixed(6), c.lat.toFixed(6), mapa.getZoom().toFixed(3),
+             mapa.getBearing().toFixed(1), mapa.getPitch().toFixed(1), mistaVerze,
+             typeof aktualniKod !== 'undefined' ? aktualniKod : ''].join('|');
+    } catch (e) { sig = ''; }
+    const ted = performance.now();
+    if (sig && sig === skryteSig) {
+      if (skryteSigN >= 2 && ted - skryteSigMs < 5000) return;
+    } else {
+      skryteSig = sig;
+      skryteSigN = 0;
+    }
+    skryteSigN++;
+    skryteSigMs = ted;
+  }
   let vidimPrvky;
   try {
     vidimPrvky = mapa.queryRenderedFeatures({ layers: ['okolnik-mista-ikona'] });
@@ -10535,7 +10594,26 @@ function registrujKlikMista() {
   // vzácně, nebo oklikou přes přepočet domů +450 ms). Throttle 300 ms
   // v naplanujStinyDomu zůstává; malý posun uvnitř rozsahu plátna skončí
   // na podpisu bez kreslení (prepoctiStinyDomu).
-  mapa.on('moveend', () => naplanujStinyDomu(150));
+  // engine 333 (profil sady gest 22. 9.: přepočet stínů 48–57× za sadu, až
+  // 200 ms, a trefoval se do pauz MEZI tahy → zaseknutí dalšího dotyku): po
+  // zastavení až za 0,6 s (naplanujStinyDomu drží první plán; během pohybu
+  // nebo s prstem na mapě se prepoctiStinyDomu sám odloží).
+  mapa.on('moveend', () => naplanujStinyDomu(600));
+  // ⭐⭐ engine 333 (výkon v klidu, změřeno na TT 22. 9.): každé mihotání
+  // světel (feature-state) spustí nové rozmístění všech symbolů a MapLibre ho
+  // rozkládá po 2 ms do ~4–5 snímků (záplata bundlu: `continuePlacement`
+  // čte `globalThis.__okolnikPlacementMs`). V KLIDU rozpočet 12 ms → rozmístění
+  // doběhne v jednom snímku (stejná práce, o 3–4 překreslení míň na bliknutí);
+  // za pohybu zůstává 2 ms kvůli plynulosti gesta.
+  globalThis.__okolnikPlacementMs = 12;
+  // ⭐⭐ engine 333: STABILNÍ ROZMÍSTĚNÍ (záplata bundlu v `_updatePlacement`):
+  // kamera beze změny + žádné nové symbolové buckety + rozmístění < 10 s →
+  // MapLibre nezačne nové rozmístění a neoznačí staré za zastaralé. Dřív po
+  // každém překreslení z mihotání světel = plné rozmístění 29 vrstev (~25 ms)
+  // + kaskáda „zastaralých“ snímků. A/B: `globalThis.__okolnikStabilniRozmisteni = false`.
+  globalThis.__okolnikStabilniRozmisteni = true;
+  mapa.on('movestart', () => { globalThis.__okolnikPlacementMs = 2; });
+  mapa.on('moveend', () => { globalThis.__okolnikPlacementMs = 12; });
   // engine 333 (výtka T 22. 9.: „stíny se po posunu vykreslí, zmizí a jiné
   // se nevykreslí až do dalšího posunu“): přepočet po moveend může přijít
   // dřív, než dojedou dlaždice domů/staveb nového výřezu – a po jejich
@@ -10545,7 +10623,7 @@ function registrujKlikMista() {
   mapa.on('sourcedata', (e) => {
     if (!e || !e.tile || !e.isSourceLoaded) return;
     if (e.sourceId !== 'omt' && e.sourceId !== 'krajina' && e.sourceId !== 'dekorace') return;
-    naplanujStinyDomu(300);
+    naplanujStinyDomu(600);
   });
   // engine 265: animátory (mihotání světel, blikání oken) čekají 1,5 s po pohybu
   mapa.on('move', () => { window.__posledniPohybMs = performance.now(); });
@@ -11262,6 +11340,7 @@ function vykresliMista() {
   });
   rozestupStejnychMist(featury);
   posledniMistaGj = gj;
+  mistaVerze++;   // engine 333: nová data míst → odznaky spolknutých přepočítat
   naplanujVelikostiMist();
   const gjMoje = {
     type: 'FeatureCollection', features: mojeMista.map(naFeature),

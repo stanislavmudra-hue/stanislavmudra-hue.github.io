@@ -790,6 +790,8 @@ const Dekorace = (() => {
           }
           mapa.setFeatureState({ source: 'dekorace-svetla-zdroj', id }, { o: s.ted });
         }
+        // engine 333: změnilo se jen krytí → bez nového rozmístění symbolů
+        if (window.bezPrerozmisteniSymbolu) window.bezPrerozmisteniSymbolu();
       }
     } catch (e) { /* zdroj se právě mění — příští tik */ }
   }, 700);
@@ -2563,6 +2565,28 @@ const Dekorace = (() => {
       posledniPass = performance.now();
       dopln();
       naplanujDosyp();
+    });
+    // ⛔⛔ engine 333 (výtka T 22. 9.: „při posunu stromy nejsou – vidím jen
+    // ty z keše“): dosyp běží v pevných kolech 0,5 / 1,2 / 2,5 / 5 s a
+    // stromy potřebují NAČTENÉ dlaždice ploch (les, louka…). Když dlaždice
+    // dojely později (telefon, z14 = velký výřez), všechna kola proběhla
+    // naprázdno a stromy chyběly až do dalšího posunu (změřeno na TT: po
+    // skoku 3 stromy, po posunu za 1,5 s 0, za 7,5 s 74). Když zdroj ploch
+    // dohraje, doplnit znovu (s plnou keší to nestojí skoro nic).
+    let doplnPoDlazdicichT = null;
+    mapa.on('sourcedata', (e) => {
+      if (!e || !e.tile || !e.isSourceLoaded) return;
+      const def = plochyDef;
+      const zdrojPloch = def ? def.some((d) => d.zdroj === e.sourceId)
+                             : (e.sourceId === 'omt' || e.sourceId === 'krajina');
+      if (!zdrojPloch) return;
+      clearTimeout(doplnPoDlazdicichT);
+      doplnPoDlazdicichT = setTimeout(() => {
+        try {
+          if (mapa.isMoving && mapa.isMoving()) return;   // doplní moveend
+          dopln();
+        } catch (err) { /* styl se zrovna mění */ }
+      }, 350);
     });
     // po odkrytí mlhy dosypat – čerstvě odkryté území by jinak zůstalo
     // holé až do dalšího posunu mapy (dekorace v mlze nevznikají)

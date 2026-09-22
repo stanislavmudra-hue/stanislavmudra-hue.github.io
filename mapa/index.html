@@ -285,7 +285,7 @@
     document.body.appendChild(el);
   } else {
     document.getElementById('ml-css').href = 'vendor/maplibre-gl-v6.css';
-    import('./vendor/maplibre-gl-v6.mjs?v=312')
+    import('./vendor/maplibre-gl-v6.mjs?v=334')
       .then(function (m) { window.maplibregl = m; dal(); })
       .catch(function (e) {
         console.error('[zavaděč] MapLibre v6 se nenačetl — nouzově v5',
