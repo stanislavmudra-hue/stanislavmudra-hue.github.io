@@ -722,8 +722,27 @@ async function start() {
   // engine 333: odložený přelet (viz cekajiciLet) po roztažení plátna;
   // o chvilku později, ať má transform novou velikost. Starší než 10 s
   // se zahodí (mezitím se uživatel díval jinam).
+  // ⛔⛔ engine 333 (změřeno na TT 22. 9.): když Flutter schová mapu na 1×1 px
+  // (Seznam), MapLibre s TERÉNEM drží výšku kamery a zoom přepočítá podle
+  // nové (mizivé) vzdálenosti kamery od středu → mapa „uletí“ z z16 na z3–7
+  // (trace: resize 1 px → z7,75 → z2,90; po roztažení z6,1). Kamera se proto
+  // při schování ULOŽÍ a po roztažení VRÁTÍ (pak teprve odložený přelet).
+  let kameraPredSchovanim = null;
   mapa.on('resize', () => {
-    if (!cekajiciLet || !mapaJeVidet()) return;
+    if (!mapaJeVidet()) {
+      if (!kameraPredSchovanim) {
+        try {
+          kameraPredSchovanim = { center: mapa.getCenter(), zoom: mapa.getZoom(),
+                                  pitch: mapa.getPitch(), bearing: mapa.getBearing() };
+        } catch (e) { /* nic */ }
+      }
+      return;
+    }
+    if (kameraPredSchovanim) {
+      const k = kameraPredSchovanim; kameraPredSchovanim = null;
+      try { mapa.stop(); mapa.jumpTo(k); } catch (e) { /* nic */ }
+    }
+    if (!cekajiciLet) return;
     const c = cekajiciLet; cekajiciLet = null;
     if (Date.now() - c.ms > 10000) return;
     setTimeout(() => {
