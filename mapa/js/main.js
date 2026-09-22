@@ -10524,6 +10524,17 @@ function registrujKlikMista() {
   // v naplanujStinyDomu zůstává; malý posun uvnitř rozsahu plátna skončí
   // na podpisu bez kreslení (prepoctiStinyDomu).
   mapa.on('moveend', () => naplanujStinyDomu(150));
+  // engine 333 (výtka T 22. 9.: „stíny se po posunu vykreslí, zmizí a jiné
+  // se nevykreslí až do dalšího posunu“): přepočet po moveend může přijít
+  // dřív, než dojedou dlaždice domů/staveb nového výřezu – a po jejich
+  // dojetí už ho nic nespustilo (idle v herním stylu chodí vzácně). Když
+  // zdroj domů, ZABAGED nebo dekorací (stromy) dohraje, přepočítat znovu;
+  // beze změny obsahu to skončí na podpisu bez kreslení.
+  mapa.on('sourcedata', (e) => {
+    if (!e || !e.tile || !e.isSourceLoaded) return;
+    if (e.sourceId !== 'omt' && e.sourceId !== 'krajina' && e.sourceId !== 'dekorace') return;
+    naplanujStinyDomu(300);
+  });
   // engine 265: animátory (mihotání světel, blikání oken) čekají 1,5 s po pohybu
   mapa.on('move', () => { window.__posledniPohybMs = performance.now(); });
   mapa.on('idle', () => naplanujMosty3d(700));   // engine 224: mosty nad terénem
