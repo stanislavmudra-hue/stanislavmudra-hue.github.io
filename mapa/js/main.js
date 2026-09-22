@@ -425,7 +425,7 @@ function aplikujDohled() {
     pridejBudovy3d();
   } catch (e) { console.warn('[dohled] budovy 3d', e); }
   try {
-    if (mapa.getLayer('stin-domu')) mapa.setLayerZoomRange('stin-domu', 15 - dz, 24);
+    if (mapa.getLayer('stin-domu')) mapa.setLayerZoomRange('stin-domu', STINY_OD_Z - dz, 24);
     stinyPodpis = ''; naplanujStinyDomu(50);
   } catch (e) { console.warn('[dohled] stíny', e); }
   try { if (typeof Dekorace !== 'undefined' && Dekorace.nastavDohled) Dekorace.nastavDohled(dz); }
@@ -2609,6 +2609,14 @@ const STINY_ROZ = 1024;          // delší strana plátna (px); engine 218: 204
 let stinyPlatnoTmp = null;       // pomocné plátno – tvary ostře, výsledek přes blur
 const STINY_KRYTI_MAX = 0.5;   // engine 217: „malinko utlumit" (0,6 → 0,5)
 const STINY_MAX_PRSTENCU = 4000;
+// ⭐ engine 333 (výtka T 22. 9.: „stíny nabíhají až při větším přiblížení;
+// při posunu jsou vidět a po zastavení zmizí“): 3D domy herního stylu jsou
+// od z14,5 (−dohled), stíny ale začínaly až na z15 s krytím zapečeným
+// rampou z15→15,6 BEZ ohledu na dohled – po zastavení se v tom pásmu stín
+// přepočítal slabý/neviditelný a přepsal dlaždice, které byly při posunu
+// vidět (staré, kreslené při větším přiblížení). Stíny teď začínají spolu
+// s domy a rampa (0,5 zoomu) se posouvá s dohledem.
+const STINY_OD_Z = 14.5;
 const STINY_MAX_STROMU = 3000;
 const STINY_DLAZDICE = 512;      // engine 221: velikost rastrové dlaždice stínů (px)
 const STROM_VYSKA_M = 22.9;      // sprite 98 CSS px × icon-size 19,7 na z22 = 22,9 m × k × ev
@@ -2642,10 +2650,14 @@ window.nastavStinyDomuSvetlo = function (az, el, sila) {
 /// (`globalAlpha` při skládání) a vrstva má napevno `raster-opacity: 1`.
 let stinKrytiPosledni = -1;
 function krytiStinu(z) {
-  const nastup = Math.max(0, Math.min(1, (z - 15) / 0.6));
-  // engine 333: na desetiny – kolébání zoomu terénem (±0,2) v pásmu z15–15,6
-  // měnilo podpis a spouštělo PLNÝ přepočet i novou publikaci dlaždic
-  return Math.round(Math.min(STINY_KRYTI_MAX, Math.max(0, stinSvetlo.sila)) * nastup * 10) / 10;
+  const od = STINY_OD_Z - dohledDz();
+  const nastup = Math.max(0, Math.min(1, (z - od) / 0.5));
+  // engine 333: po 0,05 (kolébání zoomu terénem ±0,2 v rampě měnilo podpis
+  // a spouštělo plný přepočet + publikaci), ale NIKDY na nulu, když stín má
+  // být – nulové krytí po zastavení mazalo stíny viditelné při posunu
+  const k = Math.min(STINY_KRYTI_MAX, Math.max(0, stinSvetlo.sila)) * nastup;
+  if (k <= 0.005) return 0;
+  return Math.max(0.05, Math.round(k * 20) / 20);
 }
 function nastavKrytiStinu() {
   // změna síly světla o > 0,03 → překreslit (alfa je v plátně)
@@ -2818,7 +2830,7 @@ function zajistiVrstvuStinu() {
     if (!mapa.getLayer('stin-domu')) {
       const ls = mapa.getStyle().layers.map((l) => l.id);
       const za = ls[ls.indexOf('budovy-vypln') + 1];
-      mapa.addLayer({ id: 'stin-domu', type: 'raster', source: 'stiny-domu', minzoom: 15 - dohledDz(),
+      mapa.addLayer({ id: 'stin-domu', type: 'raster', source: 'stiny-domu', minzoom: STINY_OD_Z - dohledDz(),
                       paint: { 'raster-fade-duration': 0, 'raster-opacity': 1 } }, za);
     }
   } catch (e) { console.warn('[stíny domů] vrstva', e); return false; }
@@ -3103,7 +3115,7 @@ function prepoctiStinyDomu() {
   // během gesta nepřepočítávat (50 ms v hustém městě = trhnutí) – až po něm
   if (mapa.isMoving && mapa.isMoving()) { naplanujStinyDomu(400); return; }
   const z = mapa.getZoom();
-  if (z < 14.9 - dohledDz() || stinSvetlo.sila <= 0) { stinyPodpis = ''; return; }
+  if (z < STINY_OD_Z - 0.1 - dohledDz() || stinSvetlo.sila <= 0) { stinyPodpis = ''; return; }
   const t0 = performance.now();
   // --- rozsah plátna: pohled v Mercatoru, strop 3× rozměr pohledu, okraj 30 %
   const stred = mapa.getCenter();
