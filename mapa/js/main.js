@@ -3209,10 +3209,19 @@ function prepoctiStinyDomu() {
   // (po směru) a r (napříč); kmen = čára od paty. Jen od z15,5 a jen
   // viditelné v aktuálním kroku LOD (o7/o8 ≥ 0,5).
   const stromy = [];
-  if (z >= 15.5) {
+  // ⛔ engine 333 (výtka T 22. 9.: „při oddálení stíny mizí“): stíny stromů
+  // byly natvrdo od z15,5 bez dohledu, ač stromy jsou vidět mnohem dál –
+  // teď od téhož zoomu jako stíny domů (STINY_OD_Z − dohled). Krok LOD (o1…o8)
+  // podle rampy dekorací (RAMPA_ZAKLAD v dekorace.js − dohled).
+  const odZStromy = STINY_OD_Z - dohledDz();
+  if (z >= odZStromy) {
     let dek = [];
     try { dek = mapa.querySourceFeatures('dekorace'); } catch (e) { dek = []; }
-    const oKlic = z >= 15.65 ? 'o8' : 'o7';
+    const RAMPA_DEK = [13.2, 13.55, 13.9, 14.25, 14.6, 14.95, 15.3, 15.65];   // = dekorace.js
+    const dzD = dohledDz();
+    let ikLod = 0;
+    for (let i = 0; i < RAMPA_DEK.length; i++) if (RAMPA_DEK[i] - dzD <= z) ikLod = i + 1;
+    const oKlic = 'o' + Math.max(1, ikLod);
     for (const f of dek) {
       const p = f.properties || {};
       if (p.sv) continue;
@@ -3232,7 +3241,10 @@ function prepoctiStinyDomu() {
       stromy.push({ bx, by, Hm, rp, ik, d: dx * dx + dy * dy });
     }
     stromy.sort((a, b) => a.d - b.d);
-    if (stromy.length > STINY_MAX_STROMU) stromy.length = STINY_MAX_STROMU;
+    // engine 333: při oddálení (pod z15,5) nejvýš 1 500 nejbližších stromů –
+    // každý je silueta přes drawImage a na hrubém plátně mají pár pixelů
+    const stropStromu = z >= 15.5 ? STINY_MAX_STROMU : Math.min(STINY_MAX_STROMU, 1500);
+    if (stromy.length > stropStromu) stromy.length = stropStromu;
   }
   // --- podpis: nic nového → nekreslit
   let kontrola = 0;
@@ -3254,8 +3266,15 @@ function prepoctiStinyDomu() {
   // a žádný zmenšovací krok. Vyhlazení hran na malém plátně dává měkký okraj
   // ~F px plné velikosti (dřív blur 1,2 m) a zpět se roztahuje až při řezání
   // dlaždic stiny://. Souřadnice všeho níž zůstávají v px PLNÉ velikosti.
-  const blurPxPred = Math.max(1, Math.min(10, 1.2 * mpu * kx));
-  const F = blurPxPred >= 4 ? 4 : 2;
+  // ⛔ engine 333 (výtka T 22. 9.: „při oddálení na ~70 % stíny mizí“): F ≥ 2
+  // VŽDY bylo špatně – při oddálení je plátno samo hrubé (~7 m/px, poloměr
+  // rozmazání 1,2 m < 1 px) a půlka rozlišení slila stíny malých domů do
+  // neviditelných skvrn. Zmenšuje se jen tam, kde je rozmazání ≥ 1,4 px
+  // (přiblížení); jinak plné rozlišení bez filtru (hrana ~1 px ≈ 1 m sama).
+  // Velké plátno (1024 px od z16,5, jemné ~1,7 m/px) se půlí vždy – plné
+  // rozlišení tam stálo 70–170 ms na přepočet (log sady gest TT 22. 9.).
+  const blurPxPred = Math.min(10, 1.2 * mpu * kx);
+  const F = blurPxPred >= 4 ? 4 : ((blurPxPred >= 1.4 || Math.max(W, H) > 600) ? 2 : 1);
   const S = 1 / F;
   const w2 = Math.max(1, Math.ceil(W / F)), h2 = Math.max(1, Math.ceil(H / F));
   if (!stinyPlatnoTmp) stinyPlatnoTmp = document.createElement('canvas');
@@ -3328,8 +3347,12 @@ function prepoctiStinyDomu() {
     ctx.fillStyle = 'rgba(42,29,16,0.8)';
     ctx.strokeStyle = 'rgba(42,29,16,0.8)';
     ctx.lineCap = 'round';
+    // engine 333: při oddálení (pod z15,5) má strom na plátně pár pixelů –
+    // místo siluety spritu (drawImage s transformací, na procesoru drahé)
+    // stačí elipsa koruny + kmen
+    const siluety = z >= 15.5;
     for (const t of stromy) {
-      const sil = t.ik ? siluetaSpritu(t.ik) : null;
+      const sil = (t.ik && siluety) ? siluetaSpritu(t.ik) : null;
       if (sil) {
         const A = (t.Hm / sil.h) * pxNaMetr;               // px plátna na px spritu (do stran)
         const B = A * tg;                                   // … na px výšky (po směru stínu)
