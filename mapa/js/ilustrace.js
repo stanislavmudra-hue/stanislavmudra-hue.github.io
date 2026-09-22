@@ -598,6 +598,8 @@ const Ilustrace = (() => {
   /// (leží na zemi, vrstva `ink-ilustrace-stin` má icon-pitch-alignment
   /// map), lehce rozostřená. Směr a délku podle slunce/měsíce dává
   /// `svetlo()` přes offset featury, sílu paint vrstvy.
+  // engine 333: stín (elipsa u paty + vržený) jen u těles na zemi – viz vyrobFeatury
+  const STIN_KRESBY = new Set(['hrady', 'pamatky']);
   const STIN_ZPLOSTENI = 0.45;
   function stinData(bitmapa) {
     const w = bitmapa.width;
@@ -1569,13 +1571,18 @@ const Ilustrace = (() => {
           // kontaktní stín: elipsa u paty kresby. ⛔ NE POD MĚSTY (5. 9.
           // večer, „pod obrázky míst stíny nedělej – třeba Ústí"): panorama
           // města není těleso stojící na zemi, stín pod ním byl šmouha
-          ...(p.d === 'mesta' ? {} : {
+          // ⛔ engine 333 (výtka T 19. 9.: „pod levitujícími obrázky –
+          // Radobýl – je nesmyslný stín“): stín jen u TĚLES stojících na
+          // zemi (hrady, památky). Kopec, skála, voda, jeskyně i panorama
+          // města jsou krajina/silueta – elipsa ani vržený stín pod nimi
+          // nedávají smysl (u obrázků míst zrušeno už 5. 9., main.js).
+          ...(!STIN_KRESBY.has(p.d) ? {} : {
             pof: [0, (it.nb ? 0 : 0.035 * p.vy) + p.vy / 2],
           }),
           // ⭐ 5. 9. 2026 STÍN: obrázek #stin (týž rozměr @m/@s) a posun od
           // světla – pata stínu u paty kresby, dál podle azimutu a výšky
           // světla (stinDx/stinDy v násobcích výšky kresby, viz svetlo())
-          ...(stinSila > 0 && p.d !== 'mesta' ? {
+          ...(stinSila > 0 && STIN_KRESBY.has(p.d) ? {
             st: 'ilus:' + it.slug + '#stin' + pripona(it.stav || ''),
             sof: [stinDx * p.vy,
                   (it.nb ? 0 : 0.035 * p.vy) + p.vy * (1 + STIN_ZPLOSTENI) / 2

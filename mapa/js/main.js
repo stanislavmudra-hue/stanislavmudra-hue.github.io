@@ -418,6 +418,12 @@ function aplikujDohled() {
     }
     nasadBudovyHerni();
   } catch (e) { console.warn('[dohled] domy', e); }
+  // engine 333: neherní styly (Cestovatel, Dobyvatel) – 3D domy z OMT
+  // (pridejBudovy3d si v herním stylu sám nic nepřidá)
+  try {
+    if (mapa.getLayer('okolnik-budovy-3d')) mapa.removeLayer('okolnik-budovy-3d');
+    pridejBudovy3d();
+  } catch (e) { console.warn('[dohled] budovy 3d', e); }
   try {
     if (mapa.getLayer('stin-domu')) mapa.setLayerZoomRange('stin-domu', 15 - dz, 24);
     stinyPodpis = ''; naplanujStinyDomu(50);
@@ -713,6 +719,18 @@ async function start() {
   srovnejHranice();
   mapa.on('zoom', srovnejHranice);
   mapa.on('resize', srovnejHranice);
+  // engine 333: odložený přelet (viz cekajiciLet) po roztažení plátna;
+  // o chvilku později, ať má transform novou velikost. Starší než 10 s
+  // se zahodí (mezitím se uživatel díval jinam).
+  mapa.on('resize', () => {
+    if (!cekajiciLet || !mapaJeVidet()) return;
+    const c = cekajiciLet; cekajiciLet = null;
+    if (Date.now() - c.ms > 10000) return;
+    setTimeout(() => {
+      try { window.OkolnikMost.letNa(c.lat, c.lng, c.zoom, c.plynule, c.vynutit); }
+      catch (e) { /* nic */ }
+    }, 80);
+  });
 
   // ⭐⭐⭐ POJISTKA OSIŘELÉHO SNÍMKU ANIMACE (11. 8. 2026 večer — jiskra
   // všech „šedých map" konečně chycená ZA RUKU, se zásobníkem):
@@ -898,6 +916,9 @@ mapa.on('error', (e) => {
       aplikujDoplnky();
       try { nasadModely3d(); } catch (e) { }   // custom vrstvy styl maže
       try { nasadPlanTrasu(); } catch (e) { }
+      // engine 333: ukázaná trasa dne / výprava z deníku nový styl přežije
+      try { if (stopaDne.length) vykresliStopuDne(); } catch (e) { }
+      try { if (vypravaUkaz) vykresliVypravuUkaz(false); } catch (e) { }
     try { nasadPlanStopu(); } catch (e) { }
       try { nasadCyklo(); } catch (e) { }   // v1.601 cyklotrasy
       try { vykresliPratele(); } catch (e) { }   // engine 277: přátelé
@@ -2318,12 +2339,16 @@ function pridejBudovy3d() {
       if (z.type === 'vector') { zdroj = jmeno; break; }
     }
     if (!zdroj) return;
+    // ⛔ engine 333 (výtka T 19. 9.: „v Dobyvateli a Cestovateli nefunguje
+    // dohled“): 3D domy neherních stylů měly práh natvrdo 14,5 → dohled
+    // (dohledDz −0,5/0/+0,8) teď posouvá i je; aplikujDohled je přestaví.
+    const dz = dohledDz();
     mapa.addLayer({
       id: 'okolnik-budovy-3d',
       type: 'fill-extrusion',
       source: zdroj,
       'source-layer': 'building',
-      minzoom: 14.5,
+      minzoom: 14.5 - dz,
       paint: {
         'fill-extrusion-color': '#D8CFC2',
         // OpenMapTiles nese `render_height`; kde chybí, odhad 8 m
@@ -2331,8 +2356,9 @@ function pridejBudovy3d() {
           ['coalesce', ['get', 'render_height'], ['get', 'height'], 8],
         'fill-extrusion-base':
           ['coalesce', ['get', 'render_min_height'], 0],
-        // plynulý nástup, ať se domy „nevynoří" skokem
-        'fill-extrusion-opacity': 0.85,
+        // plynulý nástup, ať se domy „nevynoří" skokem (engine 333: rampa)
+        'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'],
+                                   14.5 - dz, 0, 15.1 - dz, 0.85],
       },
     }, prvniSymbolovaVrstva());
     // v1.599 pojistka („Dobyvatel po načtení nevidí domy, až při
@@ -2468,14 +2494,15 @@ function nasadBudovyHerni() {
                'fill-extrusion-base': ['case', ODK, 0, SKRYTO],
                'fill-extrusion-opacity': nastup } }, pred);
     mapa.addLayer({ id: 'okolnik-vertikaly-3d', type: 'fill-extrusion',
-      source: 'krajina', 'source-layer': 'vertikaly', minzoom: 14,
+      source: 'krajina', 'source-layer': 'vertikaly', minzoom: 14 - dohledDz(),
       paint: { 'fill-extrusion-color': ['case', ODK, ['match', ['get', 't'],
                  'komin', '#8B5A46', 'vez_kostel', '#E2D2B2', 'vez_kaple', '#E6D8BC',
                  'vysilac', '#C9CCCF', 'rozhledna', '#9E7B55', 'vodojem', '#8C9AA0',
                  'vetrnik', '#EFEFEF', 'tezni', '#5B5B5B', 'silo', '#B8B0A0', '#A09890'], PRUHLEDNA],
                'fill-extrusion-height': ['case', ODK, ['coalesce', ['get', 'h'], 20], SKRYTO],
                'fill-extrusion-base': ['case', ODK, 0, SKRYTO],
-               'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0, 14.6, 1] } }, pred);
+               'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'],
+                                          14 - dohledDz(), 0, 14.6 - dohledDz(), 1] } }, pred);
   } catch (e) { console.warn('[budovy herní]', e); return; }
   naplanujBudovyHerni();
 }
@@ -2597,7 +2624,9 @@ window.nastavStinyDomuSvetlo = function (az, el, sila) {
 let stinKrytiPosledni = -1;
 function krytiStinu(z) {
   const nastup = Math.max(0, Math.min(1, (z - 15) / 0.6));
-  return +(Math.min(STINY_KRYTI_MAX, Math.max(0, stinSvetlo.sila)) * nastup).toFixed(3);
+  // engine 333: na desetiny – kolébání zoomu terénem (±0,2) v pásmu z15–15,6
+  // měnilo podpis a spouštělo PLNÝ přepočet i novou publikaci dlaždic
+  return Math.round(Math.min(STINY_KRYTI_MAX, Math.max(0, stinSvetlo.sila)) * nastup * 10) / 10;
 }
 function nastavKrytiStinu() {
   // změna síly světla o > 0,03 → překreslit (alfa je v plátně)
@@ -4781,13 +4810,18 @@ function nasadDomalovani() {
 }
 
 let hraniceZoom = -99;
+let hraniceW = 0, hraniceH = 0;   // engine 333: meze i po změně velikosti plátna
 function srovnejHranice() {
   if (!mapa) return;
   try {
     const z = mapa.getZoom();
-    if (Math.abs(z - hraniceZoom) < 0.15) return;
-    hraniceZoom = z;
     const el = mapa.getContainer();
+    // engine 333: schovaná mapa (Seznam, 1×1 px) by zúžila meze na samotné
+    // hranice ČR a po roztažení se nepřepočítaly (střed u hranic dotlačilo)
+    if (!el || el.clientWidth < 64 || el.clientHeight < 64) return;
+    if (Math.abs(z - hraniceZoom) < 0.15 && el.clientWidth === hraniceW
+        && el.clientHeight === hraniceH) return;
+    hraniceZoom = z; hraniceW = el.clientWidth; hraniceH = el.clientHeight;
     const stupnuNaPx = 360 / Math.pow(2, z) / 512;         // zeměpisná délka na CSS px
     const lat = mapa.getCenter().lat * Math.PI / 180;
     const dLon = 0.75 * stupnuNaPx * (el.clientWidth || 360);
@@ -4876,6 +4910,43 @@ function vykresliAktivniVypravu() {
     vykresliAktivniVypravu._t = setTimeout(vykresliAktivniVypravu, 400);
   }
 }
+
+/// ⭐⭐ engine 333 (výtka T 19. 9.: „v deníku Na mapě tvrdí, že ukazuje
+/// trasu, ale nic není vidět“): BEZPEČNÉ RÁMOVÁNÍ. `fitBounds` v MapLibre 6
+/// nad plátnem, do kterého se padding nevejde (v Seznamu je WebView 1×1 px
+/// a appka posílá trasu ve stejném ticku, kdy mapu roztahuje), NEUDĚLÁ NIC –
+/// jen napíše „Map cannot fit within canvas“. Kamera zůstala u hráče a trasa
+/// se nakreslila mimo obraz. Tady: když je plátno malé, zkusit znovu po 250 ms
+/// (nejvýš ~8 s); rámuje se shora (pitch 0 – herní náklon s terénem
+/// rámování rozhazuje, viz snimekTrasy), pak si uživatel přiblíží a nakloní sám.
+function fitNaBody(body, pad, pokus) {
+  if (!mapa || !body || !body.length) return;
+  const n = pokus || 0;
+  const el = mapa.getContainer();
+  const W = el ? el.clientWidth : 0, H = el ? el.clientHeight : 0;
+  if (W < 160 || H < 160) {
+    if (n < 32) {
+      clearTimeout(fitNaBody._t);
+      fitNaBody._t = setTimeout(() => fitNaBody(body, pad, n + 1), 250);
+    }
+    return;
+  }
+  let z = 999, v = -999, j = 999, s2 = -999;
+  for (const b of body) {
+    const lng = +b[0], lat = +b[1];
+    if (!isFinite(lng) || !isFinite(lat)) continue;
+    if (lng < z) z = lng; if (lng > v) v = lng; if (lat < j) j = lat; if (lat > s2) s2 = lat;
+  }
+  if (z > v) return;
+  if (v - z < 0.002 && s2 - j < 0.0012) { z -= 0.002; v += 0.002; j -= 0.0012; s2 += 0.0012; }
+  const p = Math.max(12, Math.min(pad || 70, Math.floor(Math.min(W, H) / 4)));
+  try { if (typeof zrusKotvu === 'function') zrusKotvu('trasa'); } catch (e) { /* nic */ }
+  try {
+    mapa.fitBounds([[z, j], [v, s2]], { padding: p, maxZoom: 16.4, duration: 900,
+                                        pitch: 0, bearing: 0, essential: true });
+  } catch (e) { console.warn('[fitNaBody]', e); }
+}
+window.fitNaBody = fitNaBody;
 
 let stopaDne = [];
 /// ⭐ v1.450: TRASA VYBRANÉHO DNE. Neukazuje se sama od sebe — appka ji
@@ -4971,14 +5042,8 @@ function vykresliVypravuUkaz(sPrelety) {
       });
     }
     if (v && sPrelety) {
-      const body = [...v.trasa, ...v.fotky.map((f) => [f.lng, f.lat])];
-      if (body.length) {
-        let z = 999, v2 = -999, j = 999, s = -999;
-        for (const [lng, lat] of body) { if (lng < z) z = lng; if (lng > v2) v2 = lng; if (lat < j) j = lat; if (lat > s) s = lat; }
-        if (v2 - z < 0.002 && s - j < 0.0012) { z -= 0.002; v2 += 0.002; j -= 0.0012; s += 0.0012; }
-        zrusKotvu && zrusKotvu('vyprava');
-        mapa.fitBounds([[z, j], [v2, s]], { padding: 70, maxZoom: 16.4, duration: 900, essential: true });
-      }
+      // engine 333: přes fitNaBody – nad schovaným plátnem počká (viz výš)
+      fitNaBody([...v.trasa, ...v.fotky.map((f) => [f.lng, f.lat])], 70);
     }
   } catch (e) {
     clearTimeout(vykresliVypravuUkaz._t);
@@ -6233,26 +6298,42 @@ function obnovKruhPresnosti(lng, lat) {
   try {
     if (!mapa || !mapa.getStyle || !mapa.getStyle()) return;
     if (!mapa.getSource('presnost-kruh')) {
+      obnovKruhPresnosti.klic = null;   // nový styl = nový zdroj, kreslit znovu
       mapa.addSource('presnost-kruh', { type: 'geojson',
         data: { type: 'FeatureCollection', features: [] } });
-      const pred = (typeof prvniSymbolovaVrstva === 'function')
-          ? prvniSymbolovaVrstva() : undefined;
+      // engine 333: do drapovaného bloku (kotva před symboly zakládala
+      // další RTT blok – viz sloučení vrstev, engine 308)
+      const pred = (typeof prvniNedrapovanaVrstva === 'function')
+          ? prvniNedrapovanaVrstva()
+          : ((typeof prvniSymbolovaVrstva === 'function') ? prvniSymbolovaVrstva() : undefined);
+      // engine 333: barva podle kvality signálu (vlastnost `q` prvku)
+      const barva = ['match', ['get', 'q'], 2, '#C62828', 1, '#F29D38', '#1E88E5'];
       mapa.addLayer({
         id: 'presnost-kruh-plocha', type: 'fill', source: 'presnost-kruh',
-        paint: { 'fill-color': '#1E88E5', 'fill-opacity': 0.10 },
+        paint: { 'fill-color': barva, 'fill-opacity': 0.14 },
       }, pred);
       mapa.addLayer({
         id: 'presnost-kruh-obrys', type: 'line', source: 'presnost-kruh',
-        paint: { 'line-color': '#1E88E5', 'line-opacity': 0.45, 'line-width': 1.2 },
+        paint: { 'line-color': barva, 'line-opacity': 0.6, 'line-width': 1.8 },
       }, pred);
     }
     const zdroj = mapa.getSource('presnost-kruh');
     if (!zdroj) return;
     const r = Math.min(300, presnostUziv || 0);
-    if (r <= 15) {
+    // ⛔ engine 333 (výtka T 19. 9.: „indikace síly signálu GPS se neděje“):
+    // práh 15 m → 8 m – běžný venkovní fix má 4–12 m, takže se kruh
+    // nekreslil skoro nikdy; přesnost teď chodí i z fixů, které se kvůli
+    // šumu nekreslí (OkolnikMost.presnost).
+    // engine 333: setData na drapované vrstvě = přestavba textury terénu →
+    // jen při skutečné změně (poloměr o ≥ 1 m, střed o ≥ 0,5 m, prázdno 1×)
+    const klic = r <= 8 ? 'x' : (Math.round(r) + '|' + lng.toFixed(6) + '|' + lat.toFixed(6));
+    if (klic === obnovKruhPresnosti.klic) return;
+    obnovKruhPresnosti.klic = klic;
+    if (r <= 8) {
       zdroj.setData({ type: 'FeatureCollection', features: [] });
       return;
     }
+    const q = r > 60 ? 2 : (r > 25 ? 1 : 0);   // modrá / jantarová / červená
     const kroky = 48;
     const dLat = r / 111320;
     const dLng = r / (111320 * Math.cos(lat * Math.PI / 180));
@@ -6262,7 +6343,7 @@ function obnovKruhPresnosti(lng, lat) {
       ring.push([lng + dLng * Math.cos(a), lat + dLat * Math.sin(a)]);
     }
     zdroj.setData({ type: 'FeatureCollection', features: [{
-      type: 'Feature', properties: { m: Math.round(r) },
+      type: 'Feature', properties: { m: Math.round(r), q },
       geometry: { type: 'Polygon', coordinates: [ring] } }] });
   } catch (e) { /* styl se zrovna mění — příští poloha */ }
 }
@@ -8102,18 +8183,32 @@ function zrusPlanStopu() {
 // engine 326: po doletu (flyTo) s terénem a náklonem srovnat střed na cíl –
 // viz OkolnikMost.letNa. Jen pro poslední vyžádaný let a jen bez prstu na mapě.
 let dorovnaniLetuId = 0;
+// ⛔⛔ engine 333 (výtka T 19. 9.: „se Seznamem hledané místo skončí jinde“):
+// v Seznamu je WebView zmenšené na 1×1 px (Flutter schovává mapu LAYOUTEM)
+// a appka pošle přelet hned po setState – ještě nad maličkým plátnem.
+// `flyTo` v MapLibre 6 si bod středu (pointAtOffset) spočítá PŘED animací,
+// takže po roztažení posadil cíl do LEVÉHO HORNÍHO ROHU (o půl obrazovky
+// vedle). Přelet nad schovaným plátnem se proto ODLOŽÍ a provede po resize.
+let cekajiciLet = null;
+function mapaJeVidet() {
+  try {
+    const el = mapa && mapa.getContainer();
+    return !!el && el.clientWidth >= 64 && el.clientHeight >= 64;
+  } catch (e) { return true; }
+}
 function dorovnejStredPoDoletu(lng, lat) {
-  if (!mapa || !mapa.getTerrain || !mapa.getTerrain()) return;
+  if (!mapa) return;   // engine 333: i bez terénu (dřív jen s terénem)
   const id = ++dorovnaniLetuId;
   mapa.once('moveend', () => {
     if (id !== dorovnaniLetuId || prstyDole > 0) return;
     try {
-      if (mapa.getPitch() < 1) return;
       const c = mapa.getCenter();
       const d = Math.hypot((lat - c.lat) * 111320,
           (lng - c.lng) * 111320 * Math.cos(lat * Math.PI / 180));
-      // pár metrů = šum; přes 400 m = kamera je už jinde (uživatel, kotva)
-      if (d > 0.5 && d < 400) mapa.jumpTo({ center: [lng, lat] });
+      // pár metrů = šum; přes 3 km = kamera je už jinde (uživatel, kotva).
+      // engine 333: strop 400 m → 3 km a i naplocho – posun o půl obrazovky
+      // (roztažení plátna během letu) je při z15,6 kolem 500 m
+      if (d > 0.5 && d < 3000) mapa.jumpTo({ center: [lng, lat] });
     } catch (e) { /* styl v přestavbě */ }
   });
 }
@@ -8233,6 +8328,17 @@ window.OkolnikMost = {
   /// Poloha uživatele: postavička (když je nastavený atlas), jinak modrá
   /// tečka. `smer` = azimut pohybu ve stupních, `rychlost` v m/s – obojí
   /// volitelné (figurka si je umí odhadnout z po sobě jdoucích poloh).
+  /// engine 333: přesnost polohy i z fixu, který appka nekreslí (šum při
+  /// stání, horší fix) – kruh přesnosti kolem KRESLENÉ polohy se překreslí.
+  presnost(m) {
+    try {
+      presnostUziv = (m > 0 && isFinite(m)) ? m : 0;
+      const p = (typeof polohaVykres !== 'undefined' && polohaVykres)
+          ? polohaVykres : poslednPolohaUziv;
+      if (p && isFinite(p.lng) && isFinite(p.lat)) obnovKruhPresnosti(p.lng, p.lat);
+    } catch (e) { /* styl se zrovna mění */ }
+  },
+
   poloha(lat, lng, presnost, smer, rychlost) {
     try {
       if (!mapa || !window.maplibregl) return;
@@ -8483,11 +8589,24 @@ window.OkolnikMost = {
       vykresliVypravuUkaz(!!vypravaUkaz);
     } catch (e) { console.warn('[most] vyprava', e); }
   },
-  stopaDne(trasa) {
+  stopaDne(trasa, ukazat) {
     try {
       stopaDne = (trasa || []).map((b) => [b[1], b[0]]);
       vykresliStopuDne();
+      // engine 333: „Na mapě“ z deníku = vidět CELOU trasu (dřív appka
+      // letěla na průměr bodů se zoomem 13,5)
+      if (ukazat && stopaDne.length) fitNaBody(stopaDne, 70);
     } catch (e) { console.warn('[most] stopaDne', e); }
+  },
+  /// engine 333: znovu orámovat ukázanou trasu (tlačítko „Celá trasa“ v appce)
+  ukazCelouTrasu() {
+    try {
+      if (vypravaUkaz) {
+        fitNaBody([...vypravaUkaz.trasa, ...vypravaUkaz.fotky.map((f) => [f.lng, f.lat])], 70);
+      } else if (stopaDne.length) {
+        fitNaBody(stopaDne, 70);
+      }
+    } catch (e) { console.warn('[most] ukazCelouTrasu', e); }
   },
 
   /// BĚŽÍCÍ VÝPRAVA (v2.7): jedna trasa `[[lat,lng], …]` kreslená
@@ -8700,6 +8819,12 @@ window.OkolnikMost = {
       // prst na mapě = žádné přelety (v1.250, „při zoomu 3D zamrzá":
       // sledování polohy létalo kamerou každý fix a rvalo gesta z ruky)
       registrujPrsty();
+      // engine 333: nad schovaným plátnem (Seznam) neletět – až po roztažení
+      if (!mapaJeVidet()) {
+        cekajiciLet = { lat, lng, zoom, plynule, vynutit, ms: Date.now() };
+        return;
+      }
+      cekajiciLet = null;
       // ⭐ 26. 8.: TLAČÍTKO „na mou polohu" posílá vynutit=true — klidová
       // brána 1,2 s po zvednutí prstu jinak žrala právě to klepnutí,
       // které po odsunutí mapy přijde („musím mačkat 2×; teď nefunguje").
@@ -10223,6 +10348,20 @@ function synchronizujSkryteMista() {
       }
     }
   } catch (e) { spolkVidit.clear(); }
+  // ⛔ engine 333 (výtka T 19. 9.: „shluk ukazuje číslo i pro místa, která
+  // už jsou vidět“): členové MapLibre shluku se jako samostatné prvky
+  // nekreslí, takže padali mezi „schované“ a přičítali se k nejbližší
+  // kresbě – kostel vedle shluku „5“ měl „6“. Schovaná jsou jen místa,
+  // která jsou v dlaždicích zdroje SAMOSTATNĚ (ne uvnitř shluku).
+  let samostatne = null;
+  try {
+    samostatne = new Set();
+    for (const f of mapa.querySourceFeatures('okolnik-mista')) {
+      const pr = f.properties || {};
+      if (!pr.cluster && pr.id != null) samostatne.add(String(pr.id));
+    }
+    if (!samostatne.size) samostatne = null;   // dlaždice ještě nejsou – po staru
+  } catch (e) { samostatne = null; }
   const schovane = [];
   for (const f of posledniMistaGj.features) {
     const id = String(f.properties.id);
@@ -10230,7 +10369,7 @@ function synchronizujSkryteMista() {
     if (pohled && c && !pohled.contains(c)) continue;   // mimo výřez neřešit
     const spolk = spolkVidit.has(id);
     const skryt = !vidim.has(id) || spolk;
-    if (!vidim.has(id) && c) schovane.push({ id, c });
+    if (!vidim.has(id) && c && (!samostatne || samostatne.has(id))) schovane.push({ id, c });
     const klic = skryt + '|' + spolk;
     if (skryteMista.get(id) === klic) continue;
     skryteMista.set(id, klic);
@@ -10344,7 +10483,28 @@ function registrujKlikMista() {
   // tahu a queryRenderedFeatures s terénem stojí 20–30 ms (změřeno 12. 9.:
   // 6× za sadu tahů, max 29,5 ms) → jen bez prstu a ≥ 400 ms po posledním pohybu
   mapa.on('idle', naplanujSkryteMista);
+  // engine 333: odznak spolknutých přepočítat hned po pohybu (v herním stylu
+  // chodí idle vzácně – číslo viselo zastaralé); při změně zoomu (mění se
+  // složení shluků) staré číslo rovnou schovat. ⚠️ ne na movestart – kamera
+  // sledující hráče se hýbe každý fix a odznaky by blikaly.
+  mapa.on('moveend', naplanujSkryteMista);
+  mapa.on('zoomstart', () => {
+    try {
+      const src = mapa.getSource('okolnik-mista-spolknute');
+      if (src && spolknutePodpis) {
+        spolknutePodpis = '';
+        spolknutaMista.clear();
+        src.setData({ type: 'FeatureCollection', features: [] });
+      }
+    } catch (e) { /* nic */ }
+  });
   mapa.on('idle', () => naplanujStinyDomu(600));
+  // ⭐ engine 333 (výtka T 19. 9.: „načítání stínů je pomalé“): stíny hned
+  // po zastavení mapy (dřív až z idle +600 ms, v herním stylu idle chodí
+  // vzácně, nebo oklikou přes přepočet domů +450 ms). Throttle 300 ms
+  // v naplanujStinyDomu zůstává; malý posun uvnitř rozsahu plátna skončí
+  // na podpisu bez kreslení (prepoctiStinyDomu).
+  mapa.on('moveend', () => naplanujStinyDomu(150));
   // engine 265: animátory (mihotání světel, blikání oken) čekají 1,5 s po pohybu
   mapa.on('move', () => { window.__posledniPohybMs = performance.now(); });
   mapa.on('idle', () => naplanujMosty3d(700));   // engine 224: mosty nad terénem

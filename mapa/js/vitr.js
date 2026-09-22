@@ -28,22 +28,38 @@
   const STUPEN2 = { vitr: 25, naraz: 50 };
   const OD_Z = 15;
   let mapa = null;
-  let kudrlinky = [];        // { el, x, y, vx, vy, zivot, spin, t, maxOpac, meritko }
+  let kudrlinky = [];        // { el, x, y, vx, vy, zivot, t, maxOpac, meritko }
   let dalsiPoryvMs = 0;
   let poryvDoMs = 0;
   let bazenek = [];          // recyklované divy
 
   // spirálka větru: dvě zatočené čáry, bílá s tmavým stínem (čitelná na
   // světlé i tmavé krajině), průhledná – kreslí se scale/rotate podle směru
+  // ⭐ engine 333 (výtka T 19. 9.: „ať se kudrlinka MALUJE, ne točí celá“):
+  // cesty mají pathLength 100 a čárkování 100/100 → posun čárkování
+  // (stroke-dashoffset) 100 → 0 = štětec tah postupně namaluje, 0 → −100 =
+  // tah od začátku mizí (ocas dojede). Tmavá i bílá kopie téže křivky
+  // dostávají týž posun (dvojice podle indexu i % 2).
+  const CESTA = ' pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"';
   const SVG = '<svg viewBox="0 0 48 20" width="48" height="20">'
     + '<g fill="none" stroke-linecap="round" stroke-width="2.6" stroke="rgba(30,40,40,0.28)">'
-    + '<path d="M2 12 C 14 12, 22 12, 30 8 C 36 5, 40 7, 38 11 C 36 14, 31 12, 33 9"/>'
-    + '<path d="M6 17 C 16 17, 24 17, 33 15 C 40 13, 43 15, 41 18"/>'
+    + '<path' + CESTA + ' d="M2 12 C 14 12, 22 12, 30 8 C 36 5, 40 7, 38 11 C 36 14, 31 12, 33 9"/>'
+    + '<path' + CESTA + ' d="M6 17 C 16 17, 24 17, 33 15 C 40 13, 43 15, 41 18"/>'
     + '</g>'
     + '<g fill="none" stroke-linecap="round" stroke-width="1.5" stroke="rgba(255,255,255,0.92)">'
-    + '<path d="M2 12 C 14 12, 22 12, 30 8 C 36 5, 40 7, 38 11 C 36 14, 31 12, 33 9"/>'
-    + '<path d="M6 17 C 16 17, 24 17, 33 15 C 40 13, 43 15, 41 18"/>'
+    + '<path' + CESTA + ' d="M2 12 C 14 12, 22 12, 30 8 C 36 5, 40 7, 38 11 C 36 14, 31 12, 33 9"/>'
+    + '<path' + CESTA + ' d="M6 17 C 16 17, 24 17, 33 15 C 40 13, 43 15, 41 18"/>'
     + '</g></svg>';
+
+  /// Posun čárkování pro podíl života f (0–1): namalovat (do 38 %), chvíli
+  /// držet (do 52 %), pak tah od začátku zmizí (do 100 %).
+  function posunTahu(f) {
+    if (f <= 0) return 100;
+    if (f < 0.38) { const u = f / 0.38; return 100 * (1 - u) * (1 - u); }   // rychle, pak zvolna
+    if (f < 0.52) return 0;
+    if (f < 1) { const u = (f - 0.52) / 0.48; return -100 * u * u; }        // pomalu, pak rychle
+    return -100;
+  }
 
   function stupen() {
     try {
@@ -78,9 +94,12 @@
     if (!el) {
       el = document.createElement('div');
       el.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;'
-        + 'width:48px;height:20px;margin:-10px 0 0 -24px;will-change:transform,opacity,filter;';
+        + 'width:48px;height:20px;margin:-10px 0 0 -24px;will-change:transform,opacity;';
       el.innerHTML = SVG;
+      el.__cesty = el.querySelectorAll('path');
     }
+    // recyklace z bazénku: tah zase od nuly
+    if (el.__cesty) for (const c of el.__cesty) c.setAttribute('stroke-dashoffset', '100');
     return el;
   }
 
@@ -97,8 +116,8 @@
     for (let i = 0; i < pocet; i++) {
       // zrod na návětrném okraji: střed − směr·R + kolmý rozptyl
       const k = (Math.random() - 0.5) * Math.min(W, H) * 0.9;
-      // engine 332 („ať se točí a rozplývá"): rodí se blíž (0,55–0,95 R
-      // proti větru), žije jen 2,8–4,3 s a mezitím se otáčí a rozplyne
+      // engine 332/333: rodí se blíž (0,55–0,95 R proti větru), žije jen
+      // 2,4–3,4 s – mezitím se namaluje, letí po větru a zase rozplyne
       const rr = R * (0.55 + Math.random() * 0.4);
       const x = W / 2 - s.x * rr + kolmo.x * k;
       const y = H / 2 - s.y * rr + kolmo.y * k;
@@ -115,13 +134,11 @@
         kolmo, uhel: s.uhelDeg - 90,
         zpozdeni: i * (0.25 + Math.random() * 0.35),   // s – ať neletí v řadě
         t: 0, maxOpac: (noc ? 0.4 : 0.85) * (0.8 + Math.random() * 0.2),
-        zivot: 2.8 + Math.random() * 1.5,                // s – délka života
-        // otáčení: ±(70–150) °/s, každá jinam; ke konci zvolní (viz tik)
-        spin: (Math.random() < 0.5 ? -1 : 1) * (70 + Math.random() * 80),
+        zivot: 2.4 + Math.random() * 1.0,                // s – délka života
         W, H,
       });
     }
-    poryvDoMs = performance.now() + 3200;
+    poryvDoMs = performance.now() + 3600;
   }
 
   let posledniTikMs = 0;
@@ -155,26 +172,29 @@
         const px = k.x + k.kolmo.x * vln, py = k.y + k.kolmo.y * vln;
         const mimo = px < -60 || py < -60 || px > k.W + 60 || py > k.H + 60;
         if (!mimo) k.bylVidet = true;
-        const nastup = Math.min(1, ziv / 0.5);
-        // engine 332: f = podíl života; posledních 45 % se kudrlinka
-        // ROZPLÝVÁ – krytí klesá, roste (×1,7) a rozostří se (blur do 3 px);
-        // celou dobu se TOČÍ (spin), ke konci pomaleji (√ brzda)
+        // engine 333: f = podíl života; tah se MALUJE (posun čárkování –
+        // viz posunTahu), kudrlinka se neotáčí, jen letí po větru; krytí
+        // naskočí za 0,4 s a úplně na konci dozní (mazání dělá čárkování)
         const f = Math.min(1, ziv / k.zivot);
-        const doz = f < 0.55 ? 1 : 1 - (f - 0.55) / 0.45;
+        const nastup = Math.min(1, ziv / 0.4);
+        const doz = f < 0.85 ? 1 : 1 - (f - 0.85) / 0.15;
         const opac = k.maxOpac * nastup * doz;
-        const rust = 1 + 0.7 * Math.max(0, f - 0.55) / 0.45;
-        const rozostreni = 3 * Math.max(0, f - 0.55) / 0.45;
-        const otoc = k.uhel + k.spin * ziv * (1 - 0.5 * f);
         // pryč po dožití (nebo po opuštění obrazovky)
         if ((mimo && k.bylVidet) || f >= 1) {
-          k.el.remove(); k.el.style.opacity = '0'; k.el.style.filter = '';
+          k.el.remove(); k.el.style.opacity = '0';
           bazenek.push(k.el);
           continue;
         }
+        const c = k.el.__cesty;
+        if (c) {
+          // druhý tah (spodní čára) o 0,15 s později – jako druhý šmrnc štětcem
+          const f2 = Math.min(1, Math.max(0, (ziv - 0.15) / k.zivot));
+          const p1 = posunTahu(f).toFixed(1), p2 = posunTahu(f2).toFixed(1);
+          for (let i = 0; i < c.length; i++) c[i].setAttribute('stroke-dashoffset', i % 2 ? p2 : p1);
+        }
         k.el.style.opacity = opac.toFixed(2);
-        k.el.style.filter = rozostreni > 0.05 ? 'blur(' + rozostreni.toFixed(1) + 'px)' : '';
         k.el.style.transform = 'translate(' + px.toFixed(1) + 'px,' + py.toFixed(1) + 'px) '
-          + 'rotate(' + otoc.toFixed(0) + 'deg) scale(' + (k.meritko * rust).toFixed(2) + ')';
+          + 'rotate(' + k.uhel.toFixed(0) + 'deg) scale(' + k.meritko.toFixed(2) + ')';
         zbyva.push(k);
       }
       kudrlinky = zbyva;
