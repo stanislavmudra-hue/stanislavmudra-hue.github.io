@@ -10885,6 +10885,28 @@ function priblizShluk(zdroj, cid, f) {
 /// Ve hře (styl s mlhou) se podklad NEproklikává — queryRenderedFeatures
 /// vrací i prvky pod mlhou a klik by prozradil neobjevená místa.
 let hookKlikuPoi = false;
+/// ⭐ engine 337 (krok 4 plánu výkonu, krajina8): klepnutí na hranici nebo
+/// název chráněného území → mini-detail appky (onPoi, sl 'chranena') – v obou
+/// stylech. Jako NÁHRADNÍ akce sběrače klepnutí (engine 304): místo nebo shluk
+/// Okolníku pod prstem má přednost, vlajku Dobyvatele sběrač spolkne sám.
+const CHU_VRSTVY = ['ink-chranena', 'ink-chranena-nazev', 'chranena-hranice', 'chranena-nazev'];
+function klikChranene(e) {
+  if (typeof posbirejKlik !== 'function') return;
+  const vrstvy = CHU_VRSTVY.filter((id) => mapa.getLayer(id));
+  if (!vrstvy.length) return;
+  const o = 12;                     // čára je tenká – tolerance prstu
+  const f = mapa.queryRenderedFeatures(
+      [[e.point.x - o, e.point.y - o], [e.point.x + o, e.point.y + o]], { layers: vrstvy })
+      .find((x) => x.properties && x.properties.n);
+  if (!f) return;
+  const muj = posbirejKlik(e);
+  if (muj.spolknuto || muj.nahradni) return;
+  const p = f.properties;
+  muj.nahradni = () => mostHlas('onPoi', {
+    n: String(p.n), lat: e.lngLat.lat, lon: e.lngLat.lng,
+    sl: 'chranena', cls: String(p.t || ''), sub: '', ele: null,
+  });
+}
 function registrujKlikPoi() {
   if (hookKlikuPoi || !mapa) return;
   hookKlikuPoi = true;
@@ -10893,7 +10915,7 @@ function registrujKlikPoi() {
     try {
       const stl = (typeof STYLY !== 'undefined'
           && typeof aktualniKod !== 'undefined') ? STYLY[aktualniKod] : null;
-      if (stl && stl.mlha) return;
+      if (stl && stl.mlha) { klikChranene(e); return; }   // engine 337
       const o = 10;
       const prvky = mapa.queryRenderedFeatures(
           [[e.point.x - o, e.point.y - o], [e.point.x + o, e.point.y + o]]);
@@ -10931,6 +10953,7 @@ function registrujKlikPoi() {
         });
         return;
       }
+      klikChranene(e);          // engine 337: nic z podkladu → chráněné území
     } catch (err) { console.warn('[most] klikPoi', err); }
   });
 }

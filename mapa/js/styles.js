@@ -195,6 +195,38 @@ function stylLetecka(ctx) {
 // ---------------------------------------------------------------------------
 // 3) TURISTICKÁ — reliéf, vrstevnice, stezky, vrcholy
 // ---------------------------------------------------------------------------
+// ⭐ engine 337 (krok 4 plánu výkonu, krajina8/9; přání 16. 9. „chráněná území
+// jen na mapě – hranice + název podél čáry“): zvláště chráněná území ze ZABAGED
+// (vrstva `chranena`, čáry = obvody). Velkoplošná (NP, CHKO) od z8, NPR a NPP
+// od z12, PR a PP od z13; názvy o úroveň později. Zoom ve filtru se
+// vyhodnocuje po celých úrovních. Natura 2000, ptačí oblasti a rašeliniště ne.
+// ⭐ engine 338 (krajina11): názvy leží na zvláštní HLADKÉ čáře odsazené dovnitř
+// území – pro každou úroveň zoomu vlastní (atribut `p` = z10…z14, v dlaždici jen
+// ta její; odsazení ~10–20 px od hranice, poloměr oblouků ≥ ~10 px – viz
+// tools/krajina_zabaged_export.py). ⛔ Na skutečné hranici (kopíruje okraje
+// lesů a parcel, zub každých pár pixelů) MapLibre název skoro nepoložil – součet
+// ohybů v okně ~7 px přesáhl i text-max-angle 180° (TT 23. 9.); kolize ani
+// rozestup roli nehrály. Hranici kreslí jen prvky BEZ `p`, názvy jen prvky s `p`
+// (typy a zoomy názvů určuje export: NP/CHKO z10, NPR/NPP z13, PR/PP z14).
+const CHU_FILTR = ['all', ['!', ['has', 'p']], ['case',
+  ['<', ['zoom'], 12], ['in', ['get', 't'], ['literal', ['np', 'chko']]],
+  ['<', ['zoom'], 13], ['in', ['get', 't'], ['literal', ['np', 'chko', 'npr', 'npp']]],
+  true]];
+const CHU_FILTR_NAZEV = ['has', 'p'];
+function chuNazev(barva, halo) {
+  return { type: 'symbol', source: 'krajina', 'source-layer': 'chranena',
+    minzoom: 10, filter: CHU_FILTR_NAZEV,
+    // rozestup 300 px: s 420 px (víc než šířka telefonu) byl název jen v polovině
+    // pohledů na hranici, s 300 v 24–26 z 27 (TT 23. 9.)
+    layout: { 'symbol-placement': 'line', 'symbol-spacing': 300,
+              'text-field': ['concat', ['upcase', ['get', 't']], ' ', ['get', 'n']],
+              'text-font': FONT_I, 'text-size': skalujText(11.5),
+              // čára má poloměr oblouků ≥ ~10 px → projde i výchozích 45°
+              'text-max-angle': 45, 'text-keep-upright': true,
+              'text-letter-spacing': 0.04 },
+    paint: { 'text-color': barva, 'text-halo-color': halo, 'text-halo-width': 1.4 } };
+}
+
 function stylTuristicka(ctx) {
   return {
     version: 8,
@@ -202,7 +234,7 @@ function stylTuristicka(ctx) {
     glyphs: KONFIG.glyphs,
     sky: obloha(),
     sources: zdroje(ctx, {
-    krajina: { type: 'vector', url: r2('krajina7.pmtiles'), promoteId: 'fid',
+    krajina: { type: 'vector', url: r2('krajina11.pmtiles'), promoteId: 'fid',
                attribution: '© ČÚZK ZABAGED®' },
     }),
     layers: [
@@ -237,10 +269,13 @@ function stylTuristicka(ctx) {
         paint: { 'fill-color': '#e9dfd0', 'fill-opacity': 0.8 } },
       { id: 'park-np', type: 'fill', source: 'omt', 'source-layer': 'park',
         paint: { 'fill-color': '#9ccb86', 'fill-opacity': 0.15 } },
-      { id: 'park-np-hranice', type: 'line', source: 'omt',
-        'source-layer': 'park', minzoom: 8,
-        paint: { 'line-color': '#4c9a2a', 'line-width': 1.6,
-                 'line-dasharray': [4, 2], 'line-opacity': 0.7 } },
+      // engine 337: hranice chráněných území ze ZABAGED (dřív OSM `park` bez
+      // jmen a bez maloplošných rezervací)
+      { id: 'chranena-hranice', type: 'line', source: 'krajina', 'source-layer': 'chranena',
+        minzoom: 8, filter: CHU_FILTR, layout: { 'line-join': 'round' },
+        paint: { 'line-color': '#4c9a2a', 'line-opacity': 0.75,
+                 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1.2, 12, 1.6, 16, 2.4],
+                 'line-dasharray': [4, 2] } },
       { id: 'stinovani', type: 'hillshade', source: 'stinovani',
         paint: { 'hillshade-exaggeration': 0.45,
                  'hillshade-shadow-color': '#59503c',
@@ -276,6 +311,7 @@ function stylTuristicka(ctx) {
                   'text-font': FONT, 'text-size': 8.5 },
         paint: { 'text-color': '#9a865c', 'text-halo-color': '#f4efe3',
                  'text-halo-width': 1.1 } },
+      Object.assign({ id: 'chranena-nazev' }, chuNazev('#3b7a22', '#f4efe3')),
       { id: 'voda', type: 'fill', source: 'omt', 'source-layer': 'water',
         paint: { 'fill-color': '#9fc7dd' } },
       { id: 'reky', type: 'line', source: 'omt', 'source-layer': 'waterway',
@@ -637,7 +673,7 @@ function stylHerni(ctx) {
       // (kůlny, skleníky, přístřešky, věžovité stavby, h, fid) a `vertikaly`
       // (komíny, věže, vodojemy, větrníky, těžní věže, sila – čtverce, h, fid)
       // engine 234: promoteId → feature-state odkrytí staveb/vertikál podle fid
-      krajina: { type: 'vector', url: r2('krajina7.pmtiles'), promoteId: 'fid',
+      krajina: { type: 'vector', url: r2('krajina11.pmtiles'), promoteId: 'fid',
                  attribution: '© ČÚZK ZABAGED®' },
     }),
     layers: [
@@ -754,6 +790,14 @@ function stylHerni(ctx) {
         minzoom: 15, filter: ['==', ['get', 't'], 'zed'],
         paint: { 'line-color': '#8A8072', 'line-opacity': 0.75,
                  'line-width': sirkaMetry(0.8, 0.8, 15) } },
+      // ⭐ engine 337 (krok 4, krajina8): PLOTY Z KATASTRU – uliční fronty
+      // parcel (RÚIAN: hrana zastavěná plocha/zahrada × ulice), předpočítané
+      // na PC. ZABAGED plot nemá, OSM fence je na venkově děravé.
+      { id: 'plot', type: 'line', source: 'krajina', 'source-layer': 'ploty',
+        minzoom: 15.5, layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#6F5F3F',
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 15.5, 0, 16.2, 0.6],
+                 'line-width': sirkaMetry(0.6, 0.35, 15.5) } },
       { id: 'hrbitov', type: 'fill', source: 'omt', 'source-layer': 'landuse',
         minzoom: 12, filter: ['==', ['get', 'class'], 'cemetery'],
         paint: { 'fill-color': '#B7C4A6', 'fill-opacity': 0.55 } },
@@ -895,7 +939,7 @@ function stylHerni(ctx) {
         // schéma exportuje jen t/s/p). Řešení bez přegenerování archivu: ZABAGED
         // cesta je MĚKKÁ PLNÁ linka POD čárkovanou z OSM – kde je obojí, splyne
         // v jednu; kde OSM nic nemá (les), zůstane vidět sama.
-        // ⚠️ Až bude `krajina8` s `fid`, jde duplicitu skrýt úplně (feature-state).
+        // ⚠️ Až bude archiv krajiny s `fid` u cest (krajina11 ho ještě nemá), jde duplicitu skrýt úplně (feature-state).
         paint: { 'line-color': '#8B7550', 'line-blur': 0.6,
                  'line-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0.3, 15, 0.5],
                  'line-width': sirkaMetry(1.1, 1.8, 13) } },
@@ -1069,6 +1113,13 @@ function stylHerni(ctx) {
         filter: ['==', ['get', 'admin_level'], 4],
         paint: { 'line-color': KRONIKA.inkSvetla, 'line-width': 0.9,
                  'line-dasharray': [3, 3], 'line-opacity': 0.55 } },
+      // ⭐ engine 337: hranice chráněných území tuší nad mlhou (informace mapy
+      // jako hranice krajů – vidět i v neobjeveném kraji)
+      { id: 'ink-chranena', type: 'line', source: 'krajina', 'source-layer': 'chranena',
+        minzoom: 8, filter: CHU_FILTR, layout: { 'line-join': 'round' },
+        paint: { 'line-color': '#3E6B3A', 'line-opacity': 0.7,
+                 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1.0, 12, 1.4, 16, 2.2],
+                 'line-dasharray': [3, 2] } },
       // Vrcholy perem — na dálku jen významné (rank ≤ 2), od z12 všechny.
       // Zoom ve filtru se vyhodnocuje jen na CELÝCH úrovních → práh musí
       // být celé číslo (11.5 by se fakticky choval jako 12)
@@ -1092,6 +1143,9 @@ function stylHerni(ctx) {
         paint: { 'text-color': KRONIKA.inkSvetla,
                  'text-halo-color': KRONIKA.pergamen || '#F1E4BE',
                  'text-halo-width': 1.1 } },
+      // engine 337: názvy chráněných území podél hranice (nízká priorita –
+      // ustoupí obcím a vrcholům)
+      Object.assign({ id: 'ink-chranena-nazev' }, chuNazev('#2F5530', KRONIKA.halo)),
       { id: 'ink-vrcholy', type: 'symbol', source: 'omt',
         'source-layer': 'mountain_peak', minzoom: 9 + POSUN_POPISKU,
         filter: ['case', ['<', ['zoom'], 12],
@@ -1238,7 +1292,7 @@ function stylDobyvatel(ctx) {
     glyphs: KONFIG.glyphs,
     sky: obloha(),
     sources: zdroje(ctx, {
-    krajina: { type: 'vector', url: r2('krajina7.pmtiles'), promoteId: 'fid',
+    krajina: { type: 'vector', url: r2('krajina11.pmtiles'), promoteId: 'fid',
                attribution: '© ČÚZK ZABAGED®' },
     }),
     layers: [
