@@ -50,7 +50,7 @@ const Svetlo = (() => {
     // engine 211 („chtělo by to zvýraznit stíny"): slunce 0,50 → 0,65 (plné
     // od výšky 20°), měsíc 0,22 → 0,35, mraky ubírají 30 % (bylo 40)
     let celk = zdroj === 'slunce' ? 0.65 * Math.min(1, Math.max(0, el) / 20)
-      : (zdroj === 'mesic' ? 0.42 * (st.mesicOsvit || 0.5) : 0);   // engine 264: lehké stíny od měsíce
+      : (zdroj === 'mesic' ? 0.5 * (st.mesicOsvit || 0.5) : 0);    // engine 264: lehké stíny od měsíce; 346: 0,42 → 0,5 (nad nočním překryvem)
     celk *= 1 - 0.3 * Math.min(1, st.oblacnost || 0);
     // engine 215: jeden geometrický stín (main.js) – síla a směr světla
     try { if (window.nastavStinyDomuSvetlo) window.nastavStinyDomuSvetlo(az, el, celk); }

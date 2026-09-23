@@ -2688,7 +2688,10 @@ function stredMimoBezpeci() {
   const r = stinyRozsah;
   if (!r || !r.vw || !mapa) return false;
   const c = mapa.getCenter();
-  return Math.abs(mercX(c.lng) - r.cx) > r.vw * 0.5 || Math.abs(mercY(c.lat) - r.cy) > r.vh * 0.5;
+  // engine 346 (výtka T: „stíny se stále dokreslují po přiblížení“ – změřeno: po ODDÁLENÍ se ~1 s
+  // doplňovaly okraje): i oddálení o víc než 0,6 zoomu (výřez přeroste plátno)
+  return Math.abs(mercX(c.lng) - r.cx) > r.vw * 0.5 || Math.abs(mercY(c.lat) - r.cy) > r.vh * 0.5
+    || mapa.getZoom() < r.z - 0.6;
 }
 /// engine 345: prahy stínů s hysterezí – zoom se při posunu kolébe s terénem (±0,2)
 let stinySilPosl = null;
@@ -3314,8 +3317,10 @@ function prepoctiStinyDomu() {
   if (vPohybu && r && r.vw) {
     // engine 345: v pohybu BEZ getBounds (s terénem raycast + readPixels) – plátno stejné
     // velikosti posunuté o posun středu; stromy nového okraje předem z workeru
-    const dx = cx - r.cx, dy = cy - r.cy;
-    r = { x0: r.x0 + dx, x1: r.x1 + dx, y0: r.y0 + dy, y1: r.y1 + dy, z, cx, cy, vw: r.vw, vh: r.vh, roz: r.roz };
+    // engine 346: po oddálení/přiblížení v gestu plátno i o poměr zoomu (výřez roste 2^Δz)
+    const f = Math.pow(2, r.z - z);
+    r = { x0: cx - (r.cx - r.x0) * f, x1: cx + (r.x1 - r.cx) * f, y0: cy - (r.cy - r.y0) * f, y1: cy + (r.y1 - r.cy) * f,
+          z, cx, cy, vw: r.vw * f, vh: r.vh * f, roz: r.roz };
     x0 = cx - r.vw / 2; x1 = cx + r.vw / 2; y0 = cy - r.vh / 2; y1 = cy + r.vh / 2;
     predNacistStromy(r);
   } else {
@@ -6169,6 +6174,14 @@ function srovnejNocPodMlhu() {
     const p = mapa.style._order || mapa.getStyle().layers.map((l) => l.id);
     if (p.indexOf('noc-prekryv') > p.indexOf('mlha-pergamen')) {
       mapa.moveLayer('noc-prekryv', 'mlha-pergamen');
+    }
+    // ⭐ engine 346 (výtka T 23. 9.: „v noci by se měly kreslit stíny od měsíčního svitu“): stíny
+    // se počítaly i od měsíce, ale vrstva ležela POD nočním překryvem (tmavomodrý, 66 %), který
+    // jejich kontrast srazil na třetinu – zanikly. Stíny teď hned NAD překryv (oba drapované,
+    // blok zůstává souvislý); ve dne má překryv průhlednost 0, takže se nic nemění.
+    const p2 = mapa.style._order || mapa.getStyle().layers.map((l) => l.id);
+    if (mapa.getLayer('stin-domu') && p2.indexOf('stin-domu') < p2.indexOf('noc-prekryv')) {
+      mapa.moveLayer('stin-domu', 'mlha-pergamen');
     }
   } catch (e) { /* styl se zrovna mění */ }
 }

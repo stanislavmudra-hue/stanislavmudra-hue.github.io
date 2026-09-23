@@ -1279,6 +1279,23 @@ const Dekorace = (() => {
       if (mapa.isMoving && mapa.isMoving()) zapisMusky();
     });
   }
+  // ⭐ engine 346 (výtka T 23. 9.: „po přesunu některé můry jakoby vyskakují (v gejzíru) na své
+  // místo“): při přesunu na novou kotvu (můra/hmyz, který po posunu mapy uletěl z výřezu, nebo
+  // zhaslá světluška) zůstávala VÝŠKA staré kotvy a dotahovala se lerpem 15 %/tik → můra
+  // viditelně vyletěla/spadla na místo. Teď se výška nastaví HNED; bez výškopisu (terén zapnutý,
+  // data ještě nejsou) se prvek neukáže, dokud výška nedorazí (`bezVysky`).
+  function vyskaKotvyRoje(lon, lat) {
+    const maTeren = !!(mapa.getTerrain && mapa.getTerrain());
+    if (!maTeren) return 0;
+    const v = mapa.queryTerrainElevation && mapa.queryTerrainElevation([lon, lat]);
+    return (typeof v === 'number' && Math.abs(v) > 0.5) ? v : null;
+  }
+  function presunNaKotvu(m, lon, lat) {
+    m.kx = lon; m.ky = lat; m.x = lon; m.y = lat;
+    const v = vyskaKotvyRoje(lon, lat);
+    if (v === null) { m.bezVysky = true; }
+    else { m.vyska = m.vyskaCil = v; m.bezVysky = false; }
+  }
   function zrusRoj() {
     for (const m of musky) {
       if (m.el) { try { m.el.remove(); } catch (e) { /* pryč */ } }
@@ -1402,14 +1419,17 @@ const Dekorace = (() => {
       if (!zdrojKotev || !zdrojKotev.length) break;
       const k = vyberKotvu(zdrojKotev, rezim !== 'noc');
       const [lon, lat] = k.geometry.coordinates;
-      musky.push({
+      const nova = {
         kx: lon, ky: lat, x: lon, y: lat,
         smer: Math.random() * Math.PI * 2,
-        jas: rezim === 'noc' ? 0 : 0.9,
+        // engine 346: rodí se ZHASNUTÁ a rozsvítí se (dřív denní hmyz a můry naskočily naplno)
+        jas: 0,
         cil: rezim === 'noc' ? 0.4 + Math.random() * 0.6
                              : 0.9 + Math.random() * 0.1,
         typ: typ,
-      });
+      };
+      presunNaKotvu(nova, lon, lat);
+      musky.push(nova);
     }
     const mLat = 1 / 110574;             // ~metr v stupních
     for (const m of musky) {
@@ -1485,7 +1505,12 @@ const Dekorace = (() => {
             ? okna : (kotvy.length ? kotvy : okna);
         const k = vyberKotvu(zk, true);
         const c = k.geometry.coordinates;
-        m.kx = c[0]; m.ky = c[1]; m.x = c[0]; m.y = c[1];
+        presunNaKotvu(m, c[0], c[1]);
+        m.jas = 0;                        // engine 346: na novém místě se rozsvítí, nenaskočí
+      }
+      if (m.bezVysky) {                   // engine 346: výška ještě není → nekreslit
+        const v = vyskaKotvyRoje(m.x, m.y);
+        if (v !== null) { m.vyska = m.vyskaCil = v; m.bezVysky = false; } else m.jas = 0;
       }
       if (Math.abs(dj) <= dechKrok) {
         if (m.typ === 'mura') {
@@ -1501,7 +1526,7 @@ const Dekorace = (() => {
         } else if (m.cil === 0) {
           const k = kotvy[(Math.random() * kotvy.length) | 0];
           const [lon, lat] = k.geometry.coordinates;
-          m.kx = lon; m.ky = lat; m.x = lon; m.y = lat;
+          presunNaKotvu(m, lon, lat);     // engine 346: výška nové kotvy hned
           m.cil = 0.4 + Math.random() * 0.6;
         } else {
           m.cil = Math.random() < 0.22 ? 0 : 0.35 + Math.random() * 0.65;
@@ -1536,11 +1561,12 @@ const Dekorace = (() => {
         mapa.getCanvasContainer().appendChild(el);
         m.el = el;
         m.elTyp = m.typ;
-        // výška hned při zrodu (bez DEM = 0; dorovná lerp níž)
-        const v0 = mapa.queryTerrainElevation
-            && mapa.queryTerrainElevation([m.x, m.y]);
-        m.vyskaCil = (typeof v0 === 'number') ? v0 : 0;
-        m.vyska = m.vyskaCil;
+        // výška hned při zrodu (engine 346: nastavuje ji presunNaKotvu; sem jen záloha)
+        if (typeof m.vyska !== 'number') {
+          const v0 = vyskaKotvyRoje(m.x, m.y);
+          m.vyskaCil = v0 === null ? 0 : v0;
+          m.vyska = m.vyskaCil;
+        }
         nasadRenderMusky();
       }
       if (m.elTyp !== m.typ) {

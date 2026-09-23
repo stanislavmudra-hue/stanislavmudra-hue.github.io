@@ -1226,7 +1226,8 @@ const AnimaceNadMapou = (() => {
   const TRIDY_SOV = [64, 128, 256];               // výška sovy ve spritu ≈ 0,83 × N
   function spriteSovy(druh, tr, ton) {
     const k = druh + '|' + tr + '|' + ton;
-    return spriteSov[k] || (spriteSov[k] = upecSovu(druh, TRIDY_SOV[tr], SILA_TONU[ton]));
+    // engine 346 (výtka T: „sovy téměř nejsou vidět“): sedící sovy tlumit méně než ptáky v letu
+    return spriteSov[k] || (spriteSov[k] = upecSovu(druh, TRIDY_SOV[tr], [0, 0.08, 0.16, 0.24][ton]));
   }
   function hotovaSova(druh, tr, ton) {
     for (const t of [tr, tr - 1, tr + 1, tr - 2, tr + 2]) {
@@ -1867,7 +1868,8 @@ const AnimaceNadMapou = (() => {
     const br = mapa.getBearing() * Math.PI / 180, rx = Math.cos(br), ry = -Math.sin(br);   // vodorovně na obrazovce (v, s)
     const W = platno.width / hustota, H = platno.height / hustota;
     const zakl = 0.19686 * Math.pow(2, z - 13.25);          // px na metr stromu při perspektivě 1
-    const leskA = [0, 0.25, 0.45, 0.6][ton] || 0;
+    // engine 346 (výtka T: „možná by jim mohly více svítit oči“): silnější odlesk + měkký svit kolem
+    const leskA = [0, 0.5, 0.8, 0.95][ton] || 0;
     for (const q of sedici) {
       q.vidi = false;
       if (q.pryc) continue;
@@ -1894,9 +1896,14 @@ const AnimaceNadMapou = (() => {
       if (leskA > 0 && q.fr <= 2) {                        // odlesk očí v noci
         ctx.setTransform(hustota, 0, 0, hustota, 0, 0);
         for (const [ex, ey, er] of sp.oci[q.fr]) {
-          const gx = x + (ex - sp.N / 2) * sc, gy = y + (ey - sp.N * 0.9) * sc, rr = Math.max(0.9, er * sc * 1.7);
+          const gx = x + (ex - sp.N / 2) * sc, gy = y + (ey - sp.N * 0.9) * sc, rr = Math.max(1.5, er * sc * 2.2);
+          const halo = ctx.createRadialGradient(gx, gy, 0, gx, gy, rr * 2.6);      // měkký svit kolem
+          halo.addColorStop(0, 'rgba(255,190,110,0.55)'); halo.addColorStop(1, 'rgba(255,170,90,0)');
+          ctx.globalAlpha = leskA * 0.55;
+          ctx.fillStyle = halo;
+          ctx.beginPath(); ctx.arc(gx, gy, rr * 2.6, 0, Math.PI * 2); ctx.fill();
           const gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, rr);
-          gr.addColorStop(0, SOVY[q.druh].lesk); gr.addColorStop(1, 'rgba(255,170,90,0)');
+          gr.addColorStop(0, '#fff6d8'); gr.addColorStop(0.35, SOVY[q.druh].lesk); gr.addColorStop(1, 'rgba(255,170,90,0)');
           ctx.globalAlpha = leskA;
           ctx.fillStyle = gr;
           ctx.beginPath(); ctx.arc(gx, gy, rr, 0, Math.PI * 2); ctx.fill();
