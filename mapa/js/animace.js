@@ -78,8 +78,12 @@ const AnimaceNadMapou = (() => {
     try { if (window.__nastaveniMapy && window.__nastaveniMapy.animace === false) return false; } catch (e) { /* nic */ }
     const c = mapa.getContainer && mapa.getContainer();
     if (!c || c.clientWidth < 80 || c.clientHeight < 80) return false;    // schovaná mapa (1×1 px)
-    return performance.now() - aktivitaMs < NECINNOST_MS;
+    return true;
   }
+  // ⭐ engine 344: po 5 min bez dotyku a pohybu kamery se nic nového nerodí (kouř, kroužky,
+  // lety, vítr) a běžící doběhnou; plátno se NEMAŽE – sedící sovy zůstanou na stromech
+  // (dřív se vše smazalo = věci by „zmizely“, výtka T k mizení)
+  const necinny = () => performance.now() - aktivitaMs >= NECINNOST_MS;
   function pocasi(t) {
     if (stKes && t - stKesMs < 2000) return stKes;
     try { stKes = (typeof Pocasi !== 'undefined' && Pocasi.stavSvetla) ? Pocasi.stavSvetla() : null; } catch (e) { stKes = null; }
@@ -108,6 +112,25 @@ const AnimaceNadMapou = (() => {
     return !(st.druh && /dest|snih|bourka|mlha/.test(String(st.druh)));
   }
   const noc = (st) => !!(st && typeof st.slunceEl === 'number' && st.slunceEl < -4);
+  /// noční lety: od západu (slunce < 1°) do svítání, ne v dešti/sněhu/bouřce
+  function nocniSmi(st) {
+    if (vynut().noc) return true;
+    if (!st || typeof st.slunceEl !== 'number' || st.slunceEl >= 1) return false;
+    return !(st.druh && /dest|snih|bourka/.test(String(st.druh)));
+  }
+  /// sovy sedí na stromech po setmění (slunce < −2°)
+  const sovySedi = (st) => !!(vynut().sovy || (st && typeof st.slunceEl === 'number' && st.slunceEl < -2));
+  /// krok noci 0–3 (Pocasi.stavNoci, jako překryv noci přes krajinu) → nádech kresby ptáků
+  let krokNociKes = 0, krokNociMs = -1e9;
+  function tonNoci(t) {
+    if (vynut().ton != null) return vynut().ton;
+    if (t - krokNociMs > 2000) {
+      krokNociMs = t;
+      try { krokNociKes = (typeof Pocasi !== 'undefined' && Pocasi.stavNoci) ? (Pocasi.stavNoci() | 0) : 0; } catch (e) { krokNociKes = 0; }
+    }
+    return Math.max(0, Math.min(3, krokNociKes));
+  }
+  const SILA_TONU = [0, 0.15, 0.32, 0.48];      // noc: ptáci tlumení jako krajina (TT 23. 9.: sluka a sova pálená svítily)
 
   // ------------------------------------------------------------------ plátno
   // obláček: světlé jádro a šedší okraj – na béžové mapě by čistě světle šedý
@@ -151,7 +174,7 @@ const AnimaceNadMapou = (() => {
   function vycisti(uplne) {
     if (ctx && !prazdne) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, platno.width, platno.height); }
     prazdne = true;
-    if (uplne) { oblacky.length = 0; krouzky.length = 0; lety.length = 0; kudrlinky.length = 0; }
+    if (uplne) { oblacky.length = 0; krouzky.length = 0; lety.length = 0; kudrlinky.length = 0; sedici = []; sediciSig = ''; }
   }
   function naplanuj() { if (!raf && mapa) raf = requestAnimationFrame(snimek); }
   function aktivita() { aktivitaMs = performance.now(); naplanuj(); }
@@ -203,7 +226,7 @@ const AnimaceNadMapou = (() => {
   // ------------------------------------------------------------------ efekty
   function krokKour(t, st) {
     for (let i = oblacky.length - 1; i >= 0; i--) if ((t - oblacky[i].t0) / 1000 > oblacky[i].zivot) oblacky.splice(i, 1);
-    if (mapa.getZoom() < KOUR_OD_Z || !topnaSezona(st)) return;
+    if (mapa.getZoom() < KOUR_OD_Z || !topnaSezona(st) || necinny()) return;
     const max = UROVNE[uroven].oblacku;
     for (const k of kominy) {
       if (k.h === null || !k.vidi || t < k.dalsi) continue;
@@ -818,6 +841,310 @@ const AnimaceNadMapou = (() => {
     }
     return { snimky, stiny };
   }
+  // ------------------------------------------------------------------ noční ptáci: kresba
+  // ⭐ engine 344 (přání T 23. 9. v noci: „v noci dodělej sovy, které sedí na stromech a sem
+  // tam nějaká přelétne; také jiné noční ptáky dle období“): noční druhy v letu (shora, stejný
+  // anatomický systém) a SEDÍCÍ SOVY zepředu (stromy jsou billboardy natočené ke kameře).
+  // Pruhování letek: pásy napříč rukou (vzor oříznutý křídlem).
+  function pruhyRuky(g, G, n, barva, sirka, od, doo) {
+    g.strokeStyle = barva; g.lineWidth = sirka;
+    for (let i = 0; i < n; i++) {
+      const u = G.Rk * lerp(od || 0.15, doo || 0.95, n > 1 ? i / (n - 1) : 0.5);
+      const a = G.ruka(u, -2), b = G.ruka(u - 1.5, G.hl(u) + 3);
+      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+    }
+  }
+  function pruhyLoketni(g, G, n, barva, sirka) {
+    g.strokeStyle = barva; g.lineWidth = sirka;
+    for (let i = 1; i <= n; i++) {
+      const t = i / (n + 1);
+      const a = bodyMezi(G.krovky, G.SE, t), b = a.map((p) => [p[0], p[1]]);
+      g.beginPath(); hladka(g, b, false); g.stroke();
+    }
+  }
+  Object.assign(PTACI_KRESBA, {
+    pustik: {
+      amp: 0.6,
+      K: { ramX: 8, ramY: -3, paze: 18, ruka: 23, sipRuky: 0.1, hlZ: 23, hlZap: 22, predZap: 2, vyp: 1.6, vypRuky: 1,
+           tipHl: 14, kulata: true, prsty: 4, prstyDel: 0.12, letky: 10, loketni: 12, prohnuti: 0.6, krovkyHl: 0.5, pero: 0.4 },
+      T: { bw: 12.5, yf: -9, yr: 12 }, H: { y: -15.5, rx: 9.8, ry: 9.2, krk: false },
+      Z: { typ: 'kuzel', L: 2.6, w: 3.2 }, O: { typ: 'vejir', L: 11, w: 14, w0: 6, per: 7 },
+      barvy: { krovky: '#8a6746', krovkySv: '#9e7a55', letky: '#735538', loketni: '#7a5b3d', telo: '#7e5f42', teloBok: '#937252',
+               hlava: '#86654a', zobak: '#d8c9a0', ocas: '#735538', prsty: '#6a4e34', lem: 'rgba(230,205,160,0.35)' },
+      vzor(g, G) {
+        pruhyRuky(g, G, 5, 'rgba(214,184,140,0.55)', 1.3);
+        pruhyLoketni(g, G, 2, 'rgba(214,184,140,0.45)', 1.2);
+        skvrny(g, 9, G.LE[0][0], G.Zp[0], G.LE[0][1] - 2, G.krovky[4][1], 0.75, 'rgba(60,40,24,0.6)', 21);
+        skvrny(g, 5, G.LE[0][0] + 1, G.LE[1][0], G.LE[0][1], G.LE[0][1] + 6, 0.8, 'rgba(240,226,196,0.85)', 23);   // bílé skvrny ramenních
+      },
+      vzorTela(g, B) {
+        skvrny(g, 14, -B.T.bw * 0.7, B.T.bw * 0.7, B.T.yf, B.T.yr, 0.8, 'rgba(58,40,24,0.6)', 25);
+        for (const st of [-1, 1]) skvrny(g, 3, st * 5, st * 8, -6, 2, 0.9, 'rgba(240,226,196,0.85)', st > 0 ? 27 : 29);
+      },
+      vzorHlavy(g, B) { skvrny(g, 9, -7, 7, B.H.y - 8, B.H.y + 6, 0.7, 'rgba(58,40,24,0.55)', 31); },
+      vzorOcasu(g, B, y0) { g.strokeStyle = 'rgba(214,184,140,0.5)'; g.lineWidth = 1.1; for (const d of [3.5, 7]) { g.beginPath(); g.moveTo(-6, y0 + d); g.lineTo(6, y0 + d); g.stroke(); } },
+    },
+    kalous: {
+      amp: 0.6,
+      K: { ramX: 7, ramY: -3, paze: 17, ruka: 30, sipRuky: 0.2, hlZ: 18, hlZap: 17, predZap: 2, vyp: 1.2, vypRuky: 0.8,
+           tipHl: 8, kulata: true, letky: 10, loketni: 12, prohnuti: 0.6, krovkyHl: 0.5, pero: 0.4 },
+      T: { bw: 10.5, yf: -9, yr: 12 }, H: { y: -14.5, rx: 8, ry: 7.8, krk: false },
+      Z: { typ: 'kuzel', L: 2.4, w: 3 }, O: { typ: 'rovny', L: 12, w: 12, w0: 5, per: 7 },
+      barvy: { krovky: '#9a7951', krovkySv: '#ab8a60', letky: '#8a6a45', loketni: '#8f7049', telo: '#8f704d', teloBok: '#a5845c',
+               hlava: '#94744e', zobak: '#2a2420', ocas: '#8a6a45', lem: 'rgba(230,205,160,0.35)' },
+      vzor(g, G) {
+        // oranžová skvrna u kořene ručních letek + tmavá čárka na zápěstí + pruhy konce ruky
+        g.fillStyle = 'rgba(222,160,80,0.85)';
+        g.beginPath(); polyline(g, [G.ruka(G.Rk * 0.08, 1), G.ruka(G.Rk * 0.45, 0.5), G.ruka(G.Rk * 0.42, G.hl(G.Rk * 0.42) * 0.7), G.ruka(G.Rk * 0.06, G.hl(1) * 0.75)], true); g.fill();
+        g.fillStyle = 'rgba(50,36,24,0.85)'; const zc = G.ruka(G.Rk * 0.12, G.hl(1) * 0.35); elipsa2(g, zc[0], zc[1], 2.2, 3.2, 0.4); g.fill();
+        pruhyRuky(g, G, 4, 'rgba(50,36,24,0.7)', 1.5, 0.62, 0.95);
+        skvrny(g, 10, G.LE[0][0], G.Zp[0], G.LE[0][1] - 2, G.krovky[4][1], 0.7, 'rgba(60,44,28,0.55)', 33);
+      },
+      vzorTela(g, B) { g.strokeStyle = 'rgba(58,42,26,0.6)'; g.lineWidth = 1; for (const x of [-4, 0, 4]) { g.beginPath(); g.moveTo(x, B.T.yf + 2); g.lineTo(x * 1.1, B.T.yr - 2); g.stroke(); } },
+      vzorOcasu(g, B, y0) { g.strokeStyle = 'rgba(50,36,24,0.55)'; g.lineWidth = 1; for (const d of [3, 6, 9]) { g.beginPath(); g.moveTo(-5.5, y0 + d); g.lineTo(5.5, y0 + d); g.stroke(); } },
+    },
+    sova_palena: {
+      amp: 0.6,
+      K: { ramX: 7, ramY: -3, paze: 18, ruka: 29, sipRuky: 0.16, hlZ: 19, hlZap: 18, predZap: 2, vyp: 1.3, vypRuky: 0.8,
+           tipHl: 9, kulata: true, letky: 10, loketni: 12, prohnuti: 0.6, krovkyHl: 0.5, pero: 0.35 },
+      T: { bw: 10.5, yf: -9, yr: 12 }, H: { y: -14.5, rx: 8.4, ry: 8, krk: false },
+      Z: { typ: 'kuzel', L: 2.4, w: 2.8 }, O: { typ: 'rovny', L: 10, w: 12, w0: 5, per: 6 },
+      barvy: { krovky: '#caa066', krovkySv: '#d6ae76', letky: '#c9a26c', loketni: '#cba46e', telo: '#c69c64', teloBok: '#d2aa72',
+               hlava: '#caa46c', zobak: '#e9dcc2', ocas: '#c9a26c', pera: 'rgba(120,90,50,0.18)' },
+      vzor(g, G) {
+        g.fillStyle = 'rgba(165,160,152,0.55)';                   // šedý závoj přes krovky
+        g.beginPath(); polyline(g, [G.LE[0], G.LE[1], G.Zp, G.Zz].concat(G.krovky.slice().reverse()), true); g.fill();
+        pruhyRuky(g, G, 4, 'rgba(150,140,125,0.35)', 1.1);
+        skvrny(g, 14, G.LE[0][0], G.Zp[0], G.LE[0][1] - 1, G.krovky[5][1], 0.45, 'rgba(250,248,240,0.9)', 35);
+        skvrny(g, 10, G.LE[0][0], G.Zp[0], G.LE[0][1] - 1, G.krovky[5][1], 0.35, 'rgba(40,30,20,0.7)', 37);
+      },
+      vzorTela(g, B) { g.fillStyle = 'rgba(165,160,152,0.5)'; elipsa2(g, 0, -1, B.T.bw * 0.55, 8); g.fill();
+                       skvrny(g, 10, -5, 5, -8, 8, 0.4, 'rgba(250,248,240,0.9)', 39); },
+      vzorHlavy(g, B) { skvrny(g, 6, -5, 5, B.H.y - 6, B.H.y + 4, 0.4, 'rgba(250,248,240,0.9)', 41); },
+    },
+    sycek: {
+      amp: 1,
+      K: { ramX: 9, ramY: -3, paze: 17, ruka: 22, sipRuky: 0.12, hlZ: 21, hlZap: 20, predZap: 1.5, vyp: 1.5, vypRuky: 1,
+           tipHl: 12, kulata: true, letky: 9, loketni: 9, prohnuti: 0.6, krovkyHl: 0.5, pero: 0.4 },
+      T: { bw: 13, yf: -10, yr: 13 }, H: { y: -16, rx: 9.5, ry: 8.5, krk: false },
+      Z: { typ: 'kuzel', L: 2.6, w: 3 }, O: { typ: 'rovny', L: 10, w: 12, w0: 5, per: 6 },
+      barvy: { krovky: '#7c6148', krovkySv: '#8b6f55', letky: '#5f4a36', loketni: '#6a533d', telo: '#7a5f46', teloBok: '#8d7258',
+               hlava: '#7d624a', zobak: '#d8cda0', ocas: '#5f4a36' },
+      vzor(g, G) {
+        skvrny(g, 14, G.LE[0][0], G.Zp[0], G.LE[0][1] - 2, G.krovky[4][1], 0.9, 'rgba(240,232,214,0.9)', 43);
+        pruhyRuky(g, G, 4, 'rgba(240,232,214,0.55)', 1.4, 0.2, 0.9);
+      },
+      vzorTela(g, B) { skvrny(g, 12, -B.T.bw * 0.7, B.T.bw * 0.7, B.T.yf, B.T.yr, 0.9, 'rgba(240,232,214,0.85)', 45); },
+      vzorHlavy(g, B) { skvrny(g, 10, -7, 7, B.H.y - 7, B.H.y + 5, 0.55, 'rgba(240,232,214,0.9)', 47); },
+      vzorSlozene(g, B) { skvrny(g, 5, B.T.bw * 0.45, B.T.bw * 0.95, -6, 8, 0.8, 'rgba(240,232,214,0.85)', 49); },
+    },
+    lelek: {
+      amp: 0.8,
+      K: { ramX: 5, ramY: -3, paze: 13, ruka: 35, sipRuky: 0.42, hlZ: 14, hlZap: 12, predZap: 2, vyp: 0.8, vypRuky: 0.3,
+           tipHl: 2.5, letky: 10, loketni: 10, prohnuti: 0.3, krovkyHl: 0.5, pero: 0.35 },
+      T: { bw: 7, yf: -8, yr: 10 }, H: { y: -11.5, rx: 5.8, ry: 5, krk: false },
+      Z: { typ: 'kuzel', L: 1.6, w: 3.4 }, O: { typ: 'rovny', L: 20, w: 10, w0: 4, per: 6 },
+      barvy: { krovky: '#80776a', krovkySv: '#90877a', letky: '#5d544a', loketni: '#6a6155', telo: '#72695c', teloBok: '#81786b',
+               hlava: '#786f62', zobak: '#3a342e', ocas: '#6a6155' },
+      vzor(g, G) {
+        skvrny(g, 12, G.LE[0][0], G.Zp[0], G.LE[0][1] - 1, G.krovky[4][1], 0.55, 'rgba(40,34,28,0.6)', 51);
+        pasPodel(g, bodyMezi(G.krovky, G.LE.slice(0, 3), 0.3).slice(1, 8), 1.2, 'rgba(210,190,150,0.7)');   // světlý pás krovek
+        const a = G.ruka(G.Rk * 0.72, -1), b = G.ruka(G.Rk * 0.7, G.hl(G.Rk * 0.7) + 1);
+        g.strokeStyle = 'rgba(248,246,240,0.95)'; g.lineWidth = 2.2;                  // bílá skvrna samce na ruce
+        g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(lerp(a[0], b[0], 0.7), lerp(a[1], b[1], 0.7)); g.stroke();
+      },
+      vzorTela(g, B) { g.strokeStyle = 'rgba(40,34,28,0.55)'; g.lineWidth = 0.8; for (const x of [-2.5, 2.5]) { g.beginPath(); g.moveTo(x, B.T.yf + 1); g.lineTo(x, B.T.yr - 1); g.stroke(); } },
+      vzorOcasu(g, B, y0) { g.fillStyle = 'rgba(248,246,240,0.95)'; for (const st of [-1, 1]) { g.fillRect(st * 4.2 - 1.2, y0 + B.O.L - 5, 2.4, 4.2); }
+                            g.strokeStyle = 'rgba(40,34,28,0.45)'; g.lineWidth = 0.9; for (const d of [5, 10, 15]) { g.beginPath(); g.moveTo(-4, y0 + d); g.lineTo(4, y0 + d); g.stroke(); } },
+    },
+    kvakos: {
+      amp: 0.6,
+      K: { ramX: 6, ramY: -2, paze: 18, ruka: 25, sipRuky: 0.12, hlZ: 21, hlZap: 20, predZap: 3, vyp: 1.6, vypRuky: 1,
+           tipHl: 13, kulata: true, letky: 10, loketni: 14, prohnuti: 0.7, krovkyHl: 0.5, pero: 0.4 },
+      T: { bw: 10, yf: -9, yr: 12 }, H: { y: -15, rx: 6.5, ry: 6.5, krk: false },
+      Z: { typ: 'spicaty', L: 8.5, w: 3 }, O: { typ: 'rovny', L: 8, w: 11, w0: 4.5, per: 6 },
+      nohy: { barva: '#c9b24a', w: 2, L: 30, roz: 1.8, prsty: true },
+      barvy: { krovky: '#9ea7af', krovkySv: '#abb4bb', letky: '#8e979f', loketni: '#98a1a9', telo: '#1d2830', teloBok: '#2a3640',
+               hlava: '#1b252d', zobak: '#161616', ocas: '#8e979f' },
+      vzorTela(g, B) { g.fillStyle = '#18222a'; elipsa2(g, 0, -2, B.T.bw * 0.72, 9.5); g.fill(); },
+      vzorHlavy(g, B) { g.fillStyle = 'rgba(240,240,236,0.9)'; g.fillRect(-2.6, B.H.y - B.H.ry + 0.6, 5.2, 1.1); },
+    },
+    sluka: {
+      amp: 0.7,
+      K: { ramX: 7, ramY: -3, paze: 16, ruka: 24, sipRuky: 0.14, hlZ: 20, hlZap: 19, predZap: 2, vyp: 1.4, vypRuky: 0.9,
+           tipHl: 12, kulata: true, letky: 10, loketni: 11, prohnuti: 0.6, krovkyHl: 0.5, pero: 0.4 },
+      T: { bw: 10, yf: -9, yr: 11 }, H: { y: -14, rx: 6.5, ry: 6.5, krk: false },
+      Z: { typ: 'spicaty', L: 15, w: 2.2 }, O: { typ: 'rovny', L: 8, w: 11, w0: 4.5, per: 6 },
+      barvy: { krovky: '#9a7550', krovkySv: '#aa855e', letky: '#6d543e', loketni: '#7a5f46', telo: '#8b6a48', teloBok: '#9d7a55',
+               hlava: '#83633f', zobak: '#8a7258', ocas: '#6e543d' },
+      vzor(g, G) {
+        pruhyLoketni(g, G, 3, 'rgba(50,36,24,0.5)', 1.1);
+        pruhyRuky(g, G, 5, 'rgba(200,170,120,0.45)', 1.1);
+        skvrny(g, 12, G.LE[0][0], G.Zp[0], G.LE[0][1] - 1, G.krovky[4][1], 0.7, 'rgba(50,36,24,0.55)', 53);
+      },
+      vzorTela(g, B) { g.strokeStyle = 'rgba(50,36,24,0.55)'; g.lineWidth = 1.2; for (let y = B.T.yf + 2; y < B.T.yr; y += 3) { g.beginPath(); g.moveTo(-B.T.bw * 0.6, y); g.lineTo(B.T.bw * 0.6, y + 0.8); g.stroke(); } },
+      vzorHlavy(g, B) { g.fillStyle = 'rgba(40,28,18,0.8)'; for (const d of [-4, -1, 2]) g.fillRect(-B.H.rx, B.H.y + d, B.H.rx * 2, 1.4); },
+    },
+  });
+
+  // ---- sedící sovy zepředu: jednotky – výška 100 (nohy na větvi v y = 0, temeno y = −100)
+  const SOVY = {
+    pustik: { r: 25, hy: -76, telo: '#7f6043', prsa: '#a88660', kridla: '#6e5238', disk: '#b89a74', okraj: '#4a3522',
+              oko: '#0e0b09', duhovka: null, zobak: '#d8c8a0', lesk: '#ff9a52' },
+    kalous: { r: 21, hy: -73, telo: '#9a7a52', prsa: '#c6a171', kridla: '#7a5d3e', disk: '#d39a55', okraj: '#3b2a1c',
+              oko: '#0e0b09', duhovka: '#f08a1c', zobak: '#2a2420', lesk: '#ffb347', usi: true },
+    sova_palena: { r: 24, hy: -76, telo: '#caa066', prsa: '#f4efe4', kridla: '#c29a62', disk: '#fbf8f2', okraj: '#b88a55',
+                   oko: '#0e0b09', duhovka: null, zobak: '#e9dcc2', lesk: '#ff9a52', srdce: true },
+    sycek: { r: 23, hy: -71, telo: '#806349', prsa: '#9a7d5f', kridla: '#6b523c', disk: '#cfbc9c', okraj: '#5a4430',
+             oko: '#0e0b09', duhovka: '#f4d23a', zobak: '#d8cda0', lesk: '#ffe066', plocha: true },
+  };
+  /// kreslí sedící sovu; fr: 0 zepředu, 1 hlava vlevo, 2 vpravo, 3 týl, 4 mrknutí.
+  /// Vrací polohy očí (jednotky) pro odlesk – jen viditelné oči.
+  function kresliSovu(g, druh, fr, stin) {
+    const S = SOVY[druh], c = stin ? '#000' : null;
+    const oci = [];
+    // ocas pod větví
+    g.fillStyle = c || S.kridla;
+    g.beginPath(); g.moveTo(-8, -10); g.lineTo(-7, 12); g.lineTo(7, 12); g.lineTo(8, -10); g.closePath(); g.fill();
+    // větev
+    if (!stin) {
+      g.strokeStyle = '#3a2a1c'; g.lineWidth = 6; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(-46, 4); g.quadraticCurveTo(0, -2, 48, 6); g.stroke();
+      g.strokeStyle = 'rgba(120,90,60,0.6)'; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(-44, 2.5); g.quadraticCurveTo(0, -3.5, 46, 4.5); g.stroke();
+    }
+    // tělo a prsa
+    g.fillStyle = c || S.telo;
+    elipsa2(g, 0, -38, 27, 37); g.fill();
+    if (!stin) {
+      g.fillStyle = S.prsa; elipsa2(g, 0, -33, 17, 28); g.fill();
+      if (druh === 'pustik' || druh === 'kalous') {                 // podélné čárky s příčkami
+        g.strokeStyle = druh === 'pustik' ? 'rgba(70,48,28,0.75)' : 'rgba(60,42,26,0.8)'; g.lineWidth = 2;
+        for (const x of [-9, -3, 3, 9]) { g.beginPath(); g.moveTo(x, -54); g.lineTo(x * 1.08, -12); g.stroke(); }
+        if (druh === 'pustik') { g.lineWidth = 1.2; for (let y = -50; y < -14; y += 6) { g.beginPath(); g.moveTo(-12, y); g.lineTo(12, y + 1); g.stroke(); } }
+      } else if (druh === 'sova_palena') {
+        skvrny(g, 12, -12, 12, -54, -14, 0.9, 'rgba(90,70,45,0.7)', 61);
+      } else {
+        skvrny(g, 14, -14, 14, -56, -12, 2.2, 'rgba(236,228,210,0.9)', 63);
+      }
+    }
+    // složená křídla po stranách
+    for (const st of [-1, 1]) {
+      g.fillStyle = c || S.kridla;
+      elipsa2(g, st * 20, -37, 11.5, 31, st * 0.14); g.fill();
+      if (!stin) {
+        if (druh === 'sova_palena') { g.fillStyle = 'rgba(165,160,152,0.55)'; elipsa2(g, st * 20, -44, 9, 18, st * 0.14); g.fill(); skvrny(g, 5, st * 16, st * 24, -60, -20, 0.8, 'rgba(250,248,240,0.9)', st > 0 ? 65 : 67); }
+        else skvrny(g, 6, st * 15, st * 25, -60, -16, 1.4, druh === 'kalous' ? 'rgba(50,36,24,0.6)' : 'rgba(236,222,196,0.85)', st > 0 ? 69 : 71);
+        g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 0.8; elipsa2(g, st * 20, -37, 11.5, 31, st * 0.14); g.stroke();
+      }
+    }
+    // nohy (opeřené) s drápy na větvi
+    for (const st of [-1, 1]) {
+      g.fillStyle = c || (druh === 'sova_palena' ? '#f1ebdf' : '#cdb898');
+      elipsa2(g, st * 7, -2, 5, 4); g.fill();
+      if (!stin) { g.strokeStyle = '#2a2320'; g.lineWidth = 1.2; for (const d of [-3, 0, 3]) { g.beginPath(); g.moveTo(st * 7 + d, 0.5); g.lineTo(st * 7 + d * 1.2, 4); g.stroke(); } }
+    }
+    // hlava
+    const r = S.r, hy = S.hy;
+    const ry = S.plocha ? r * 0.86 : r;
+    if (S.usi && fr !== 3) {                                       // ouška kalouse
+      for (const st of [-1, 1]) {
+        g.fillStyle = c || '#5a432c';
+        g.beginPath(); g.moveTo(st * 5, hy - ry * 0.8); g.lineTo(st * 12, hy - ry * 1.55); g.lineTo(st * 13, hy - ry * 0.7); g.closePath(); g.fill();
+        if (!stin) { g.strokeStyle = 'rgba(214,170,110,0.8)'; g.lineWidth = 0.9; g.beginPath(); g.moveTo(st * 6.5, hy - ry * 0.85); g.lineTo(st * 11.5, hy - ry * 1.4); g.stroke(); }
+      }
+    }
+    g.fillStyle = c || S.telo;
+    elipsa2(g, 0, hy, r, ry); g.fill();
+    if (stin) return oci;
+    if (fr === 3) {                                                 // týl: jen peří hlavy
+      skvrny(g, 12, -r * 0.7, r * 0.7, hy - ry * 0.7, hy + ry * 0.6, 1.3, druh === 'sova_palena' ? 'rgba(165,160,152,0.7)' : 'rgba(60,42,26,0.55)', 73);
+      if (druh === 'sycek') skvrny(g, 10, -r * 0.7, r * 0.7, hy - ry * 0.7, hy + ry * 0.6, 1, 'rgba(236,228,210,0.9)', 75);
+      g.strokeStyle = 'rgba(0,0,0,0.3)'; g.lineWidth = 0.8; elipsa2(g, 0, hy, r, ry); g.stroke();
+      return oci;
+    }
+    // natočení obličeje: posun a zúžení
+    const posun = fr === 1 ? -0.32 : (fr === 2 ? 0.32 : 0), zuz = fr === 1 || fr === 2 ? 0.72 : 1;
+    const fx = (x) => posun * r + x * zuz;
+    // závoj (obličejový disk)
+    g.save();
+    elipsa2(g, 0, hy, r, ry); g.clip();
+    if (druh !== 'sycek') skvrny(g, 8, -r, r, hy - ry, hy + ry, 1.4, 'rgba(60,42,26,0.45)', 77);
+    g.fillStyle = S.disk;
+    if (S.srdce) {                                                  // srdcovitý závoj sovy pálené
+      g.beginPath();
+      g.moveTo(fx(0), hy - ry * 0.55);
+      g.bezierCurveTo(fx(-r * 0.25), hy - ry * 0.95, fx(-r * 0.98), hy - ry * 0.7, fx(-r * 0.86), hy + ry * 0.05);
+      g.bezierCurveTo(fx(-r * 0.75), hy + ry * 0.6, fx(-r * 0.2), hy + ry * 0.9, fx(0), hy + ry * 0.98);
+      g.bezierCurveTo(fx(r * 0.2), hy + ry * 0.9, fx(r * 0.75), hy + ry * 0.6, fx(r * 0.86), hy + ry * 0.05);
+      g.bezierCurveTo(fx(r * 0.98), hy - ry * 0.7, fx(r * 0.25), hy - ry * 0.95, fx(0), hy - ry * 0.55);
+      g.fill();
+      g.strokeStyle = S.okraj; g.lineWidth = 1.6; g.stroke();
+    } else if (!S.plocha) {                                         // dva kruhy závoje
+      for (const st of [-1, 1]) { elipsa2(g, fx(st * r * 0.36), hy + 1, r * 0.46 * (st === (fr === 1 ? 1 : -1) && zuz < 1 ? 0.8 : 1), ry * 0.6); g.fill(); }
+      g.strokeStyle = S.okraj; g.lineWidth = 1.4;
+      g.beginPath(); g.ellipse(fx(0), hy + 2, r * 0.86 * zuz, ry * 0.78, 0, Math.PI * 0.05, Math.PI * 0.95); g.stroke();
+      if (druh === 'kalous') { g.strokeStyle = 'rgba(50,34,20,0.7)'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(fx(0), hy - ry * 0.6); g.lineTo(fx(0), hy + ry * 0.4); g.stroke();
+                               g.strokeStyle = 'rgba(245,240,230,0.9)'; g.lineWidth = 1.2; for (const st of [-1, 1]) { g.beginPath(); g.moveTo(fx(st * 2), hy - ry * 0.55); g.lineTo(fx(st * 7), hy - ry * 0.25); g.stroke(); } }
+    } else {                                                        // sýček: světlý obličej a bílé obočí
+      g.fillStyle = S.disk; elipsa2(g, fx(0), hy + 2, r * 0.8 * zuz, ry * 0.62); g.fill();
+      skvrny(g, 8, -r * 0.8, r * 0.8, hy - ry * 0.9, hy - ry * 0.4, 1.1, 'rgba(236,228,210,0.9)', 79);
+    }
+    // oči
+    const oko = (st) => {
+      const x = fx(st * r * 0.38), y = hy - (S.plocha ? 1 : 2), ro = r * (S.plocha ? 0.26 : 0.27);
+      const daleko = zuz < 1 && ((fr === 1 && st > 0) || (fr === 2 && st < 0));
+      const w = daleko ? ro * 0.55 : ro;
+      if (S.plocha) { g.strokeStyle = '#f4efe2'; g.lineWidth = 2.2; g.beginPath(); g.moveTo(x - w * 1.2, y - ro * 1.25); g.lineTo(x + w * 1.1, y - ro * 1.05); g.stroke(); }
+      if (fr === 4) {                                               // mrknutí: víčko
+        g.strokeStyle = 'rgba(40,28,18,0.9)'; g.lineWidth = 1.6;
+        g.beginPath(); g.moveTo(x - w, y); g.quadraticCurveTo(x, y + ro * 0.35, x + w, y); g.stroke();
+        return;
+      }
+      if (S.duhovka) { g.fillStyle = S.duhovka; g.beginPath(); g.ellipse(x, y, w, ro, 0, 0, Math.PI * 2); g.fill(); }
+      g.fillStyle = S.oko; g.beginPath(); g.ellipse(x, y, S.duhovka ? w * 0.5 : w, S.duhovka ? ro * 0.5 : ro, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.8)'; g.beginPath(); g.ellipse(x - w * 0.3, y - ro * 0.35, Math.max(0.6, w * 0.22), Math.max(0.6, ro * 0.22), 0, 0, Math.PI * 2); g.fill();
+      oci.push([x, y, Math.max(w, ro * 0.6)]);
+    };
+    oko(-1); oko(1);
+    // zobák
+    g.fillStyle = S.zobak;
+    g.beginPath(); g.moveTo(fx(-2.6), hy + 4); g.quadraticCurveTo(fx(0), hy + 3, fx(2.6), hy + 4); g.lineTo(fx(0), hy + 10); g.closePath(); g.fill();
+    g.restore();
+    g.strokeStyle = 'rgba(0,0,0,0.3)'; g.lineWidth = 0.8; elipsa2(g, 0, hy, r, ry); g.stroke();
+    return oci;
+  }
+  /// noční nádech: tmavomodrý závoj jen přes kresbu (jako překryv noci přes krajinu)
+  function nocniTon(c, sila) {
+    if (!(sila > 0)) return;
+    const g = c.getContext('2d');
+    g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = 'rgba(11,26,58,' + sila.toFixed(3) + ')';
+    g.fillRect(0, 0, c.width, c.height);
+    g.restore();
+  }
+  /// sprite sedící sovy (5 poloh); kotva = nohy (N/2, 0,9 N); oči v px spritu
+  function upecSovu(druh, N, sila) {
+    const m = N / 120, snimky = [], oci = [];
+    for (let fr = 0; fr < 5; fr++) {
+      const a = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(N, N) : document.createElement('canvas');
+      a.width = N; a.height = N;
+      const g = a.getContext('2d');
+      g.translate(N / 2, N * 0.9); g.scale(m, m);
+      const o = kresliSovu(g, druh, fr, false);
+      nocniTon(a, sila);
+      const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(N, N) : document.createElement('canvas');
+      c.width = N; c.height = N;
+      const gc = c.getContext('2d');
+      gc.filter = 'blur(' + Math.max(0.6, m * 1.6).toFixed(2) + 'px) brightness(0)';
+      gc.globalAlpha = 0.5; gc.drawImage(a, 0, 0);
+      gc.filter = 'none'; gc.globalAlpha = 1; gc.drawImage(a, 0, 0);
+      snimky.push(c);
+      oci.push(o.map(([x, y, r]) => [N / 2 + x * m, N * 0.9 + y * m, r * m]));
+    }
+    return { N, m, snimky, oci };
+  }
   // ------------------------------------------------------------------ ptáci: lety
   // ⭐ engine 342: letka = JEDEN druh, kresba natočená PODLE SMĚRU LETU a položená do
   // roviny letu (zkrácení náklonem kamery jako všechno na mapě) – dřív vzpřímená
@@ -855,7 +1182,21 @@ const AnimaceNadMapou = (() => {
                n: () => vazene([[1, 20], [2, 55], [3, 15], [4, 10]]) },
     husa:    { rozM: 10.2, v: 17, nad: [60, 150], frek: 3.4, let: 'mava', tvar: 'klin',
                n: () => 5 + Math.floor(Math.random() * 9) },
+    // ⭐ engine 344: NOČNÍ (noc: true; husa letí i v noci při tahu). Sovy mávají pomalu
+    // a dlouho plachtí, nízko; lelek kličkuje (klikaty), sluka „táhne“ těsně nad lesem
+    pustik:      { rozM: 6.7, v: 9,  nad: [6, 20],  frek: 3,   let: 'mava', klouz: 0.6, tvar: 'volne', noc: true, sova: true,
+                   n: () => vazene([[1, 90], [2, 10]]) },
+    kalous:      { rozM: 6.6, v: 9,  nad: [5, 18],  frek: 3.2, let: 'mava', klouz: 0.6, tvar: 'volne', noc: true, sova: true, n: () => 1 },
+    sova_palena: { rozM: 6.4, v: 8,  nad: [3, 12],  frek: 2.8, let: 'mava', klouz: 0.7, tvar: 'volne', noc: true, sova: true, n: () => 1 },
+    sycek:       { rozM: 4.3, v: 9,  nad: [2, 8],   frek: 7,   let: 'poskok', tvar: 'volne', noc: true, sova: true, n: () => 1 },
+    lelek:       { rozM: 4.3, v: 8,  nad: [4, 20],  frek: 4,   let: 'mava', klouz: 0.5, tvar: 'volne', noc: true, klikaty: true,
+                   n: () => vazene([[1, 80], [2, 20]]) },
+    kvakos:      { rozM: 7.3, v: 11, nad: [20, 50], frek: 2.6, let: 'mava', tvar: 'volne', noc: true,
+                   n: () => vazene([[1, 50], [2, 25], [3, 15], [4, 10]]) },
+    sluka:       { rozM: 4.6, v: 10, nad: [28, 40], frek: 3.5, let: 'mava', tvar: 'volne', noc: true, n: () => 1 },
   };
+  // výška SEDÍCÍ sovy (m, stylizace jako rozpětí: 7 × skutečná^0,8)
+  const SOVA_VYSKA_M = { pustik: 3.4, kalous: 3.1, sova_palena: 3.0, sycek: 2.1 };
   const MIN_PX_DRUHU = 5, MAX_PX_PTAKA = 130;
   const metryNaPx = (z, lat) => 78271.52 / Math.pow(2, z) * Math.cos(lat * Math.PI / 180);
   /// nejnižší zoom, na kterém má druh v zeměpisné šířce lat aspoň MIN_PX_DRUHU px
@@ -869,25 +1210,44 @@ const AnimaceNadMapou = (() => {
   }
   const spritePtaku = {};
   const TRIDY_PX = [48, 96, 192];               // rozpětí v spritu ≈ 0,88 × N
-  function spriteDruhu(klic, tr) {
-    const k = klic + '|' + tr;
+  function spriteDruhu(klic, tr, ton) {
+    ton = ton || 0;
+    const k = klic + '|' + tr + '|' + ton;
     let s = spritePtaku[k];
     if (!s) {
       const N = TRIDY_PX[tr], m = N / 114;
-      const u = upecDruh2(klic, N, m, tr === 0);
-      s = spritePtaku[k] = { N, m, sn: u.snimky, stin: tr === 0 ? { N, m, sn: u.stiny } : null };
+      const u = upecDruh2(klic, N, m, tr === 0 && !ton);
+      if (ton) for (const c of u.snimky) nocniTon(c, SILA_TONU[ton]);
+      s = spritePtaku[k] = { N, m, sn: u.snimky, stin: tr === 0 && !ton ? { N, m, sn: u.stiny } : null };
     }
     return s;
   }
+  const spriteSov = {};
+  const TRIDY_SOV = [64, 128, 256];               // výška sovy ve spritu ≈ 0,83 × N
+  function spriteSovy(druh, tr, ton) {
+    const k = druh + '|' + tr + '|' + ton;
+    return spriteSov[k] || (spriteSov[k] = upecSovu(druh, TRIDY_SOV[tr], SILA_TONU[ton]));
+  }
+  function hotovaSova(druh, tr, ton) {
+    for (const t of [tr, tr - 1, tr + 1, tr - 2, tr + 2]) {
+      const k = druh + '|' + t + '|' + ton;
+      if (t >= 0 && t < TRIDY_SOV.length && spriteSov[k]) return spriteSov[k];
+    }
+    return spriteSovy(druh, tr, ton);
+  }
+  const tridaSovy = (px) => { const d = px * hustota; return d < 60 ? 0 : (d < 120 ? 1 : 2); };
   // pečení stojí 10–20 ms na druh a velikost (TT) → předem v nečinnosti, jakmile let
   // vznikne (ptáci startují za okrajem); při kreslení se vezme nejbližší hotová třída
   const frontaPeceni = [];
   let peceBezi = false;
-  function pripravSprity(klice, tr) {
+  function pripravSprity(klice, tr, ton, sovy) {
+    ton = ton || 0;
     for (const kl of klice) {
-      for (const t of [0, tr]) {
-        const k = kl + '|' + t;
-        if (!spritePtaku[k] && frontaPeceni.indexOf(k) < 0) frontaPeceni.push(k);
+      for (const t of (sovy ? [tr] : [0, tr])) {
+        const tn = sovy || t === tr ? ton : 0;
+        const k = (sovy ? 's|' : 'p|') + kl + '|' + t + '|' + tn;
+        const hotovo = sovy ? spriteSov[kl + '|' + t + '|' + tn] : spritePtaku[kl + '|' + t + '|' + tn];
+        if (!hotovo && frontaPeceni.indexOf(k) < 0) frontaPeceni.push(k);
       }
     }
     if (peceBezi || !frontaPeceni.length) return;
@@ -895,19 +1255,21 @@ const AnimaceNadMapou = (() => {
     const dalsi = () => {
       const k = frontaPeceni.shift();
       if (!k) { peceBezi = false; return; }
-      const [kl, t] = k.split('|');
-      try { spriteDruhu(kl, +t); } catch (e) { /* nic */ }
+      const [typ, kl, t, tn] = k.split('|');
+      try { if (typ === 's') spriteSovy(kl, +t, +tn); else spriteDruhu(kl, +t, +tn); } catch (e) { /* nic */ }
       if (typeof requestIdleCallback === 'function') requestIdleCallback(dalsi, { timeout: 400 });
       else setTimeout(dalsi, 30);
     };
     if (typeof requestIdleCallback === 'function') requestIdleCallback(dalsi, { timeout: 400 });
     else setTimeout(dalsi, 30);
   }
-  function hotovySprite(klic, tr) {
+  function hotovySprite(klic, tr, ton) {
+    ton = ton || 0;
     for (const t of [tr, tr - 1, tr + 1, tr - 2, tr + 2]) {
-      if (t >= 0 && t < TRIDY_PX.length && spritePtaku[klic + '|' + t]) return spritePtaku[klic + '|' + t];
+      const k = klic + '|' + t + '|' + ton;
+      if (t >= 0 && t < TRIDY_PX.length && spritePtaku[k]) return spritePtaku[k];
     }
-    return spriteDruhu(klic, tr);                 // nic hotového – upéct hned (výjimečně)
+    return spriteDruhu(klic, tr, ton);            // nic hotového – upéct hned (výjimečně)
   }
   const tridaPx = (px) => { const d = px * hustota; return d < 50 ? 0 : (d < 100 ? 1 : 2); };
   const nah = (a) => (Math.random() * 2 - 1) * a;
@@ -959,10 +1321,38 @@ const AnimaceNadMapou = (() => {
       return Dekorace.kontextPtaku(b.getWest(), b.getSouth(), b.getEast(), b.getNorth()) || nic;
     } catch (e) { return nic; }
   }
-  function vyberDruh(z, jine) {
+  /// kolik lesních stromů (k ≥ 0,9) je ve výřezu – les pro puštíka, lelka, sluku
+  function pocetLesnichStromu() {
+    try {
+      if (typeof Dekorace === 'undefined' || !Dekorace.zapsane || mapa.getZoom() < 14) return 0;
+      const b = mapa.getBounds(), w = b.getWest(), e = b.getEast(), so = b.getSouth(), n = b.getNorth();
+      let c = 0;
+      for (const f of Dekorace.zapsane()) {
+        if ((+f.properties.k || 0) < 0.9) continue;
+        const q = f.geometry.coordinates;
+        if (q[0] > w && q[0] < e && q[1] > so && q[1] < n) c++;
+      }
+      return c;
+    } catch (e) { return 0; }
+  }
+  function vyberDruh(z, jine, vNoci) {
     const k = kontextPtaku(), m = mesic();
     const voda = k.voda >= 3, ves = k.komin >= 6 || k.svetla >= 10;
-    const vahy = {
+    let vahy;
+    if (vNoci) {
+      const les = pocetLesnichStromu() >= 40;
+      const st = pocasi(performance.now()), el = st && typeof st.slunceEl === 'number' ? st.slunceEl : -20;
+      vahy = {
+        pustik: les ? 3 : 1,
+        kalous: (m === 12 || m <= 2) ? (ves ? 2 : 1.2) : (les ? 1 : 0.8),
+        sova_palena: ves ? 1.8 : 0.6,
+        sycek: ves ? 1 : 0.2,
+        lelek: (m >= 5 && m <= 8) ? (les ? 2 : 0.8) : 0,                 // V–VIII, paseky a okraje lesa
+        kvakos: (m >= 4 && m <= 9) ? (voda ? 3 : 0.15) : 0,              // IV–IX u vody
+        sluka: (m >= 3 && m <= 6 && el > -10) ? (les ? 2.5 : 0.3) : 0,   // jarní tah za soumraku
+        husa: ((m >= 10 && m <= 11) || (m >= 2 && m <= 3)) ? 0.8 : 0,    // noční tah hus
+      };
+    } else vahy = {
       kachna: voda ? 6 : 0.5,
       labut: k.voda >= 12 ? 2 : (voda ? 0.8 : 0),
       volavka: voda ? 2.2 : 0.5,
@@ -992,10 +1382,10 @@ const AnimaceNadMapou = (() => {
     const p = bod(A.lng, A.lat, alt);
     return mapa.unproject([2 * px[0] - p.x, 2 * px[1] - p.y]);
   }
-  function novyLet(druh) {
+  function novyLet(druh, start) {
     const c = PTACI[druh];
     const kont = mapa.getContainer(), W = kont.clientWidth, H = kont.clientHeight;
-    const nad = c.nad[0] + Math.random() * (c.nad[1] - c.nad[0]);
+    const nad = start ? start.nadM : c.nad[0] + Math.random() * (c.nad[1] - c.nad[0]);
     const okraj = 60;
     const r = Math.random();
     const y = (u0, u1) => H * (u0 + Math.random() * (u1 - u0)), x = (u0, u1) => W * (u0 + Math.random() * (u1 - u0));
@@ -1005,6 +1395,12 @@ const AnimaceNadMapou = (() => {
     else if (r < 0.76) { a = [W + okraj, y(0.25, 0.9)]; b = [-okraj, y(0.2, 0.92)]; }
     else if (r < 0.88 || mapa.getPitch() > 50) { a = [x(0.15, 0.85), H + okraj]; b = [x(0.1, 0.9), -okraj]; }
     else { a = [x(0.15, 0.85), -okraj]; b = [x(0.1, 0.9), H + okraj]; }
+    if (start) {
+      // ⭐ engine 344: sova VZLÉTNE ZE STROMU – začátek v místě, kde seděla (výška koruny),
+      // cíl za tím okrajem obrazovky, který je dál (ať přelétne přes mapu)
+      a = [start.sx, start.sy];
+      b = a[0] < W / 2 ? [W + okraj, y(0.15, 0.9)] : [-okraj, y(0.15, 0.9)];
+    }
     let A0, B0;
     try { A0 = mapa.unproject(a); B0 = mapa.unproject(b); } catch (e) { return null; }
     if (!A0 || !B0) return null;
@@ -1025,14 +1421,14 @@ const AnimaceNadMapou = (() => {
       for (let j = i - 2; j <= i + 2; j++) if (j >= 0 && j < syr.length) { sum += syr[j]; n++; }
       return Math.max(h, sum / n);
     });
-    const nadEf = Math.min(nad, 0.3 * vyskaKamery());
+    const nadEf = start ? nad : Math.min(nad, 0.3 * vyskaKamery());
     let A, B;
     try { A = bodVeVysce(a, profil[0] + nadEf); B = bodVeVysce(b, profil[16] + nadEf); } catch (e) { return null; }
     if (!A || !B) return null;
     const kx = 111320 * Math.cos(A.lat * Math.PI / 180);
     const dx = (B.lng - A.lng) * kx, dy = (B.lat - A.lat) * 111320, L = Math.hypot(dx, dy);
     if (!(L > 30) || L > 20000) return null;
-    const ptaci = sestava(c.tvar, c.n()).map((q, i, vse) => Object.assign(q, {
+    const ptaci = sestava(c.tvar, start ? 1 : c.n()).map((q, i, vse) => Object.assign(q, {
       vel: 0.92 + Math.random() * 0.16, faze: Math.random(), frek: 0.9 + Math.random() * 0.2,
       rezim: 'mava', doba: Math.random() * 2, snimek: 0,
       // samice (kachna, vrabec): v páru jeden a jeden, jinak podle podílu
@@ -1040,8 +1436,10 @@ const AnimaceNadMapou = (() => {
     let predni = 0, zadni = 0;
     for (const q of ptaci) { predni = Math.max(predni, q.podel); zadni = Math.max(zadni, -q.podel); }
     const hT = vyskaTerenu(A.lng, A.lat);
-    pripravSprity(Array.from(new Set(ptaci.map((q) => q.kl))), tridaPx(c.rozM / metryNaPx(mapa.getZoom(), A.lat)));
-    return { druh, c, A, dx, dy, L, luk: nah(0.12) * L, nad, profil, alt: profil[0] + nadEf, predni, zadni, s: null,
+    if (c.klikaty) for (const q of ptaci) { q.kmit = 1.6; q.w2 = 1.3 + Math.random() * 1.1; q.w1 = 0.5 + Math.random() * 0.4; }
+    pripravSprity(Array.from(new Set(ptaci.map((q) => q.kl))), tridaPx(c.rozM / metryNaPx(mapa.getZoom(), A.lat)), tonNoci(performance.now()));
+    return { druh, c, A, dx, dy, L, luk: start ? 0 : nah(0.12) * L, nad, profil, alt: profil[0] + nadEf, predni, zadni,
+             s: start ? 0 : null, noc: !!(c.noc || (druh === 'husa' && nocniSmi(pocasi(performance.now())))), zeStromu: !!start,
              v: c.v * (0.9 + Math.random() * 0.2), teren: hT === null ? 0 : hT, terenCil: hT === null ? 0 : hT,
              mereni: 0, videtMs: 0, zanikMs: 0, ptaci, x: A.lng, y: A.lat, uhel: Math.atan2(dy, dx) };
   }
@@ -1088,7 +1486,7 @@ const AnimaceNadMapou = (() => {
       {
         const fu = Math.max(0, Math.min(1, l.s / l.L)) * 16, i0 = Math.floor(fu), i1 = Math.min(16, i0 + 1);
         const hP = l.profil[i0] + (l.profil[i1] - l.profil[i0]) * (fu - i0);
-        l.alt = hP + Math.min(l.nad, 0.3 * vyskaKamery());   // přiblížení = kamera níž → strop výšky
+        l.alt = hP + (l.zeStromu ? l.nad : Math.min(l.nad, 0.3 * vyskaKamery()));   // přiblížení = kamera níž → strop výšky
       }
       l.s += l.v * dt;
       const P = polohaLetu(l, l.s);
@@ -1102,7 +1500,8 @@ const AnimaceNadMapou = (() => {
       }
       l.teren += (l.terenCil - l.teren) * Math.min(1, dt * 0.8);
       for (const p of l.ptaci) p.snimek = snimekPtaka(p, l.c, dt);
-      if (!l.zanikMs && (!ptaciSmi(st) || z < odZoomDruhu(l.c, l.y) - 1)) l.zanikMs = t;   // déšť, velké oddálení: rychle zmizet
+      const smiLet = l.noc ? nocniSmi(st) : ptaciSmi(st);
+      if (!l.zanikMs && (!smiLet || z < odZoomDruhu(l.c, l.y) - 1)) l.zanikMs = t;   // déšť, rozednění, velké oddálení: rychle zmizet
       // konec až za cílem i s ocasem a mimo obrazovku (kdo ujel mapou pryč, taky)
       const nevidet = t - l.videtMs > 2500;
       if ((l.s > l.L + l.zadni * U + 10 && nevidet) || (l.videtMs && nevidet && l.s > 0.4 * l.L)
@@ -1129,7 +1528,7 @@ const AnimaceNadMapou = (() => {
     ctx.setTransform(v.Rx * k, v.Ry * k, -v.Fx * k, -v.Fy * k, x * hustota, y * hustota);
     ctx.drawImage(sada.sn[i], -sada.N / 2, -sada.N / 2);
   }
-  function kresliPtaky(t, st) {
+  function kresliPtaky(t, st, ton) {
     if (!lety.length) return;
     const z = mapa.getZoom();
     const W = platno.width / hustota, H = platno.height / hustota;
@@ -1174,7 +1573,12 @@ const AnimaceNadMapou = (() => {
         const q = bod(lon, lat, l.alt);
         if (q.x > -40 && q.x < W + 40 && q.y > -40 && q.y < H + 40) videt = true;
         if (S * 100 < 2) continue;
-        kresliSprite(hotovySprite(p.kl, tr), p.snimek, q.x, q.y, vz, S * p.vel, alfa);
+        let v = vz;
+        if (l.c.klikaty) {                             // lelek: natočení podle bočního pohybu (kličky)
+          const bocni = p.kmit * p.w2 * Math.cos(p.f2 + t / 1000 * p.w2) * U;
+          v = vektoryLetu(lon, lat, l.alt, l.uhel - Math.atan2(bocni, l.v), kx);
+        }
+        kresliSprite(hotovySprite(p.kl, tr, ton), p.snimek, q.x, q.y, v, S * p.vel, alfa);
       }
       if (videt) l.videtMs = t;
     }
@@ -1183,7 +1587,7 @@ const AnimaceNadMapou = (() => {
   }
   function krokVoda(t, st) {
     for (let i = krouzky.length - 1; i >= 0; i--) if ((t - krouzky[i].t0) / 1000 > krouzky[i].zivot) krouzky.splice(i, 1);
-    if (mapa.getZoom() < VODA_OD_Z || !vodni.length || vodaZamrzla(st) || t < dalsiRybaMs) return;
+    if (mapa.getZoom() < VODA_OD_Z || !vodni.length || vodaZamrzla(st) || t < dalsiRybaMs || necinny()) return;
     const f = Math.min(1.6, 0.3 + vodni.length * 0.03);               // ryb za sekundu
     dalsiRybaMs = t + (-Math.log(1 - Math.random()) / f) * 1000;
     if (krouzky.length >= MAX_KROUZKU) return;
@@ -1284,7 +1688,7 @@ const AnimaceNadMapou = (() => {
   }
   /// poryv z vitr.js: `pocet` kudrlinek, síla st (0,5/1/2), kam vítr fouká (° od severu)
   function poryv(pocet, st, kamDeg) {
-    if (!mapa || !platno || !smi()) return false;
+    if (!mapa || !platno || !smi() || necinny()) return false;
     const kont = mapa.getContainer(), W = kont.clientWidth, H = kont.clientHeight;
     const t = performance.now();
     const fi = (90 - kamDeg) * Math.PI / 180;          // směr ve světě (0 = východ, proti hodinám)
@@ -1355,8 +1759,162 @@ const AnimaceNadMapou = (() => {
     }
     ctx.setTransform(hustota, 0, 0, hustota, 0, 0);
   }
+  // ------------------------------------------------------------------ sovy na stromech
+  // ⭐ engine 344: sovy SEDÍ v korunách stromů (dekorace) – vybrané hashem polohy stromu
+  // a čísla noci (každou noc jinde, během noci stále tytéž); v lese puštík (občas kalous),
+  // ovocné stromy ve vsi sýček a sova pálená, v zimě (XII–II) hejnko kalousů v jednom
+  // vesnickém stromě. Poloha a velikost podle billboardu stromu (ikona `bottom`, posun 8,
+  // icon-size × perspektiva MapLibre 0,5 + 0,5·c2c/d), sova ~3 m (stylizace jako ptáci).
+  // Mrkají, otáčejí hlavu a v noci se jim lesknou oči; kreslí se jen při změně (události),
+  // ne 24 Hz. Občas sova ze stromu vzlétne (let ze stejného místa).
+  let sedici = [], sediciSig = '', sovaCasovac = 0;
+  const sovyPryc = new Set();
+  function h32(a, b, c) {
+    let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) + Math.imul(c | 0, 2246822519);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+  /// číslo noci (večer i následné ráno mají totéž číslo)
+  function cisloNoci() {
+    const d = new Date();
+    return Math.floor((d.getTime() / 3600000 - d.getTimezoneOffset() / 60 - 12) / 24);
+  }
+  function obnovSedici(st) {
+    const z = mapa.getZoom();
+    // za svítání (sovy už nesedí) zůstanou jen VIDITELNÉ sovy – ty postupně odletí (kontrola)
+    if (!sovySedi(st) && z >= 15.6 && sedici.some((q) => q.vidi && !q.pryc)) {
+      sedici = sedici.filter((q) => q.vidi && !q.pryc);
+      return;
+    }
+    if (!sovySedi(st) || z < 15.6 || typeof Dekorace === 'undefined' || !Dekorace.zapsane) {
+      if (sedici.length) { sedici = []; sediciSig = ''; naplanuj(); }
+      return;
+    }
+    const b = mapa.getBounds();
+    const pw = (b.getEast() - b.getWest()) * 0.15, ph = (b.getNorth() - b.getSouth()) * 0.15;
+    const w = b.getWest() - pw, e = b.getEast() + pw, so = b.getSouth() - ph, n = b.getNorth() + ph;
+    const noc_ = cisloNoci();
+    const sig = Dekorace.kotvyVerze() + '|' + [w, so, e, n].map((v) => v.toFixed(3)).join(',') + '|' + noc_;
+    if (sig === sediciSig) return;
+    sediciSig = sig;
+    const m = mesic(), zima = m === 12 || m <= 2;
+    const kominy = [];
+    try { for (const f of Dekorace.kotvyAnimaci().komin) if (f.lon > w && f.lon < e && f.lat > so && f.lat < n) kominy.push(f); } catch (er) { /* nic */ }
+    const cosL = Math.cos(mapa.getCenter().lat * Math.PI / 180);
+    const veVsi = (lon, lat) => kominy.some((f) => Math.hypot((f.lon - lon) * cosL, f.lat - lat) * 111320 < 150);
+    const stare = new Map(sedici.map((q) => [q.key, q]));
+    const nove = [];
+    let hejnko = null;
+    const pridej = (lon, lat, k, ev, druh, fH, dx, key) => {
+      const q = stare.get(key) || { key, lon, lat, k, ev, druh, fH, dx, h: null, fr: 0, dalsi: performance.now() + Math.random() * 4000, vidi: false };
+      q.pryc = sovyPryc.has(key);
+      nove.push(q);
+    };
+    for (const f of Dekorace.zapsane()) {
+      const pr = f.properties || {}, k = +pr.k || 0;
+      if (k < 0.45 || !String(pr.ik || '').startsWith('deko-strom')) continue;        // stromy, ne keře
+      const [lon, lat] = f.geometry.coordinates;
+      if (lon < w || lon > e || lat < so || lat > n) continue;
+      const ix = Math.round(lon * 1e5), iy = Math.round(lat * 1e5);
+      const ovocny = k < 0.9;
+      const h = h32(ix, iy, noc_);
+      if (zima && (!hejnko || h < hejnko.h) && veVsi(lon, lat)) hejnko = { h, lon, lat, k, ev: +pr.ev || 1, ix, iy };
+      if (h > (ovocny ? 1 / 14 : 1 / 18)) continue;        // hustota stálá, nezávislá na zoomu (nic nenaskakuje)
+      const h2 = h32(ix + 7, iy - 3, noc_), h3 = h32(ix - 5, iy + 11, noc_), h4 = h32(ix + 13, iy + 17, noc_);
+      let druh;
+      if (ovocny) druh = veVsi(lon, lat) ? (h2 < 0.5 ? 'sycek' : 'sova_palena') : (h2 < 0.6 ? 'kalous' : 'pustik');
+      else druh = h2 < 0.8 ? 'pustik' : 'kalous';
+      pridej(lon, lat, k, +pr.ev || 1, druh, 0.42 + h3 * 0.2, (h4 - 0.5) * 0.36, ix + ',' + iy);
+    }
+    if (hejnko) {                                           // zimní hejnko kalousů ve vsi
+      const pocet = 4 + Math.floor(h32(hejnko.ix, hejnko.iy, noc_ + 1) * 6);
+      for (let i = 0; i < pocet; i++) {
+        const fH = 0.3 + 0.45 * ((i * 0.618) % 1), dx = ((i * 0.37 + 0.13) % 1 - 0.5) * 0.6;
+        pridej(hejnko.lon, hejnko.lat, hejnko.k, hejnko.ev, 'kalous', fH, dx, hejnko.ix + ',' + hejnko.iy + ':' + i);
+      }
+    }
+    const c = mapa.getCenter();
+    nove.sort((a2, b2) => Math.hypot(a2.lon - c.lng, a2.lat - c.lat) - Math.hypot(b2.lon - c.lng, b2.lat - c.lat));
+    sedici = nove.slice(0, 16);
+    const ton = tonNoci(performance.now());
+    const hPx = 3.2 * 0.19686 * Math.pow(2, z - 13.25);
+    pripravSprity(Array.from(new Set(sedici.map((q) => q.druh))), tridaSovy(hPx), ton, true);
+    naplanuj();
+  }
+  /// mrknutí, otočení hlavy (vlevo, vpravo, výjimečně dozadu); vrací čas nejbližší změny
+  function krokSovy(t) {
+    let nejbl = Infinity;
+    for (const q of sedici) {
+      if (q.pryc) continue;
+      if (t >= q.dalsi) {
+        if (q.fr === 4) { q.fr = q.predMrk || 0; q.dalsi = t + 1500 + Math.random() * 5000; }
+        else if (q.fr !== 0) { q.fr = 0; q.dalsi = t + 2000 + Math.random() * 6000; }
+        else {
+          const r = Math.random();
+          if (r < 0.4) { q.predMrk = 0; q.fr = 4; q.dalsi = t + 140; }
+          else if (r < 0.9) { q.fr = r < 0.65 ? 1 : 2; q.dalsi = t + 1200 + Math.random() * 3500; }
+          else { q.fr = 3; q.dalsi = t + 900 + Math.random() * 1500; }
+        }
+      }
+      nejbl = Math.min(nejbl, q.dalsi);
+    }
+    return nejbl;
+  }
+  function kresliSedici(t, st, ton) {
+    let kresleno = 0;
+    if (!sedici.length) return 0;
+    const z = mapa.getZoom(), c = mapa.getCenter(), mPxC = metryNaPx(z, c.lat);
+    const br = mapa.getBearing() * Math.PI / 180, rx = Math.cos(br), ry = -Math.sin(br);   // vodorovně na obrazovce (v, s)
+    const W = platno.width / hustota, H = platno.height / hustota;
+    const zakl = 0.19686 * Math.pow(2, z - 13.25);          // px na metr stromu při perspektivě 1
+    const leskA = [0, 0.25, 0.45, 0.6][ton] || 0;
+    for (const q of sedici) {
+      q.vidi = false;
+      if (q.pryc) continue;
+      if (q.h === null) { q.h = vyskaTerenu(q.lon, q.lat); if (q.h === null) continue; }
+      const p0 = bod(q.lon, q.lat, q.h);
+      if (p0.x < -80 || p0.x > W + 80 || p0.y < -40 || p0.y > H + 200) continue;
+      const kx = 111320 * Math.cos(q.lat * Math.PI / 180);
+      const p1 = bod(q.lon + rx * 5 / kx, q.lat + ry * 5 / 111320, q.h);
+      const pr = Math.max(0, Math.min(4, 0.5 + 0.5 * (Math.hypot(p1.x - p0.x, p1.y - p0.y) / 5) * mPxC));
+      const sPx = q.k * q.ev * 0.046 * Math.pow(2, z - 13.25) * pr;   // px na CSS px obrázku stromu
+      const hS = 90 * sPx;                                 // kresba stromu bez okrajů
+      const x = p0.x + q.dx * hS, y = p0.y + 8 * sPx - 4 * sPx - q.fH * hS;
+      const hPx = Math.min(120, SOVA_VYSKA_M[q.druh] * zakl * pr);
+      if (hPx < 2.5) continue;
+      const sp = hotovaSova(q.druh, tridaSovy(hPx), ton);
+      const sc = hPx / (100 * sp.m);
+      ctx.globalAlpha = 1;
+      ctx.setTransform(hustota * sc, 0, 0, hustota * sc, hustota * x, hustota * y);
+      ctx.drawImage(sp.snimky[q.fr], -sp.N / 2, -sp.N * 0.9);
+      q.vidi = true; q.sx = x; q.sy = y - hPx * 0.5; q.hPx = hPx;
+      q.nadM = (0.041 + 0.918 * q.fH) * 22.9 * q.k * q.ev;
+      kresleno++;
+      if (leskA > 0 && q.fr <= 2) {                        // odlesk očí v noci
+        ctx.setTransform(hustota, 0, 0, hustota, 0, 0);
+        for (const [ex, ey, er] of sp.oci[q.fr]) {
+          const gx = x + (ex - sp.N / 2) * sc, gy = y + (ey - sp.N * 0.9) * sc, rr = Math.max(0.9, er * sc * 1.7);
+          const gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, rr);
+          gr.addColorStop(0, SOVY[q.druh].lesk); gr.addColorStop(1, 'rgba(255,170,90,0)');
+          ctx.globalAlpha = leskA;
+          ctx.fillStyle = gr;
+          ctx.beginPath(); ctx.arc(gx, gy, rr, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.setTransform(hustota, 0, 0, hustota, 0, 0);
+    return kresleno;
+  }
+  let sovNaPlatne = 0, dalsiSovaMs = Infinity;
+  /// překreslení kvůli sovám jen v čase další změny (mrknutí, otočení hlavy)
+  function planujSovy(t) {
+    if (sovaCasovac || !sovNaPlatne || necinny() || !isFinite(dalsiSovaMs)) return;
+    sovaCasovac = setTimeout(() => { sovaCasovac = 0; naplanuj(); }, Math.max(40, dalsiSovaMs - t));
+  }
   function neco(st) {
     if (oblacky.length || krouzky.length || lety.length || kudrlinky.length) return true;
+    if (necinny()) return false;
     const z = mapa.getZoom();
     if (z >= KOUR_OD_Z && kominy.length && topnaSezona(st)) return true;
     return z >= VODA_OD_Z && vodni.length > 0 && !vodaZamrzla(st);
@@ -1379,10 +1937,13 @@ const AnimaceNadMapou = (() => {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, platno.width, platno.height);
     ctx.setTransform(hustota, 0, 0, hustota, 0, 0);
+    const ton = tonNoci(t);
+    dalsiSovaMs = krokSovy(t);
     kresliVodu(t, st);
     kresliKour(t, st);
+    sovNaPlatne = kresliSedici(t, st, ton);
     kresliVitr(t);
-    kresliPtaky(t, st);
+    kresliPtaky(t, st, ton);
     prazdne = false;
     // hlídač ceny snímku: dlouhodobě > 6 ms → méně komínů, < 2,5 ms 10 s → zpět
     const cena = performance.now() - t0;
@@ -1405,12 +1966,14 @@ const AnimaceNadMapou = (() => {
     const interval = t - aktivitaMs > 60000 && !lety.length && !kudrlinky.length ? 83 : 42;
     if (t - posledni < interval - 3) { naplanuj(); return; }
     const st = vykresli(t);
-    if (neco(st)) naplanuj(); else vycisti(false);
+    if (neco(st)) naplanuj();
+    else if (sovNaPlatne) planujSovy(t);                   // sovy: jen další změna, ne 24 Hz
+    else vycisti(false);
   }
   function naRender() {
     if (!mapa || !platno || !pohybMapy() || !smi()) return;
     const t = performance.now();
-    if (!neco(pocasi(t))) { vycisti(false); return; }
+    if (!neco(pocasi(t)) && !sedici.length) { vycisti(false); return; }
     vykresli(t);
   }
   function kontrola() {
@@ -1422,14 +1985,36 @@ const AnimaceNadMapou = (() => {
     }
     const t = performance.now();
     const st = pocasi(t);
-    if (lety.length < MAX_LETU && (t > dalsiLetMs || vynut().ptaciHned) && mapa.getZoom() >= PTACI_OD_Z && ptaciSmi(st)) {
-      const druh = vynut().druh || vyberDruh(mapa.getZoom(), lety.map((l) => l.druh));
-      const l = druh && PTACI[druh] ? novyLet(druh) : null;
-      if (l) { lety.push(l); posledniDruh = druh; dalsiLetMs = t + 20000 + Math.random() * 25000; }
+    obnovSedici(st);
+    // svítání: viditelné sovy odlétají jedna po druhé (nemizí na místě)
+    if (!sovySedi(st) && sedici.length && lety.length < MAX_LETU) {
+      const q = sedici.find((x) => x.vidi && !x.pryc);
+      const l = q ? novyLet(q.druh, q) : null;
+      if (l) { q.pryc = true; sovyPryc.add(q.key); lety.push(l); naplanuj(); }
+    }
+    const vNoci = nocniSmi(st);
+    if (!necinny() && lety.length < MAX_LETU && (t > dalsiLetMs || vynut().ptaciHned) && mapa.getZoom() >= PTACI_OD_Z
+        && (vNoci || ptaciSmi(st))) {
+      const druh = vynut().druh || vyberDruh(mapa.getZoom(), lety.map((l) => l.druh), vNoci);
+      let l = null;
+      if (druh && PTACI[druh]) {
+        // engine 344: polovina sovích letů začne VZLETEM ze stromu, kde sova seděla
+        if (PTACI[druh].sova && Math.random() < 0.5) {
+          const vid = sedici.filter((q) => !q.pryc && q.vidi && q.druh === druh);
+          if (vid.length) {
+            const q = vid[Math.floor(Math.random() * vid.length)];
+            l = novyLet(druh, q);
+            if (l) { q.pryc = true; sovyPryc.add(q.key); }
+          }
+        }
+        if (!l) l = novyLet(druh);
+      }
+      if (l) { lety.push(l); posledniDruh = druh; dalsiLetMs = t + (vNoci ? 30000 + Math.random() * 40000 : 20000 + Math.random() * 25000); }
       else dalsiLetMs = t + 10000;
       if (window.__animaceVynut) window.__animaceVynut.ptaciHned = false;
     }
     if (neco(st)) naplanuj();
+    else if (sedici.length && !sovNaPlatne) naplanuj();   // sovy ještě nenakreslené
   }
 
   function pripoj(m) {
@@ -1440,7 +2025,7 @@ const AnimaceNadMapou = (() => {
       pripoj.hotovo = true;
       mapa.on('move', aktivita);
       mapa.on('render', naRender);
-      mapa.on('moveend', () => obnovKotvy(false));
+      mapa.on('moveend', () => { obnovKotvy(false); try { obnovSedici(pocasi(performance.now())); } catch (e) { /* nic */ } });
       mapa.on('resize', velikost);
       try { mapa.getCanvas().addEventListener('touchstart', aktivita, { passive: true }); } catch (e) { /* nic */ }
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') aktivita(); });
@@ -1454,12 +2039,13 @@ const AnimaceNadMapou = (() => {
     _ladeni: {
       stav: () => ({ bezi: !!raf, smi: smi(), kominu: kominy.length, vodnich: vodni.length, oblacku: oblacky.length,
                      krouzku: krouzky.length, lety: lety.map((l) => l.druh + '×' + l.ptaci.length).join(','),
+                     sov: sedici.length, sovKresleno: sovNaPlatne, necinny: necinny(), ton: tonNoci(performance.now()),
                      uroven, cenaMs: +cenaEma.toFixed(2),
                      hustota, platno: platno ? platno.width + 'x' + platno.height : null }),
       // předskok 0–1 = kolik z cesty k cíli má let už za sebou (0,5 ≈ uprostřed obrazovky)
       hejnoTed: (predskok, druh) => {
         if (!mapa) return false;
-        druh = druh || vyberDruh(mapa.getZoom(), []) || 'vrana';
+        druh = druh || vyberDruh(mapa.getZoom(), [], nocniSmi(pocasi(performance.now()))) || 'vrana';
         const l = novyLet(druh);
         if (!l) return false;
         lety.length = 0;
@@ -1469,6 +2055,16 @@ const AnimaceNadMapou = (() => {
         return druh + '×' + l.ptaci.length;
       },
       druhy: () => Object.keys(PTACI),
+      sovy: () => sedici.map((q) => ({ druh: q.druh, vidi: q.vidi, lon: q.lon, lat: q.lat, x: Math.round(q.sx || 0), y: Math.round(q.sy || 0), px: +(q.hPx || 0).toFixed(1), fr: q.fr, pryc: !!q.pryc })),
+      sovyZnovu: () => { sediciSig = ''; obnovSedici(pocasi(performance.now())); return sedici.length; },
+      vzletSovy: () => {                                        // ladění: vzlet první viditelné sovy
+        const q = sedici.find((x) => !x.pryc && x.vidi);
+        if (!q) return false;
+        const l = novyLet(q.druh, q);
+        if (!l) return false;
+        q.pryc = true; sovyPryc.add(q.key); lety.push(l); naplanuj();
+        return q.druh;
+      },
       kudrlinky: () => kudrlinky.map((k) => { const p = bod(k.lon, k.lat, k.h); return [Math.round(p.x), Math.round(p.y), +((performance.now() - k.t0) / k.zivot).toFixed(2)]; }),
       nahledDruhu: (klic, N) => upecDruh2(klic, N || 96, (N || 96) / 114, false).snimky.map((c) => c.toDataURL ? c.toDataURL() : null),
       velikost: () => lety.map((l) => { const kx = 111320 * Math.cos(l.y * Math.PI / 180); const v = vektoryLetu(l.x, l.y, l.alt, l.uhel, kx);
