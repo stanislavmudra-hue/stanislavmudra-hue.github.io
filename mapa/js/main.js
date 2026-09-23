@@ -10505,6 +10505,43 @@ let skryteSig = '';
 let skryteSigN = 0;
 let skryteSigMs = 0;
 let mistaVerze = 0;
+// ⭐⭐ engine 339 (ověření dekorací 23. 9., profil CPU hlavního vlákna z TT):
+// dlouhé úlohy při gestech NEdělaly dekorace (0–3 ms), ale čtení z GPU
+// (`readPixels`, 560–700 ms za sadu gest v 333 i 338) a víc než polovinu z něj
+// tenhle přepočet odznaků. MapLibre v `tilesIn` převádí rohy KAŽDÉHO dotazu
+// přes `terrain.pointCoordinate` → readPixels (10–12× na přepočet, 16–36 ms),
+// přitom symboly bere z indexu kolizí v OBRAZOVCE (`queryRenderedSymbols`)
+// a dlaždicovou cestou je nevrací nikdy (SymbolStyleLayer.queryIntersectsFeature
+// háže „Should take a different path“). Po dobu dotazu proto správce dlaždic
+// zdroje NEMÁ terén → rovinný převod rohů, výsledek shodný, 0 čtení z GPU.
+// Změřeno za běhu A B B A (sady gest z16,2): readPixels 244 → 52× za sadu,
+// snímky > 33 ms 82,5 → 60, > 50 ms 19,5 → 12, přepočet 16–36 → 1–12 ms.
+// ⛔ Jen pro vrstvy typu symbol – u ostatních dlaždicová cesta terén potřebuje.
+function dotazSymbolu(geom, volby) {
+  const vraceni = [];
+  try {
+    const tms = (mapa.style && mapa.style.tileManagers) || {};
+    const zdroje = new Set();
+    let jenSymboly = true;
+    for (const id of (volby && volby.layers) || []) {
+      const l = mapa.getLayer(id);
+      if (!l) continue;
+      if (l.type !== 'symbol') { jenSymboly = false; break; }
+      zdroje.add(l.source);
+    }
+    if (jenSymboly) {
+      for (const z of zdroje) {
+        const tm = tms[z];
+        if (tm && tm.terrain) { vraceni.push([tm, tm.terrain]); tm.terrain = null; }
+      }
+    }
+  } catch (e) { /* jiná verze knihovny → obyčejný dotaz */ }
+  try {
+    return geom == null ? mapa.queryRenderedFeatures(volby) : mapa.queryRenderedFeatures(geom, volby);
+  } finally {
+    for (const [tm, t] of vraceni) tm.terrain = t;
+  }
+}
 function synchronizujSkryteMista() {
   if (!mapa || !posledniMistaGj || !mapa.getLayer('okolnik-mista-ikona')) return;
   {
@@ -10527,7 +10564,7 @@ function synchronizujSkryteMista() {
   }
   let vidimPrvky;
   try {
-    vidimPrvky = mapa.queryRenderedFeatures({ layers: ['okolnik-mista-ikona'] });
+    vidimPrvky = dotazSymbolu(null, { layers: ['okolnik-mista-ikona'] });
   } catch (e) { return; }
   const vidim = new Set(vidimPrvky.map((f) => String(f.properties.id)));
   let pohled = null;
@@ -10547,7 +10584,7 @@ function synchronizujSkryteMista() {
         const smS = +f.properties.sm || 12;
         const p = mapa.project(f.geometry.coordinates);
         let pod;
-        try { pod = mapa.queryRenderedFeatures([p.x, p.y], { layers: ['okolnik-mista-ikona'] }); }
+        try { pod = dotazSymbolu([p.x, p.y], { layers: ['okolnik-mista-ikona'] }); }
         catch (e) { continue; }
         let host = null;
         for (const h of pod) {

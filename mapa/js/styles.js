@@ -195,7 +195,7 @@ function stylLetecka(ctx) {
 // ---------------------------------------------------------------------------
 // 3) TURISTICKÁ — reliéf, vrstevnice, stezky, vrcholy
 // ---------------------------------------------------------------------------
-// ⭐ engine 337 (krok 4 plánu výkonu, krajina8/9; přání 16. 9. „chráněná území
+// ⭐ engine 337 (krok 4 plánu výkonu, krajina8, od engine 338 krajina11; přání 16. 9. „chráněná území
 // jen na mapě – hranice + název podél čáry“): zvláště chráněná území ze ZABAGED
 // (vrstva `chranena`, čáry = obvody). Velkoplošná (NP, CHKO) od z8, NPR a NPP
 // od z12, PR a PP od z13; názvy o úroveň později. Zoom ve filtru se
