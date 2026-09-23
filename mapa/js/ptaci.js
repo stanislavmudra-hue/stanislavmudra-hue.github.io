@@ -104,6 +104,17 @@ const Ptaci = (() => {
     // `render` (hned po vykreslení snímku mapy, s aktuální kamerou, týž snímek).
     if (!pripoj.render) {
       pripoj.render = true;
+      try {
+        const cv = mapa.getCanvas();
+        const dotyk = () => { posledniDotykMs = performance.now(); };
+        cv.addEventListener('touchstart', dotyk, { passive: true });
+        cv.addEventListener('touchmove', dotyk, { passive: true });
+        cv.addEventListener('touchend', dotyk, { passive: true });
+        cv.addEventListener('wheel', dotyk, { passive: true });
+      } catch (e) { /* nic */ }
+      // setrvačnost po švihu volá MapLibre jako easeTo(…, {originalEvent}) → i její `move`
+      // nese originalEvent; programové pohyby kamery (sledování hráče, přelet) ne
+      mapa.on('move', (e) => { if (e && e.originalEvent) posledniUzivPohybMs = performance.now(); });
       mapa.on('render', () => { try { if (bezi && ptaci.length && mapaSeHybe()) umisti(); } catch (e) { /* nic */ } });
     }
     if (window.KlidovyTakt) KlidovyTakt.pridej('ptaci', (t) => krokVKlidu(t), 1);
@@ -193,6 +204,8 @@ const Ptaci = (() => {
   const KLID_KROK_MS = 100;
   let vKlidu = false;
   let poslStred = null;            // engine 313: střed mapy v minulém kroku
+  let posledniDotykMs = 0;         // engine 342: poslední dotyk prstu (setrvačnost ≠ sledování)
+  let posledniUzivPohybMs = 0;     // engine 342: poslední `move` od uživatele (nese originalEvent)
   function prstNaMape_() {
     try {
       if (typeof prstNaMape === 'function') return prstNaMape();
@@ -241,7 +254,13 @@ const Ptaci = (() => {
     let posunLng = 0, posunLat = 0;
     try {
       const c = mapa.getCenter();
-      if (poslStred && !prstNaMape_()) {
+      // ⭐ engine 342 (výtka T: „káně se posouvá ještě víc“): po švihu prstem běží
+      // SETRVAČNOST bez prstu na mapě – střed kroužení jel s kamerou a pták se
+      // posouval s mapou (s engine 341 umístěním v `render` ještě věrněji). S kamerou
+      // se teď posouvá jen tehdy, když prst na mapě nebyl aspoň 1,5 s a poslední pohyb
+      // kamery nebyl od uživatele (švih doznívá až ~1,9 s) – tj. jen sledování hráče a přelety.
+      const ted = performance.now();
+      if (poslStred && !prstNaMape_() && ted - posledniDotykMs > 1500 && ted - posledniUzivPohybMs > 250) {
         posunLng = c.lng - poslStred.lng;
         posunLat = c.lat - poslStred.lat;
         if (Math.abs(posunLng) > 0.02 || Math.abs(posunLat) > 0.02) { posunLng = 0; posunLat = 0; }

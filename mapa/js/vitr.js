@@ -44,7 +44,12 @@
   // (stroke-dashoffset) 100 → 0 = štětec tah postupně namaluje, 0 → −100 =
   // tah od začátku mizí (ocas dojede). Tmavá i bílá kopie téže křivky
   // dostávají týž posun (dvojice podle indexu i % 2).
-  const CESTA = ' pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="100"';
+  // ⭐ engine 342 (výtka T: „vánek se nemaluje, letí pár čárek – ať začátek postupuje
+  // a konec mizí“): čárkování = JEDEN úsek délky 46 (z 100) a mezera 150 → posun 46 → −100
+  // pošle úsek po křivce: hlava se kreslí od začátku, ocas ji dohání a mizí na konci.
+  // Kudrlinka se přitom skoro nehýbe (pomalý posun po větru), maluje se NA MÍSTĚ.
+  const USEK = 46;
+  const CESTA = ' pathLength="100" stroke-dasharray="' + USEK + ' 150" stroke-dashoffset="' + USEK + '"';
   const SVG = '<svg viewBox="0 0 48 20" width="48" height="20">'
     + '<g fill="none" stroke-linecap="round" stroke-width="2.6" stroke="rgba(30,40,40,0.28)">'
     + '<path' + CESTA + ' d="M2 12 C 14 12, 22 12, 30 8 C 36 5, 40 7, 38 11 C 36 14, 31 12, 33 9"/>'
@@ -58,11 +63,10 @@
   /// Posun čárkování pro podíl života f (0–1): namalovat (do 38 %), chvíli
   /// držet (do 52 %), pak tah od začátku zmizí (do 100 %).
   function posunTahu(f) {
-    if (f <= 0) return 100;
-    if (f < 0.38) { const u = f / 0.38; return 100 * (1 - u) * (1 - u); }   // rychle, pak zvolna
-    if (f < 0.52) return 0;
-    if (f < 1) { const u = (f - 0.52) / 0.48; return -100 * u * u; }        // pomalu, pak rychle
-    return -100;
+    if (f <= 0) return USEK;
+    if (f >= 1) return -100;
+    const u = f * f * (3 - 2 * f);               // štětec nabírá a doznívá (smoothstep)
+    return USEK - u * (100 + USEK);
   }
 
   function stupen() {
@@ -104,18 +108,31 @@
       el.__cesty = el.querySelectorAll('path');
     }
     // recyklace z bazénku: tah zase od nuly
-    if (el.__cesty) for (const c of el.__cesty) c.setAttribute('stroke-dashoffset', '100');
+    if (el.__cesty) for (const c of el.__cesty) c.setAttribute('stroke-dashoffset', String(USEK));
     return el;
   }
 
   function zrodPoryv(st) {
+    // ⭐ engine 342: kresbu přebírá plátno animací (animace.js) – kudrlinka ukotvená v mapě,
+    // tah jako štětec; DOM/SVG níž zůstává jen jako záloha (web bez animací)
+    try {
+      if (window.AnimaceNadMapou && AnimaceNadMapou.poryv) {
+        const v = Pocasi.vitr();
+        const pocet = st === 2 ? 4 : (st === 1 ? 2 : 1);
+        // i když plátno spí (5 min bez dotyku = baterie), DOM zálohu nepouštět
+        AnimaceNadMapou.poryv(pocet, st, ((v.smerOdkud || 0) + 180) % 360);
+        poryvDoMs = performance.now() + 4200;
+        return;
+      }
+    } catch (e) { /* záloha níž */ }
     const pl = mapa.getCanvas();
     const W = pl.clientWidth, H = pl.clientHeight;
     if (!W || !H) return;
     const s = smerNaObrazovce();
     const kolmo = { x: -s.y, y: s.x };
     const pocet = st === 2 ? 4 : (st === 1 ? 2 : 1);
-    const rychlost = (st === 2 ? 130 : (st === 1 ? 80 : 60)) * (0.85 + Math.random() * 0.3);   // px/s
+    // engine 342: jen pomalý posun po větru (maluje se na místě)
+    const rychlost = (st === 2 ? 40 : (st === 1 ? 26 : 16)) * (0.85 + Math.random() * 0.3);   // px/s
     const noc = typeof krokNoci === 'number' && krokNoci >= 2;
     const R = Math.hypot(W, H) / 2 + 40;
     for (let i = 0; i < pocet; i++) {
@@ -123,9 +140,10 @@
       const k = (Math.random() - 0.5) * Math.min(W, H) * 0.9;
       // engine 332/333: rodí se blíž (0,55–0,95 R proti větru), žije jen
       // 2,4–3,4 s – mezitím se namaluje, letí po větru a zase rozplyne
-      const rr = R * (0.55 + Math.random() * 0.4);
-      const x = W / 2 - s.x * rr + kolmo.x * k;
-      const y = H / 2 - s.y * rr + kolmo.y * k;
+      // engine 342: rodí se V ZÁBĚRU (maluje se na místě), trochu proti větru od středu
+      const rr = R * (Math.random() * 0.35);
+      const x = Math.max(W * 0.12, Math.min(W * 0.88, W / 2 - s.x * rr + kolmo.x * k * 0.7));
+      const y = Math.max(H * 0.15, Math.min(H * 0.85, H / 2 - s.y * rr + kolmo.y * k * 0.7));
       const el = prvek();
       const meritko = 0.8 + Math.random() * 0.5 + (st === 2 ? 0.2 : 0);
       el.style.opacity = '0';
@@ -139,7 +157,7 @@
         kolmo, uhel: s.uhelDeg - 90,
         zpozdeni: i * (0.25 + Math.random() * 0.35),   // s – ať neletí v řadě
         t: 0, maxOpac: (noc ? 0.4 : 0.85) * (0.8 + Math.random() * 0.2) * (st < 1 ? 0.8 : 1),
-        zivot: 2.4 + Math.random() * 1.0,                // s – délka života
+        zivot: 2.8 + Math.random() * 1.0,                // s – délka života (engine 342: +0,4)
         W, H,
       });
     }
@@ -181,8 +199,8 @@
         // viz posunTahu), kudrlinka se neotáčí, jen letí po větru; krytí
         // naskočí za 0,4 s a úplně na konci dozní (mazání dělá čárkování)
         const f = Math.min(1, ziv / k.zivot);
-        const nastup = Math.min(1, ziv / 0.4);
-        const doz = f < 0.85 ? 1 : 1 - (f - 0.85) / 0.15;
+        const nastup = Math.min(1, ziv / 0.25);
+        const doz = f < 0.92 ? 1 : 1 - (f - 0.92) / 0.08;
         const opac = k.maxOpac * nastup * doz;
         // pryč po dožití (nebo po opuštění obrazovky)
         if ((mimo && k.bylVidet) || f >= 1) {

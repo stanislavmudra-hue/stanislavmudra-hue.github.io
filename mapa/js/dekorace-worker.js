@@ -603,10 +603,11 @@ async function generuj(z, x, y) {
   const idx = postavIndex(z, zdrojove, defs, 1 / mNaPx);
   const tIdx = performance.now();
   // kandidáti
-  const K = { lon: [], lat: [], px: [], py: [], ik: [], k: [], z0: [], sv: [], id: [] };
-  const pridej = (lon, lat, px, py, ik, k, z0, sv, id) => {
+  const K = { lon: [], lat: [], px: [], py: [], ik: [], k: [], z0: [], sv: [], id: [], lic: [] };
+  // engine 342: `lic` = lichá buňka jemné mřížky (jen z15) – ta v dlaždicích z14 chybí
+  const pridej = (lon, lat, px, py, ik, k, z0, sv, id, lic) => {
     K.lon.push(lon); K.lat.push(lat); K.px.push(px); K.py.push(py); K.ik.push(idxRetezce(ik));
-    K.k.push(k); K.z0.push(z0); K.sv.push(sv); K.id.push(id);
+    K.k.push(k); K.z0.push(z0); K.sv.push(sv); K.id.push(id); K.lic.push(lic ? 1 : 0);
   };
   const vPx = (lon, lat) => [(mercX(lon) * n - x) * EXT, (mercY(lat) * n - y) * EXT];
   for (const [druh, cfg] of druhy) {
@@ -659,7 +660,8 @@ async function generuj(z, x, y) {
           kRyba = dosah;
         }
         const id = sv ? ((ix * 92821 + iy * 31397 + sv * 7451) >>> 0) : 0;
-        pridej(lon, lat, px, py, ikona, sv === 4 ? kRyba : cfg.k, cfg.z0, sv, id);
+        pridej(lon, lat, px, py, ikona, sv === 4 ? kRyba : cfg.k, cfg.z0, sv, id,
+               z >= Z_MAX && cfg.zjemnit && ((ix & 1) || (iy & 1)));
       }
     }
   }
@@ -788,7 +790,7 @@ async function generuj(z, x, y) {
     lon: Float64Array.from(K.lon), lat: Float64Array.from(K.lat),
     px: Float32Array.from(K.px), py: Float32Array.from(K.py),
     ik: Uint16Array.from(K.ik), k: Float32Array.from(K.k), z0: Float32Array.from(K.z0),
-    sv: Uint8Array.from(K.sv), id: Uint32Array.from(K.id),
+    sv: Uint8Array.from(K.sv), id: Uint32Array.from(K.id), lic: Uint8Array.from(K.lic),
     ev: new Float32Array(pocetK), maska: null,
   };
   // výška terénu → velikost (vyskovyFaktor: 1 ve 400 m, ±1 % na 30 m)
@@ -883,6 +885,23 @@ function nastup(z0) {
   }
   return o;
 }
+/// ⭐ engine 342 (výtka T: „při oddálení mizí stromy“): dlaždice z15 nesou celou jemnou
+/// mřížku, z14 jen sudé buňky – při oddálení pod z15 zmizely 3/4 stromů NARÁZ a u hranice
+/// (zoom se s terénem kolébe ±0,2) blikaly i při posunu. Liché buňky proto mezi zoomem
+/// 15,45 a 15,0 plynule zeslábnou: o9 (zoom 15,0) = 0, o10 (15,45) = běžná hodnota,
+/// a pod 15,0 mají 0 i na zarážkách rampy (z15 dlaždice jako záskok při oddálení).
+/// Zarážky 15,0/15,45 jsou v ZOOMU MAPY (pevné, hranice dlaždic), rampa je posunutá
+/// o dohled → hodnota pro zarážku = nástup v základním zoomu (zoom + dz).
+const oKesX = new Map();
+function nastupX(z0) {
+  let o = oKesX.get(z0);
+  if (!o) {
+    const w = N.sirkaNastupu, dz = N.dz || 0;
+    o = [15.0, 15.45].map((z) => Math.max(0, Math.min(1, (z + dz - z0) / w)));
+    oKesX.set(z0, o);
+  }
+  return o;
+}
 function vystupDlazdice(v) {
   const body = [];
   const sv = [], stromy = [];
@@ -897,7 +916,13 @@ function vystupDlazdice(v) {
     const o = nastup(v.z0[i]);
     const vl = { ik, k: v.k[i], rot: 0 };
     if (v.ev[i]) vl.ev = v.ev[i];
-    for (let j = 0; j < o.length; j++) vl['o' + (j + 1)] = o[j];
+    const lic = v.lic && v.lic[i];
+    const dzV = N.dz || 0;
+    for (let j = 0; j < o.length; j++) vl['o' + (j + 1)] = (lic && N.rampa[j] - dzV < 15.0) ? 0 : o[j];
+    const ox = nastupX(v.z0[i]);
+    vl.o9 = lic ? 0 : ox[0];
+    vl.o10 = ox[1];
+    if (lic) vl.l = 1;
     const px = Math.max(0, Math.min(EXT - 1, Math.round(v.px[i]))), py = Math.max(0, Math.min(EXT - 1, Math.round(v.py[i])));
     body.push({ px, py, vl });
     if ((ik.startsWith('deko-strom') || ik.startsWith('deko-ker')) && v.k[i] >= 0.3) stromy.push(i);
@@ -905,11 +930,11 @@ function vystupDlazdice(v) {
   // stromy pro stíny v typových polích
   const m = stromy.length;
   const S = { lon: new Float64Array(m), lat: new Float64Array(m), ik: [], k: new Float32Array(m),
-              ev: new Float32Array(m), z0: new Float32Array(m) };
+              ev: new Float32Array(m), z0: new Float32Array(m), lic: new Uint8Array(m) };
   for (let j = 0; j < m; j++) {
     const i = stromy[j];
     S.lon[j] = v.lon[i]; S.lat[j] = v.lat[i]; S.ik.push(retezce[v.ik[i]]);
-    S.k[j] = v.k[i]; S.ev[j] = v.ev[i]; S.z0[j] = v.z0[i];
+    S.k[j] = v.k[i]; S.ev[j] = v.ev[i]; S.z0[j] = v.z0[i]; S.lic[j] = v.lic ? v.lic[i] : 0;
   }
   return { data: zakodujMVT(body), ev: { sv, stromy: S, prvku: body.length } };
 }

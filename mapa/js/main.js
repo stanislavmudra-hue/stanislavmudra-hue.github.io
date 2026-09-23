@@ -2620,7 +2620,9 @@ const STINY_MAX_PRSTENCU = 4000;
 // vidět (staré, kreslené při větším přiblížení). Stíny teď začínají spolu
 // s domy a rampa (0,5 zoomu) se posouvá s dohledem.
 const STINY_OD_Z = 14.5;
-const STINY_MAX_STROMU = 3000;
+// engine 342: 3 000 → 5 000 (stromy ×2,4 – se stropem dostávala stín po každém posunu
+// JINÁ sada nejbližších stromů a stíny na okrajích mizely a naskakovaly; kresba na GPU)
+const STINY_MAX_STROMU = 5000;
 const STINY_DLAZDICE = 512;      // engine 221: velikost rastrové dlaždice stínů (px)
 const STROM_VYSKA_M = 22.9;      // sprite 98 CSS px × icon-size 19,7 na z22 = 22,9 m × k × ev
 let budovyKes = { cas: 0, prvky: [] };
@@ -3374,6 +3376,8 @@ function prepoctiStinyDomu() {
       const k = +p.k || 0;
       if (k < 0.3) continue;
       if ((p[oKlic] == null ? 1 : +p[oKlic]) < 0.5) continue;
+      // engine 342: lichá buňka jemné mřížky mizí mezi z15,45 a z15,0 – stín až od půlky
+      if (p.lic && (z - 15.0) / 0.45 < 0.5) continue;
       const c = f.geometry && f.geometry.coordinates;
       if (!c) continue;
       const bx = (mercX(c[0]) - r.x0) * kx, by = (mercY(c[1]) - r.y0) * ky;
@@ -3387,7 +3391,7 @@ function prepoctiStinyDomu() {
     stromy.sort((a, b) => a.d - b.d);
     // engine 333: při oddálení (pod z15,5) nejvýš 1 500 nejbližších stromů –
     // každý je silueta přes drawImage a na hrubém plátně mají pár pixelů
-    const stropStromu = z >= 15.5 ? STINY_MAX_STROMU : Math.min(STINY_MAX_STROMU, 1500);
+    const stropStromu = z >= 15.5 ? STINY_MAX_STROMU : Math.min(STINY_MAX_STROMU, 4000);   // engine 342: 1 500 → 4 000
     if (stromy.length > stropStromu) stromy.length = stropStromu;
   }
   // --- podpis: nic nového → nekreslit
@@ -3450,7 +3454,7 @@ function prepoctiStinyDomu() {
     W, H, F, w2, h2, kryti, sxM, syM, tg, smer, pxNaMetr: mpu * kx,
     // engine 333: při oddálení (pod z15,5) má strom na plátně pár pixelů –
     // místo siluety spritu (drawImage s transformací) stačí elipsa + kmen
-    siluety: z >= 15.5,
+    siluety: z >= 14.8,          // engine 342: 15,5 → 14,8 (přepnutí tvaru mimo běžný zoom)
     teren: teren ? { id: teren.maska.id, dx: teren.dx, dy: teren.dy, dw: teren.dw, dh: teren.dh } : null,
   });
   if (wk) {

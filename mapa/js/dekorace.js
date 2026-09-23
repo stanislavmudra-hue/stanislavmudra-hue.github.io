@@ -340,6 +340,25 @@ const Dekorace = (() => {
   // zhruba půl štípnutí — „rychleji", jak si uživatel přál.
   const SIRKA_NASTUPU = 0.35;
 
+  /// ⭐ engine 342: výraz průhlednosti dekorací = zarážky RAMPA (posunuté o dohled, o1–o8)
+  /// + pevné 15,0 a 15,45 (o9, o10 – plynulé zmizení lichých buněk jemné mřížky před
+  /// přechodem na dlaždice z14, viz nastupX ve workeru). ⛔ Zoomový interpolate musí
+  /// zůstat KOŘENEM výrazu (násobek nočního ztlumení jde dovnitř na výstupy).
+  function vyrazRampy(faktor) {
+    const zar = RAMPA.map((z, i) => [z, 'o' + (i + 1)]).concat([[15.0, 'o9'], [15.45, 'o10']]);
+    zar.sort((a, b) => a[0] - b[0]);
+    const vyr = ['interpolate', ['linear'], ['zoom']];
+    let posl = -Infinity;
+    for (const [z, k] of zar) {
+      if (z <= posl + 1e-6) continue;          // shodná zarážka – první vyhrává
+      posl = z;
+      let v = ['coalesce', ['get', k], ['get', 'o8'], 1];   // starý generátor o9/o10 nemá
+      if (typeof faktor === 'number' && faktor < 1) v = ['*', v, faktor];
+      vyr.push(z, v);
+    }
+    return vyr;
+  }
+
   /// Předpočítané opacity pro `RAMPA` podle prahu druhu.
   // ⛔ 16. 9. 2026 (kontrola B3): hodnoty o1…o8 se MUSÍ počítat ze
   // ZÁKLADNÍ rampy – zarážky interpolace jsou posunuté o DZ, takže se
@@ -587,8 +606,7 @@ const Dekorace = (() => {
       paint: {
         // rychlý a pro všechny druhy stejně dlouhý nástup — hodnoty
         // předpočítal `nastup(z0)` podle prahu druhu (viz `RAMPA`)
-        'icon-opacity': ['interpolate', ['linear'], ['zoom']].concat(
-          RAMPA.flatMap((z, i) => [z, ['get', 'o' + (i + 1)]])),
+        'icon-opacity': vyrazRampy(1),
       },
     }, kotva ? kotva.id : undefined);
     // ⭐ v1.425: NOČNÍ ZTLUMENÍ DEKORACÍ („bijí do očí“) — rampu
@@ -605,11 +623,7 @@ const Dekorace = (() => {
         // musí u kompozitních vlastností zůstat KOŘENEM výrazu —
         // ['*', interpolate, f] projde bez výjimky, ale validace ho
         // TIŠE ZAHODÍ (chyceno 13. 8.: globál nastavený, výraz ne)
-        const rampa = ['interpolate', ['linear'], ['zoom']].concat(
-          RAMPA.flatMap((z, i) => [z, faktor >= 1
-            ? ['get', 'o' + (i + 1)]
-            : ['*', ['get', 'o' + (i + 1)], faktor]]));
-        mapa.setPaintProperty('akvarel-dekorace', 'icon-opacity', rampa);
+        mapa.setPaintProperty('akvarel-dekorace', 'icon-opacity', vyrazRampy(faktor));
       } catch (e) { /* styl se zrovna mění */ }
     };
     if (typeof window.__nocniFaktorDekorace === 'number'
@@ -2821,6 +2835,25 @@ const Dekorace = (() => {
     }
     return out;
   }
+  /// ptáci nad mapou (animace.js, engine 342): kolik kotev komínů (3), vody (4) a světel
+  /// sídel (1, jsou na všech úrovních) leží v obdélníku – výběr druhu podle okolí
+  function wKontextPtaku(w, s, e, n) {
+    const out = { komin: 0, voda: 0, svetla: 0 };
+    if (wStav !== 1) return out;
+    const vid = new Set();
+    for (const t of wEvidence.values()) {
+      for (const f of t.sv) {
+        if (f.lon < w || f.lon > e || f.lat < s || f.lat > n) continue;
+        const k = f.sv + ':' + f.id;
+        if (vid.has(k)) continue;
+        vid.add(k);
+        if (f.sv === 3) out.komin++;
+        else if (f.sv === 4) out.voda++;
+        else if (f.sv === 1) out.svetla++;
+      }
+    }
+    return out;
+  }
   function wNaplanujSvetla() {
     if (wSvetlaT) return;
     wSvetlaT = setTimeout(() => { wSvetlaT = null; wObnovSvetla(); }, 400);
@@ -2876,6 +2909,7 @@ const Dekorace = (() => {
         for (let j = 0; j < m; j++) {
           const p = Object.assign({ ik: S.ik[j], k: S.k[j] }, nastup(S.z0[j]));
           if (S.ev[j]) p.ev = S.ev[j];
+          if (S.lic && S.lic[j]) p.lic = 1;        // engine 342: lichá buňka (plynulé zmizení pod z15,45)
           pf[j] = { type: 'Feature', properties: p, geometry: { type: 'Point', coordinates: [S.lon[j], S.lat[j]] } };
         }
         t.pf = pf;
@@ -3020,6 +3054,7 @@ const Dekorace = (() => {
   }
   return { pripoj, nastavStin, nastavDohled, zapsane,
     kotvyAnimaci: () => wKotvyAnimaci(), kotvyVerze: () => wKotvyVerze,
+    kontextPtaku: (w, s, e, n) => wKontextPtaku(w, s, e, n),
     _ladeni: { worker: wLadeni, diag: wDiag,
     zmenaMlhy: (o) => { if (wStav === 1) wZmenaMlhy(o === undefined ? {} : o); },
     selhani: (d) => wSelhal(d || 'ruční test zálohy'), postavIndex, plochyPodBodem, dopln, casy: () => casy,
