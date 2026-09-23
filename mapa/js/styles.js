@@ -605,6 +605,8 @@ function sirkaMetry(podlaha, metry, zPodlaha) {
           22, +(px18 * 16).toFixed(1)];
 }
 const SILNICE_SIRKA = sirkaSilnic((w) => +w.toFixed(2));
+// engine 351: šířka čáry v metrech → px na z22 (stejně jako sirkaMetry), pro výrazy `match` po typech DTM
+const DTM_W22 = (metry) => +(metry * SILNICE_MERITKO / M_NA_PX_Z18 * 16).toFixed(1);
 
 
 // ⭐ 5. 9. 2026 večer: STÍNY DOMŮ („na mapě stíny z budov nejsou vidět").
@@ -675,6 +677,9 @@ function stylHerni(ctx) {
       // engine 234: promoteId → feature-state odkrytí staveb/vertikál podle fid
       krajina: { type: 'vector', url: r2('krajina11.pmtiles'), promoteId: 'fid',
                  attribution: '© ČÚZK ZABAGED® · veřejné osvětlení © Statutární město Brno (CC BY 4.0), Plzeň, Děčín' },
+      // engine 351: DTM ČR – veřejná ZPS (otevřená data, jen geometrie a typ)
+      dtm: { type: 'vector', url: r2('dtm1.pmtiles'),
+             attribution: 'Digitální technická mapa krajů ČR (IS DMVS – ČÚZK)' },
     }),
     layers: [
       // ===== BAREVNÉ PATRO (pod mlhou — odkrývá se objevováním) =====
@@ -792,34 +797,47 @@ function stylHerni(ctx) {
         paint: AKVAREL
           ? { 'fill-pattern': 'vzor-louka', 'fill-opacity': 0.5 }
           : { 'fill-color': '#C3D98B', 'fill-opacity': 0.55 } },
-      // ⭐ engine 341 (výtka T: „šly by zvýraznit hranice pozemků a ploty?“): ploty
-      // tmavší a silnější (#6F5F3F 0,5 → #574530 0,7), od z16,5 se SLOUPKY (tečky
-      // přes čárkování s kulatým koncem)
-      { id: 'zahrada-plot', type: 'line', source: 'krajina', 'source-layer': 'krajina',
-        minzoom: 15, filter: ['==', ['get', 't'], 'zahrada'],
-        paint: { 'line-color': '#574530', 'line-opacity': 0.7,
-                 'line-width': sirkaMetry(0.7, 0.55, 15) } },
-      { id: 'zahrada-plot-sloupky', type: 'line', source: 'krajina', 'source-layer': 'krajina',
-        minzoom: 16.5, filter: ['==', ['get', 't'], 'zahrada'],
-        layout: { 'line-cap': 'round' },
-        paint: { 'line-color': '#453421',
-                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 16.5, 0, 17, 0.8],
-                 'line-width': sirkaMetry(1.4, 1.1, 16.5), 'line-dasharray': [0, 3] } },
       // zdi (ZABAGED: opěrné, ostatní, protihlukové) – kamenná linka
       { id: 'zed', type: 'line', source: 'krajina', 'source-layer': 'cary',
         minzoom: 15, filter: ['==', ['get', 't'], 'zed'],
         paint: { 'line-color': '#8A8072', 'line-opacity': 0.75,
                  'line-width': sirkaMetry(0.8, 0.8, 15) } },
-      // ⭐ engine 337 (krok 4, krajina8): PLOTY Z KATASTRU – uliční fronty
-      // parcel (RÚIAN: hrana zastavěná plocha/zahrada × ulice), předpočítané
-      // na PC. ZABAGED plot nemá, OSM fence je na venkově děravé.
-      { id: 'plot', type: 'line', source: 'krajina', 'source-layer': 'ploty',
-        minzoom: 15.3, layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#574530',
-                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 15.3, 0, 16, 0.82],
-                 'line-width': sirkaMetry(0.9, 0.55, 15.3) } },
-      { id: 'plot-sloupky', type: 'line', source: 'krajina', 'source-layer': 'ploty',
-        minzoom: 16.5, layout: { 'line-cap': 'round' },
+      // ⭐ engine 351: PLOTY. Dřív tři zdroje přes sebe – obvody zahrad ZABAGED (engine 341, „šly by
+      // zvýraznit hranice pozemků a ploty?“), uliční fronty parcel z katastru (engine 337) a teď skutečné
+      // ploty DTM. Kde jsou obojí, byly by dvě čáry 1–3 m vedle sebe (Rtyně) → vrstvy `zahrada-plot*`
+      // a `plot*` PRYČ; jejich čáry MIMO oblasti s ploty DTM (mřížka 50 m) jsou v archivu dtm1 jako
+      // `t: plot, k: 1` (katastr) / `k: 2` (zahrady) – tools/dtm_ploty_katastru.py. Kreslí je vrstvy DTM.
+      // ⭐ engine 351 (T 24. 9.: „ano, celou čr“): DTM ČR – VEŘEJNÁ ZPS (Digitální technická mapa krajů,
+      // IS DMVS – ČÚZK; otevřená data bez podmínek). Skutečné ploty, zdi, zábradlí, svodidla, protihlukové
+      // stěny, vjezdy, chodníky, parkoviště, hřiště, schodiště, zahradní bazény, kůlny a skleníky (archiv
+      // dtm1.pmtiles, tools/dtm_stahni_prevod.py – jen geometrie a typ). Čtyři vrstvy s barvou/šířkou podle
+      // typu (méně vrstev = levnější terénní RTT). Pod mlhou – odkrývá se objevováním jako všechno ostatní.
+      { id: 'dtm-plochy', type: 'fill', source: 'dtm', 'source-layer': 'plochy', minzoom: 15,
+        paint: { 'fill-color': ['match', ['get', 't'],
+                   'bazen', '#79C7E8', 'kulna', '#C9AE84', 'sklenik', '#DCEBE3', 'zed', '#9C9387',
+                   'schodiste', '#CFC7B8', 'hriste', '#D8C58F', 'parkoviste', '#DAD5C8', '#E4DDCC'],
+                 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 15.6,
+                   ['match', ['get', 't'], 'bazen', 0.95, 'kulna', 0.9, 'sklenik', 0.85, 'zed', 0.85, 'schodiste', 0.8, 0.5]] } },
+      { id: 'dtm-plochy-obrys', type: 'line', source: 'dtm', 'source-layer': 'plochy', minzoom: 16,
+        filter: ['in', ['get', 't'], ['literal', ['bazen', 'kulna', 'sklenik', 'schodiste']]],
+        layout: { 'line-join': 'round' },
+        paint: { 'line-color': ['match', ['get', 't'], 'bazen', '#EEF7FA', 'sklenik', '#7E9C8C', '#6E5A3E'],
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 16, 0, 16.5, 0.85],
+                 'line-width': ['interpolate', ['exponential', 2], ['zoom'], 16, 0.4,
+                   22, ['match', ['get', 't'], 'bazen', DTM_W22(0.45), DTM_W22(0.2)]] } },
+      { id: 'dtm-cary', type: 'line', source: 'dtm', 'source-layer': 'cary', minzoom: 15,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': ['match', ['get', 't'],
+                   'plot', '#574530', 'zed', '#8A8072', 'zabradli', '#3E3A36', 'svodidlo', '#A3A3A0',
+                   'protihluk', '#5E7A5A', 'vjezd', '#CBC2AE', '#6A6056'],
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16,
+                   ['match', ['get', 't'], 'plot', 0.82, 'vjezd', 0.7, 'zabradli', 0.8, 0.85]],
+                 'line-width': ['interpolate', ['exponential', 2], ['zoom'],
+                   15, ['match', ['get', 't'], 'zed', 0.8, 'protihluk', 1.0, 'plot', 0.9, 0.5],
+                   22, ['match', ['get', 't'], 'zed', DTM_W22(0.6), 'protihluk', DTM_W22(0.9), 'plot', DTM_W22(0.55),
+                        'vjezd', DTM_W22(0.8), 'svodidlo', DTM_W22(0.4), DTM_W22(0.25)]] } },
+      { id: 'dtm-plot-sloupky', type: 'line', source: 'dtm', 'source-layer': 'cary', minzoom: 16.5,
+        filter: ['==', ['get', 't'], 'plot'], layout: { 'line-cap': 'round' },
         paint: { 'line-color': '#453421',
                  'line-opacity': ['interpolate', ['linear'], ['zoom'], 16.5, 0, 17, 0.85],
                  'line-width': sirkaMetry(1.7, 1.2, 16.5), 'line-dasharray': [0, 2.6] } },
