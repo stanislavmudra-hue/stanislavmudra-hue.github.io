@@ -6294,6 +6294,8 @@ function aplikujNoc() {
     const krok = Pocasi.stavNoci();
     window.__casy.nocKrok = krok;
     srovnejNocPodMlhu();
+    // engine 349: pouliční lampy (drobnosti z OSM) svítí od soumraku – vlastní vrstva, levné (jen při změně)
+    if (window.__lampyNoc) window.__lampyNoc(krok);
     const svetla = mapa.getLayer('dekorace-svetla');
     const svChce = krok >= 2 ? 'visible' : 'none';
     const svMa = svetla
@@ -6364,6 +6366,7 @@ function aplikujNoc() {
         if (mapa.getLayer('dekorace-svetla')) {
           mapa.moveLayer('dekorace-svetla', 'dob-uzemi');
         }
+        if (mapa.getLayer('dekorace-lampy')) mapa.moveLayer('dekorace-lampy', 'dob-uzemi');   // engine 349
         if (mapa.getLayer('hrac-zare')) {
           mapa.moveLayer('hrac-zare', 'dob-uzemi');
         }

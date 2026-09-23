@@ -596,6 +596,8 @@ async function generuj(z, x, y) {
     potreba.get('krajina').add('body');
     if (z >= 14) potreba.get('krajina').add('cary');
   }
+  // ⭐ engine 349: drobnosti z OSM (archiv `drobnosti`, vrstva body, jen z14) do dlaždic z14 a z15
+  if (z >= 14 && N.zdroje.drobnosti && N.drobnosti) potreba.set('drobnosti', new Set(['body']));
   // výška terénu se začne shánět hned (hlavní vlákno bývá při startu mapy
   // vytížené – na TT čekání až 0,5 s), souběžně se zdrojovými dlaždicemi
   const zD = Math.min(12, z), dD = z - zD;
@@ -788,6 +790,33 @@ async function generuj(z, x, y) {
       }
     }
   }
+  // ⭐ engine 349 (přání T 23. 9.: „lampy, posedy, krmelce, lavičky, studny a poštovní schránky“):
+  // DROBNOSTI SE ZNÁMOU POLOHOU z OpenStreetMap – stojí přesně tam, kde jsou (žádná mřížka ani
+  // kontrola ploch), velikost ±8 % podle hashe polohy. Lampa má navíc noční svit (sv 5 → evidence,
+  // hlavní vlákno ho kreslí vrstvou `dekorace-lampy`, jen v noci) se STEJNÝM k jako kresba.
+  if (z >= 14 && zdrojove.drobnosti && N.drobnosti) {
+    const zd = zdrojove.drobnosti, vD = zd.vrstvy.body;
+    if (vD) {
+      const kD = EXT / vD.extent;
+      let pocetD = 0;
+      for (const f of vD.prvky) {
+        if (pocetD >= 3000) break;
+        const cfg = N.drobnosti[f.vl.t];
+        if (!cfg) continue;
+        for (const c of geomPrvku(vD, f)) {
+          const px = c[0] * kD * zd.m + zd.ox, py = c[1] * kD * zd.m + zd.oy;
+          if (px < 0 || px >= EXT || py < 0 || py >= EXT) continue;
+          const lon = lonZ((x + px / EXT) / n), lat = latZ((y + py / EXT) / n);
+          const a = Math.round(lon * 1e6), b = Math.round(lat * 1e6);
+          const ik = cfg.ikony[Math.floor(hash(a, b, 13) * cfg.ikony.length)];
+          const kk = cfg.k * (0.92 + hash(a, b, 14) * 0.16);
+          pridej(lon, lat, px, py, ik, kk, cfg.z0, 0, 0);
+          if (cfg.sv) pridej(lon, lat, px, py, cfg.zare, kk, cfg.z0, cfg.sv, ((a * 92821 + b * 31397 + cfg.sv * 7451) >>> 0));
+          pocetD++;
+        }
+      }
+    }
+  }
   const pocetK = K.lon.length;
   const tKand = performance.now();
   const vysl = {
@@ -898,6 +927,18 @@ function nastup(z0) {
 /// ⭐ engine 343: plná mřížka už od z14 → totéž o úroveň níž (14,45 → 14,0).
 /// Zarážky 15,0/15,45 jsou v ZOOMU MAPY (pevné, hranice dlaždic), rampa je posunutá
 /// o dohled → hodnota pro zarážku = nástup v základním zoomu (zoom + dz).
+/// ⭐ engine 349: zarážky rampy NAD z15,65 (o11–o14: 16,0 / 16,35 / 16,7 / 17,05) – drobnosti
+/// (lavičky, schránky, studny) nastupují až zblízka; posílají se jen prvkům, které do z15,65
+/// nejsou plně vidět (ostatní v hlavním vlákně spadnou přes coalesce na o8)
+const oKesV = new Map();
+function nastupVys(z0) {
+  let o = oKesV.get(z0);
+  if (!o) {
+    o = (N.rampaVys || []).map((z) => Math.max(0, Math.min(1, (z - z0) / N.sirkaNastupu)));
+    oKesV.set(z0, o);
+  }
+  return o;
+}
 const oKesX = new Map();
 function nastupX(z0) {
   let o = oKesX.get(z0);
@@ -928,6 +969,10 @@ function vystupDlazdice(v) {
     const ox = nastupX(v.z0[i]);
     vl.o9 = lic ? 0 : ox[0];
     vl.o10 = ox[1];
+    if (N.rampaVys && v.z0[i] + N.sirkaNastupu > N.rampa[N.rampa.length - 1]) {
+      const ov = nastupVys(v.z0[i]);
+      for (let j = 0; j < ov.length; j++) vl['o' + (11 + j)] = ov[j];
+    }
     if (lic) vl.l = 1;
     const px = Math.max(0, Math.min(EXT - 1, Math.round(v.px[i]))), py = Math.max(0, Math.min(EXT - 1, Math.round(v.py[i])));
     body.push({ px, py, vl });
@@ -1047,7 +1092,9 @@ self.onmessage = (ev) => {
       if (!vrstvyZdroju.has('krajina')) vrstvyZdroju.set('krajina', new Set());
       vrstvyZdroju.get('krajina').add('body');
       vrstvyZdroju.get('krajina').add('cary');
+      vrstvyZdroju.set('drobnosti', new Set(['body']));       // engine 349
       zdrojDl.clear();
+      oKesV.clear();
       cfgKlic = JSON.stringify([m.verze, m.sezona, m.dz, m.ex, m.herni, m.zdroje, m.plochy, Object.keys(m.druhy)]);
       oKes.clear();
       if (noveZdroje) { archivy.clear(); zdrojDl.clear(); }

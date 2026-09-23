@@ -339,6 +339,30 @@ const Dekorace = (() => {
   // Jak široký (v zoomu) je náběh z nuly do plné viditelnosti. 0,35 je
   // zhruba půl štípnutí — „rychleji", jak si uživatel přál.
   const SIRKA_NASTUPU = 0.35;
+  // ⭐ engine 349: zarážky NAD z15,65 pro drobnosti, které nastupují až zblízka (lavička, schránka,
+  // studna; o11–o14 posílá worker jen jim – ostatním coalesce vrátí o8)
+  const RAMPA_VYS_ZAKLAD = [16.0, 16.35, 16.7, 17.05];
+  let RAMPA_VYS = RAMPA_VYS_ZAKLAD.map((z) => z - DZ);
+  // ⭐ engine 349 (přání T 23. 9. 2026: „lampy, posedy, krmelce, lavičky, studny a poštovní schránky“):
+  // DROBNOSTI SE ZNÁMOU POLOHOU z OpenStreetMap (archiv drobnosti1.pmtiles na R2, ODbL – samostatně,
+  // nesloučeno se ZABAGED; tools/drobnosti_osm_export.py). Kreslí je worker jako stromy (mlha, rampa,
+  // měřítko světa). Výška v metrech = 0,1167 × výška obrázku (px @2) × k; stylizované větší než
+  // skutečnost (jako sovy a ptáci), z0 = zoom, kde mají ~5 px. Lampa v noci svítí (vrstva dekorace-lampy).
+  const DROBNOSTI = {
+    lampa:    { ikony: ['deko-lampa'],    H: 192, vyskaM: 8,   z0: 14.9, sv: 5, zare: 'lampa-zare' },
+    posed:    { ikony: ['deko-posed'],    H: 192, vyskaM: 10,  z0: 14.6 },
+    krmelec:  { ikony: ['deko-krmelec'],  H: 112, vyskaM: 5,   z0: 15.4 },
+    lavicka:  { ikony: ['deko-lavicka'],  H: 72,  vyskaM: 2.0, z0: 16.1 },
+    studna:   { ikony: ['deko-studna'],   H: 128, vyskaM: 4,   z0: 15.8 },
+    schranka: { ikony: ['deko-schranka'], H: 96,  vyskaM: 3,   z0: 16.1 },
+  };
+  const drobnostiProWorker = () => {
+    const out = {};
+    for (const [t, c] of Object.entries(DROBNOSTI)) {
+      out[t] = { ikony: c.ikony, k: +(c.vyskaM / (c.H * 0.1167)).toFixed(4), z0: c.z0, sv: c.sv || 0, zare: c.zare || null };
+    }
+    return out;
+  };
 
   /// ⭐ engine 342: výraz průhlednosti dekorací = zarážky RAMPA (posunuté o dohled, o1–o8)
   /// + pevné 15,0 a 15,45 (o9, o10 – plynulé zmizení lichých buněk jemné mřížky před
@@ -346,7 +370,8 @@ const Dekorace = (() => {
   /// zůstat KOŘENEM výrazu (násobek nočního ztlumení jde dovnitř na výstupy).
   function vyrazRampy(faktor) {
     // engine 343: plná mřížka od dlaždic z14 → přechod lichých buněk 14,45 → 14,0
-    const zar = RAMPA.map((z, i) => [z, 'o' + (i + 1)]).concat([[14.0, 'o9'], [14.45, 'o10']]);
+    const zar = RAMPA.map((z, i) => [z, 'o' + (i + 1)]).concat([[14.0, 'o9'], [14.45, 'o10']])
+      .concat(RAMPA_VYS.map((z, i) => [z, 'o' + (11 + i)]));           // engine 349: drobnosti zblízka
     zar.sort((a, b) => a[0] - b[0]);
     const vyr = ['interpolate', ['linear'], ['zoom']];
     let posl = -Infinity;
@@ -656,6 +681,12 @@ const Dekorace = (() => {
         } catch (e) { console.warn('[deko] záře:', jmeno, e); }
       }
     }
+    // engine 349: drobnosti (lampa, posed, krmelec, lavička, studna, schránka) + svit lampy
+    for (const [jmeno, fn] of Object.entries(SPRITY_DROBNOSTI)) {
+      if (!mapa.hasImage(jmeno)) {
+        try { mapa.addImage(jmeno, fn(), { pixelRatio: 2 }); } catch (e) { console.warn('[deko] drobnost:', jmeno, e); }
+      }
+    }
     // sněhulák pečený v kódu (v1.593) — viz DRUHY.snehulak
     if (!mapa.hasImage('deko-snehulak')) {
       try {
@@ -679,6 +710,29 @@ const Dekorace = (() => {
       },
       paint: { 'icon-opacity': mihot(0.95) },
     }, kotva ? kotva.id : undefined);
+    // ⭐ engine 349: NOČNÍ SVIT LAMP (sv 5) – stejné měřítko, pata a PLNÁ perspektiva jako kresba
+    // lampy (záplata bundlu: vrstva `dekorace-lampy` jako akvarel-dekorace), takže jas sedí na skle;
+    // za domy se schová (hloubka jen pro čtení). Ve dne schovaná, zapíná `__lampyNoc` z aplikujNoc.
+    if (!mapa.getLayer('dekorace-lampy')) {
+      mapa.addLayer({
+        id: 'dekorace-lampy', type: 'symbol', source: 'dekorace-svetla-zdroj',
+        minzoom: DROBNOSTI.lampa.z0 - 0.4 - DZ,
+        filter: ['==', ['get', 'sv'], 5],
+        layout: {
+          'icon-image': ['get', 'ik'],
+          'icon-anchor': 'bottom',
+          'icon-offset': [0, 8],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          visibility: 'none',
+          'icon-size': ['interpolate', ['exponential', 2], ['zoom'],
+            13.25, ['*', ['get', 'k'], 0.046],
+            22, ['*', ['get', 'k'], 19.7]],
+        },
+        paint: { 'icon-opacity': vyrazLampy(1) },
+      }, kotva ? kotva.id : undefined);
+    }
+    try { if (typeof Pocasi !== 'undefined' && Pocasi.stavNoci) window.__lampyNoc(Pocasi.stavNoci()); } catch (e) { /* nic */ }
     // ⛔⛔ v1.400: SVĚTLUŠKY ŽIJÍ MIMO MAPU — jako DOM markery.
     // Symboly: každé setData = nové rozmístění s prolínáním 300 ms,
     // překrývající se při tiku 133 ms → mapa nikdy neusnula (56/s).
@@ -712,6 +766,216 @@ const Dekorace = (() => {
     ctx.fillRect(0, 0, s, s);
     return ctx.getImageData(0, 0, s, s);
   }
+
+  /// engine 349: průhlednost svitu lamp – nástup s lampou (z0 − dohled, šířka rampy) × síla noci
+  let lampySila = 0;
+  function vyrazLampy(sila) {
+    const z0 = DROBNOSTI.lampa.z0 - DZ;
+    return ['interpolate', ['linear'], ['zoom'], z0 - 0.01, 0, z0 + SIRKA_NASTUPU, Math.max(0.001, sila)];
+  }
+  /// engine 349: lampy svítí od soumraku (krok noci ≥ 1): 0,55 / 0,85 / 1; ve dne vrstva schovaná
+  window.__lampyNoc = (krok) => {
+    try {
+      if (!mapa || !mapa.getLayer('dekorace-lampy')) return;
+      const sila = [0, 0.55, 0.85, 1][Math.max(0, Math.min(3, krok | 0))];
+      if (sila !== lampySila) { lampySila = sila; if (sila > 0) mapa.setPaintProperty('dekorace-lampy', 'icon-opacity', vyrazLampy(sila)); }
+      const chce = sila > 0 ? 'visible' : 'none';
+      if (mapa.getLayoutProperty('dekorace-lampy', 'visibility') !== chce) mapa.setLayoutProperty('dekorace-lampy', 'visibility', chce);
+    } catch (e) { /* styl se zrovna mění */ }
+  };
+
+  // -------------------------------------------------------------------------
+  // ⭐ engine 349: DROBNOSTI SE ZNÁMOU POLOHOU (OSM) – kresby v kódu jako sněhulák, malované
+  // barvy a TMAVÝ OBRYS (drobnost má na mapě 5–40 px, obrys ji oddělí od podkladu). Pata stojí
+  // 10 px nad spodkem obrázku (@2) kvůli `icon-offset` vrstvy; výška obrázku určuje k (viz DROBNOSTI).
+  function platnoDrobnosti(W, H) {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    return [c, g];
+  }
+  const OBRYS_D = 'rgba(28,22,16,0.85)';
+  /// obdélník s obrysem (x, y, šířka, výška)
+  function trs(g, x, y, w, h, barva, obrys) {
+    g.fillStyle = barva; g.fillRect(x, y, w, h);
+    if (obrys !== false) { g.strokeStyle = OBRYS_D; g.lineWidth = 1.6; g.strokeRect(x, y, w, h); }
+  }
+  function stinPaty(g, cx, cy, rx) {
+    g.fillStyle = 'rgba(40,36,30,0.22)';
+    g.beginPath(); g.ellipse(cx, cy, rx, rx * 0.26, 0, 0, Math.PI * 2); g.fill();
+  }
+  /// lampa veřejného osvětlení: šedý kuželový sloup, oblouk ramene a hlava se světlým sklem (64×192)
+  function lampaSprite() {
+    const W = 64, H = 192, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 32, yb, 11);
+    // sloup (kužel) s obrysem a světlejší hranou
+    g.beginPath(); g.moveTo(29, yb); g.lineTo(30.4, 34); g.lineTo(33.6, 34); g.lineTo(35, yb); g.closePath();
+    g.fillStyle = '#6d7379'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.6; g.stroke();
+    g.strokeStyle = 'rgba(200,206,212,0.7)'; g.lineWidth = 1.1;
+    g.beginPath(); g.moveTo(30.6, yb - 2); g.lineTo(31.3, 38); g.stroke();
+    trs(g, 27, yb - 12, 10, 12, '#5a5f65');                   // patka
+    // rameno
+    g.strokeStyle = OBRYS_D; g.lineWidth = 4.2;
+    g.beginPath(); g.moveTo(32, 36); g.quadraticCurveTo(33, 22, 48, 24); g.stroke();
+    g.strokeStyle = '#737a80'; g.lineWidth = 2.2;
+    g.beginPath(); g.moveTo(32, 36); g.quadraticCurveTo(33, 22, 48, 24); g.stroke();
+    // hlava (tmavý kryt, světlé sklo zespodu)
+    g.beginPath(); g.moveTo(42, 22); g.quadraticCurveTo(52, 16, 60, 23); g.lineTo(58, 28); g.lineTo(44, 28); g.closePath();
+    g.fillStyle = '#474d53'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.6; g.stroke();
+    g.beginPath(); g.ellipse(51, 28.5, 7, 2.4, 0, 0, Math.PI * 2);
+    g.fillStyle = '#fff1c9'; g.fill(); g.strokeStyle = 'rgba(28,22,16,0.6)'; g.lineWidth = 1; g.stroke();
+    return g.getImageData(0, 0, W, H);
+  }
+  /// noční svit lampy (256×192, stejné měřítko a pata jako lampa): jas u skla + kaluž světla na zemi
+  const LAMPA_SKLO = [51 - 32, 29];                           // sklo vůči středu paty (px @2), y od horního okraje
+  function lampaZareSprite() {
+    const W = 256, H = 192, yb = H - 10, cx = W / 2;
+    const [c, g] = platnoDrobnosti(W, H);
+    // kaluž světla na zemi (plochá elipsa – billboard na zemi čte oko jako kruh v perspektivě)
+    g.save(); g.translate(cx + 6, yb - 2); g.scale(1, 0.24);
+    let r = g.createRadialGradient(0, 0, 0, 0, 0, 118);
+    r.addColorStop(0, 'rgba(255,226,160,0.55)'); r.addColorStop(0.45, 'rgba(255,214,140,0.28)'); r.addColorStop(1, 'rgba(255,205,120,0)');
+    g.fillStyle = r; g.beginPath(); g.arc(0, 0, 118, 0, Math.PI * 2); g.fill();
+    g.restore();
+    // kužel světla od skla k zemi
+    const sx = cx + LAMPA_SKLO[0], sy = LAMPA_SKLO[1];
+    const k = g.createLinearGradient(0, sy, 0, yb);
+    k.addColorStop(0, 'rgba(255,236,190,0.2)'); k.addColorStop(1, 'rgba(255,226,170,0.03)');
+    g.fillStyle = k;
+    g.beginPath(); g.moveTo(sx - 5, sy + 2); g.lineTo(sx + 5, sy + 2); g.lineTo(sx + 46, yb); g.lineTo(sx - 46, yb); g.closePath(); g.fill();
+    // jas u skla
+    r = g.createRadialGradient(sx, sy, 0, sx, sy, 34);
+    r.addColorStop(0, 'rgba(255,252,240,1)'); r.addColorStop(0.18, 'rgba(255,238,190,0.9)');
+    r.addColorStop(0.5, 'rgba(255,214,140,0.32)'); r.addColorStop(1, 'rgba(255,205,120,0)');
+    g.fillStyle = r; g.beginPath(); g.arc(sx, sy, 34, 0, Math.PI * 2); g.fill();
+    return g.getImageData(0, 0, W, H);
+  }
+  /// posed (myslivecký posed): čtyři nohy do A, žebřík, kazatelna s okénkem a stříškou (128×192)
+  function posedSprite() {
+    const W = 128, H = 192, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 64, yb, 42);
+    const drevo = '#7b5a3b', svetle = '#9a7650', tmave = '#5c4029';
+    const noha = (x0, y0, x1, y1, w, barva) => {
+      g.strokeStyle = OBRYS_D; g.lineWidth = w + 2.4; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+      g.strokeStyle = barva; g.lineWidth = w; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+    };
+    noha(40, yb - 2, 50, 84, 3.6, tmave); noha(88, yb - 2, 78, 84, 3.6, tmave);          // zadní
+    noha(28, yb, 44, 84, 4.6, drevo); noha(100, yb, 84, 84, 4.6, drevo);                 // přední
+    noha(34, 150, 94, 118, 2.4, tmave); noha(94, 150, 34, 118, 2.4, tmave);             // kříž
+    // žebřík
+    noha(52, yb, 56, 86, 2.6, svetle); noha(68, yb, 66, 86, 2.6, svetle);
+    for (let y = yb - 10; y > 92; y -= 11) { g.strokeStyle = svetle; g.lineWidth = 2; g.beginPath(); g.moveTo(53, y); g.lineTo(68, y); g.stroke(); }
+    // podlaha a kazatelna
+    trs(g, 36, 80, 56, 6, tmave);
+    g.fillStyle = drevo; g.fillRect(38, 44, 52, 36);
+    g.strokeStyle = 'rgba(40,28,18,0.45)'; g.lineWidth = 1;
+    for (let y = 50; y < 80; y += 6) { g.beginPath(); g.moveTo(38, y); g.lineTo(90, y); g.stroke(); }
+    g.fillStyle = '#2a1f16'; g.fillRect(46, 50, 36, 12);                               // okénko
+    g.strokeStyle = OBRYS_D; g.lineWidth = 1.6; g.strokeRect(38, 44, 52, 36);
+    // stříška
+    g.beginPath(); g.moveTo(30, 46); g.lineTo(64, 28); g.lineTo(98, 46); g.lineTo(94, 50); g.lineTo(34, 50); g.closePath();
+    g.fillStyle = '#4e5a44'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.6; g.stroke();
+    return g.getImageData(0, 0, W, H);
+  }
+  /// krmelec: sedlová střecha na čtyřech sloupcích, žebřina se senem a korýtko (128×112)
+  function krmelecSprite() {
+    const W = 128, H = 112, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 64, yb, 50);
+    const drevo = '#7d5b3c', tmave = '#5a3f28';
+    const sloup = (x, y0, w, barva) => trs(g, x - w / 2, y0, w, yb - y0, barva);
+    sloup(34, 52, 5, tmave); sloup(94, 52, 5, tmave);                                   // zadní
+    // žebřina se senem (do V)
+    g.fillStyle = '#d9c27a';
+    g.beginPath(); g.moveTo(40, 56); g.lineTo(88, 56); g.lineTo(74, 80); g.lineTo(54, 80); g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(150,120,60,0.8)'; g.lineWidth = 1;
+    for (let i = 0; i < 9; i++) { g.beginPath(); g.moveTo(44 + i * 5, 56); g.lineTo(55 + i * 2.3, 80); g.stroke(); }
+    g.strokeStyle = OBRYS_D; g.lineWidth = 1.4;
+    g.beginPath(); g.moveTo(40, 56); g.lineTo(88, 56); g.lineTo(74, 80); g.lineTo(54, 80); g.closePath(); g.stroke();
+    trs(g, 48, 84, 32, 7, drevo);                                                      // korýtko
+    sloup(22, 46, 6, drevo); sloup(106, 46, 6, drevo);                                  // přední
+    // střecha
+    g.beginPath(); g.moveTo(8, 50); g.lineTo(64, 14); g.lineTo(120, 50); g.lineTo(114, 55); g.lineTo(14, 55); g.closePath();
+    g.fillStyle = '#6a4a31'; g.fill();
+    g.strokeStyle = 'rgba(40,26,16,0.5)'; g.lineWidth = 1;
+    for (let i = 1; i < 5; i++) { const t = i / 5; g.beginPath(); g.moveTo(8 + (64 - 8) * t, 50 - 36 * t + 2); g.lineTo(120 - (120 - 64) * t, 50 - 36 * t + 2); g.stroke(); }
+    g.strokeStyle = OBRYS_D; g.lineWidth = 1.6;
+    g.beginPath(); g.moveTo(8, 50); g.lineTo(64, 14); g.lineTo(120, 50); g.lineTo(114, 55); g.lineTo(14, 55); g.closePath(); g.stroke();
+    return g.getImageData(0, 0, W, H);
+  }
+  /// lavička: dřevěný sedák a opěradlo na tmavých nohách, mírně z nadhledu (128×72)
+  function lavickaSprite() {
+    const W = 128, H = 72, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 64, yb - 2, 50);
+    const noha = '#3b3a38', drevo = '#a06f45', tmave = '#7c5433';
+    trs(g, 28, 30, 4, yb - 36, noha); trs(g, 96, 30, 4, yb - 36, noha);               // zadní nohy (drží opěradlo)
+    // opěradlo (dvě prkna)
+    trs(g, 22, 16, 84, 7, drevo); trs(g, 22, 25, 84, 6, tmave);
+    // sedák (kosodélník z nadhledu)
+    g.beginPath(); g.moveTo(18, 38); g.lineTo(110, 38); g.lineTo(116, 46); g.lineTo(12, 46); g.closePath();
+    g.fillStyle = drevo; g.fill();
+    g.strokeStyle = 'rgba(70,46,26,0.6)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(15, 42); g.lineTo(113, 42); g.stroke();
+    g.strokeStyle = OBRYS_D; g.lineWidth = 1.6;
+    g.beginPath(); g.moveTo(18, 38); g.lineTo(110, 38); g.lineTo(116, 46); g.lineTo(12, 46); g.closePath(); g.stroke();
+    trs(g, 16, 46, 5, yb - 46, noha); trs(g, 107, 46, 5, yb - 46, noha);             // přední nohy
+    return g.getImageData(0, 0, W, H);
+  }
+  /// studna: kamenná roubení, dva sloupky, stříška, rumpál s okovem (96×128)
+  function studnaSprite() {
+    const W = 96, H = 128, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 48, yb, 36);
+    // roubení (válec z kamene)
+    g.fillStyle = '#9b958b'; g.fillRect(16, 82, 64, yb - 86);
+    g.beginPath(); g.ellipse(48, yb - 4, 32, 6, 0, 0, Math.PI); g.fill();
+    g.fillStyle = 'rgba(70,66,60,0.55)';
+    for (let r = 0; r < 4; r++) for (let i = 0; i < 5; i++) {
+      const x = 18 + i * 13 + (r & 1) * 6, y = 86 + r * 7;
+      if (x < 76 && y < yb - 4) g.fillRect(x, y, 1.2, 6);
+    }
+    g.strokeStyle = 'rgba(70,66,60,0.5)'; g.lineWidth = 1;
+    for (let r = 1; r < 4; r++) { g.beginPath(); g.moveTo(16, 86 + r * 7); g.lineTo(80, 86 + r * 7); g.stroke(); }
+    g.beginPath(); g.ellipse(48, 82, 32, 7, 0, 0, Math.PI * 2);
+    g.fillStyle = '#b3ada3'; g.fill();
+    g.beginPath(); g.ellipse(48, 82, 25, 4.6, 0, 0, Math.PI * 2); g.fillStyle = '#1f2a2e'; g.fill();   // voda/tma
+    g.strokeStyle = OBRYS_D; g.lineWidth = 1.6;
+    g.beginPath(); g.ellipse(48, 82, 32, 7, 0, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.moveTo(16, 82); g.lineTo(16, yb - 4); g.ellipse(48, yb - 4, 32, 6, 0, Math.PI, 0, true); g.lineTo(80, 82); g.stroke();
+    // sloupky, rumpál, okov
+    trs(g, 19, 36, 5, 46, '#6e4f33'); trs(g, 72, 36, 5, 46, '#6e4f33');
+    trs(g, 22, 52, 52, 6, '#8a6a47');
+    g.strokeStyle = OBRYS_D; g.lineWidth = 2.4;
+    g.beginPath(); g.moveTo(78, 55); g.lineTo(86, 55); g.lineTo(86, 62); g.stroke();                // klika
+    g.strokeStyle = '#d8cfb8'; g.lineWidth = 1; g.beginPath(); g.moveTo(48, 58); g.lineTo(48, 68); g.stroke();
+    trs(g, 43, 68, 10, 8, '#5f5a52');
+    // stříška
+    g.beginPath(); g.moveTo(8, 40); g.lineTo(48, 14); g.lineTo(88, 40); g.lineTo(84, 44); g.lineTo(12, 44); g.closePath();
+    g.fillStyle = '#6b4a2f'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.6; g.stroke();
+    return g.getImageData(0, 0, W, H);
+  }
+  /// poštovní schránka: oranžová schránka České pošty s trubkou na šedém sloupku (64×96)
+  function schrankaSprite() {
+    const W = 64, H = 96, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 32, yb, 12);
+    trs(g, 29.5, 46, 5, yb - 46, '#7a7f84');
+    g.beginPath(); g.moveTo(14, 48); g.lineTo(14, 26); g.quadraticCurveTo(32, 14, 50, 26); g.lineTo(50, 48); g.closePath();
+    g.fillStyle = '#ef8a1f'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.6; g.stroke();
+    g.fillStyle = 'rgba(255,214,150,0.55)'; g.fillRect(16.5, 27, 3, 19);                   // odlesk
+    trs(g, 20, 29, 24, 3.2, '#2a221c', false);                                              // štěrbina
+    g.strokeStyle = '#3a2a1c'; g.lineWidth = 1.6;                                           // trubka pošty
+    g.beginPath(); g.arc(32, 40, 4.2, Math.PI * 0.15, Math.PI * 1.1); g.stroke();
+    g.beginPath(); g.moveTo(27.8, 40); g.lineTo(24, 42.6); g.stroke();
+    return g.getImageData(0, 0, W, H);
+  }
+  const SPRITY_DROBNOSTI = { 'deko-lampa': lampaSprite, 'deko-posed': posedSprite, 'deko-krmelec': krmelecSprite,
+                             'deko-lavicka': lavickaSprite, 'deko-studna': studnaSprite, 'deko-schranka': schrankaSprite,
+                             'lampa-zare': lampaZareSprite };
 
   /// ⭐ Sněhulák pečený štětcem (v1.593): tři koule se studeným
   /// stínem, uhlíky, mrkev, klacíkové ruce, hrnec a šála. Kreslí se
@@ -1366,8 +1630,9 @@ const Dekorace = (() => {
         || rezim === 'zimaden';
     const kotvy = svetlaEvidence.filter((f) => f.properties.sv === 2);
     // můry krouží u OKEN vesnic (sv:1 = světla sídel)
+    // engine 349: i u pouličních lamp (sv 5)
     const okna = rezim === 'podzimnoc'
-        ? svetlaEvidence.filter((f) => f.properties.sv === 1)
+        ? svetlaEvidence.filter((f) => f.properties.sv === 1 || f.properties.sv === 5)
         : null;
     if (!kotvy.length && !(okna && okna.length)) return;
     // doplnit populaci (rodí se zhasnuté, jas si nadýchají)
@@ -2687,6 +2952,8 @@ const Dekorace = (() => {
       if (!url.startsWith('pmtiles://')) return null;
       out[id] = url.slice('pmtiles://'.length);
     }
+    // engine 349: drobnosti z OSM – samostatný archiv (není ve stylu, čte ho jen worker)
+    try { out.drobnosti = r2('drobnosti1.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez drobností */ }
     return out;
   }
   function wNastaveni() {
@@ -2705,6 +2972,7 @@ const Dekorace = (() => {
                                  zmin: d.zmin == null ? null : d.zmin,
                                  zmax: d.zmax == null ? null : d.zmax })),
       zdroje, sirkyCar: SIRKY_CAR, rampa: RAMPA_ZAKLAD, sirkaNastupu: SIRKA_NASTUPU,
+      rampaVys: RAMPA_VYS_ZAKLAD, drobnosti: drobnostiProWorker(),   // engine 349
     };
   }
   function wPripravit() {
@@ -2826,7 +3094,7 @@ const Dekorace = (() => {
     wEvidence.clear();
     try {
       if (mapa) {
-        for (const id of ['akvarel-dekorace', 'dekorace-svetla']) if (mapa.getLayer(id)) mapa.removeLayer(id);
+        for (const id of ['akvarel-dekorace', 'dekorace-svetla', 'dekorace-lampy']) if (mapa.getLayer(id)) mapa.removeLayer(id);
         for (const id of ['dekorace', 'dekorace-svetla-zdroj']) if (mapa.getSource(id)) mapa.removeSource(id);
       }
     } catch (e) { /* nic */ }
@@ -2959,7 +3227,7 @@ const Dekorace = (() => {
     const podleId = new Map();
     for (const t of wEvidence.values()) {
       for (const f of t.sv) {
-        if (f.sv !== 1 && f.sv !== 2) continue;   // engine 340: 3/4 = kotvy animací
+        if (f.sv !== 1 && f.sv !== 2 && f.sv !== 5) continue;   // engine 340: 3/4 = kotvy animací; 349: 5 = lampa
         if (f.lon < w - rw || f.lon > e + rw || f.lat < s - rh || f.lat > n + rh) continue;
         const k = f.sv + ':' + f.id;              // týž bod z různých úrovní má totéž id
         if (!podleId.has(k)) podleId.set(k, f);
@@ -2967,15 +3235,20 @@ const Dekorace = (() => {
     }
     const featury = [];
     for (const f of podleId.values()) {
+      if (f.sv === 5) {                         // engine 349: svit lampy – k jako kresba lampy
+        featury.push({ type: 'Feature', id: f.id, properties: { ik: f.ik, k: f.r, sv: 5 },
+                       geometry: { type: 'Point', coordinates: [f.lon, f.lat] } });
+        continue;
+      }
       const cfg = DRUHY[f.sv === 1 ? 'svetlo' : 'svetluska'];
       featury.push({ type: 'Feature', id: f.id,
                      properties: Object.assign({ ik: f.ik, k: cfg.k, sv: f.sv, rot: 0 }, nastup(cfg.z0)),
                      geometry: { type: 'Point', coordinates: [f.lon, f.lat] } });
     }
     svetlaEvidence = featury;
-    const svetlaFeat = featury.filter((f) => f.properties.sv === 1);
+    const svetlaFeat = featury.filter((f) => f.properties.sv === 1 || f.properties.sv === 5);
     try {
-      window.__svetlaBody = svetlaFeat.map((f) => f.geometry.coordinates);
+      window.__svetlaBody = svetlaFeat.filter((f) => f.properties.sv === 1).map((f) => f.geometry.coordinates);
       if (window.__nocniDiry) window.__nocniDiry();
     } catch (err) { /* nevadí */ }
     const zs = mapa.getSource('dekorace-svetla-zdroj');
@@ -3126,7 +3399,12 @@ const Dekorace = (() => {
   function nastavDohled(dz) {
     DZ = Number(dz) || 0;
     RAMPA = RAMPA_ZAKLAD.map((z) => z - DZ);
+    RAMPA_VYS = RAMPA_VYS_ZAKLAD.map((z) => z - DZ);
     try {
+      if (mapa && mapa.getLayer('dekorace-lampy')) {                   // engine 349
+        mapa.setLayerZoomRange('dekorace-lampy', DROBNOSTI.lampa.z0 - 0.4 - DZ, 24);
+        mapa.setPaintProperty('dekorace-lampy', 'icon-opacity', vyrazLampy(lampySila));
+      }
       if (mapa && mapa.getLayer('akvarel-dekorace')) {
         mapa.setLayerZoomRange('akvarel-dekorace', 13.2 - DZ, 24);
         const f = (typeof window.__nocniFaktorDekorace === 'number') ? window.__nocniFaktorDekorace : 1;
