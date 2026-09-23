@@ -1876,8 +1876,9 @@ const AnimaceNadMapou = (() => {
       if (p0.x < -80 || p0.x > W + 80 || p0.y < -40 || p0.y > H + 200) continue;
       const kx = 111320 * Math.cos(q.lat * Math.PI / 180);
       const p1 = bod(q.lon + rx * 5 / kx, q.lat + ry * 5 / 111320, q.h);
-      const pr = Math.max(0, Math.min(4, 0.5 + 0.5 * (Math.hypot(p1.x - p0.x, p1.y - p0.y) / 5) * mPxC));
-      const sPx = q.k * q.ev * 0.046 * Math.pow(2, z - 13.25) * pr;   // px na CSS px obrázku stromu
+      // engine 345: stromy mají PLNOU perspektivu (záplata bundlu OKOLNIK_PERSPEKTIVA)
+      const pr = Math.max(0, Math.min(4, (Math.hypot(p1.x - p0.x, p1.y - p0.y) / 5) * mPxC));
+      const sPx = q.k * 0.046 * Math.pow(2, z - 13.25) * pr;          // px na CSS px obrázku stromu (bez ev)
       const hS = 90 * sPx;                                 // kresba stromu bez okrajů
       const x = p0.x + q.dx * hS, y = p0.y + 8 * sPx - 4 * sPx - q.fH * hS;
       const hPx = Math.min(120, SOVA_VYSKA_M[q.druh] * zakl * pr);
@@ -1888,7 +1889,7 @@ const AnimaceNadMapou = (() => {
       ctx.setTransform(hustota * sc, 0, 0, hustota * sc, hustota * x, hustota * y);
       ctx.drawImage(sp.snimky[q.fr], -sp.N / 2, -sp.N * 0.9);
       q.vidi = true; q.sx = x; q.sy = y - hPx * 0.5; q.hPx = hPx;
-      q.nadM = (0.041 + 0.918 * q.fH) * 22.9 * q.k * q.ev;
+      q.nadM = (0.041 + 0.918 * q.fH) * 22.9 * q.k;
       kresleno++;
       if (leskA > 0 && q.fr <= 2) {                        // odlesk očí v noci
         ctx.setTransform(hustota, 0, 0, hustota, 0, 0);

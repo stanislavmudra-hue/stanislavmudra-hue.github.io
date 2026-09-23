@@ -2622,7 +2622,7 @@ const STINY_MAX_PRSTENCU = 4000;
 const STINY_OD_Z = 14.5;
 // engine 342: 3 000 → 5 000 (stromy ×2,4 – se stropem dostávala stín po každém posunu
 // JINÁ sada nejbližších stromů a stíny na okrajích mizely a naskakovaly; kresba na GPU)
-const STINY_MAX_STROMU = 5000;
+const STINY_MAX_STROMU = 8000;   // engine 345: 5 000 → 8 000 (plátno s okrajem 70 %)
 const STINY_DLAZDICE = 512;      // engine 221: velikost rastrové dlaždice stínů (px)
 const STROM_VYSKA_M = 22.9;      // sprite 98 CSS px × icon-size 19,7 na z22 = 22,9 m × k × ev
 let budovyKes = { cas: 0, prvky: [] };
@@ -2681,6 +2681,34 @@ function nastavKrytiStinu() {
 /// mapě každých ~500 ms (animace včel, mraků…), takže odklad 600 ms se pořád
 /// posouval a překreslení NIKDY nepřišlo (změna světla se neprojevila,
 /// 6. 9. odpoledne). Proto throttle: když už časovač čeká, nechat ho.
+/// engine 345: střed mapy opustil bezpečnou zónu plátna stínů (půl výřezu od středu, při
+/// okraji 70 % zbývá ještě 20 % rezervy) → přepočet i během pohybu; kontrola bez getBounds
+let stinyVPohybuMs = 0;
+function stredMimoBezpeci() {
+  const r = stinyRozsah;
+  if (!r || !r.vw || !mapa) return false;
+  const c = mapa.getCenter();
+  return Math.abs(mercX(c.lng) - r.cx) > r.vw * 0.5 || Math.abs(mercY(c.lat) - r.cy) > r.vh * 0.5;
+}
+/// engine 345: prahy stínů s hysterezí – zoom se při posunu kolébe s terénem (±0,2)
+let stinySilPosl = null;
+function siluetyStinuZoom(z) {
+  if (stinySilPosl === null || Math.abs(z - 14.8) > 0.3) stinySilPosl = z >= 14.8;
+  return stinySilPosl;
+}
+/// engine 345: stromy celého rozsahu plátna předem z workeru dekorací (evidence) → po
+/// dojití nový přepočet, ať mají stín i stromy v okraji ještě před posunem
+function predNacistStromy(r) {
+  try {
+    if (typeof Dekorace === 'undefined' || !Dekorace.pripravOblast) return;
+    if (mapa.getZoom() < STINY_OD_Z - dohledDz()) return;
+    const lon = (x) => x * 360 - 180;
+    const lat = (y) => 360 / Math.PI * Math.atan(Math.exp((0.5 - y) * 2 * Math.PI)) - 90;
+    Dekorace.pripravOblast(lon(r.x0), lat(r.y1), lon(r.x1), lat(r.y0)).then((n) => {
+      if (n > 0) { zneplatniStiny(); naplanujStinyDomu(120); }
+    }).catch(() => {});
+  } catch (e) { /* nic */ }
+}
 function naplanujStinyDomu(zaMs) {
   if (stinyCasovac) return;
   stinyCasovac = setTimeout(() => { stinyCasovac = null; prepoctiStinyDomu(); }, zaMs || 300);
@@ -3262,10 +3290,16 @@ function prepoctiStinyDomu() {
   if (!mapa || !zajistiVrstvuStinu()) return;
   if (!NASTAVENI_MAPY.stiny) { zneplatniStiny(); return; }   // engine 268: stíny vypnuté v nastavení mapy
   // během gesta nepřepočítávat (50 ms v hustém městě = trhnutí) – až po něm
-  if (mapa.isMoving && mapa.isMoving()) { naplanujStinyDomu(400); return; }
   // engine 333: prst na mapě = za chvíli další tah → nepřepočítávat (až 200 ms
   // dlouhá úloha by zasekla začátek gesta)
-  if (typeof prstNaMape === 'function' && prstNaMape()) { naplanujStinyDomu(500); return; }
+  // ⭐ engine 345 (výtka T 23. 9.: „stíny stromů se stále načtou až po zastavení“): VÝJIMKA –
+  // střed opustil bezpečnou zónu plátna (dlouhý tah, švih) → přepočet i v pohybu, nejvýš
+  // 1× za 0,7 s (hlavní vlákno 1–17 ms, kresba ve workeru); plátno se posune na nový střed
+  const vPohybu = (mapa.isMoving && mapa.isMoving()) || (typeof prstNaMape === 'function' && prstNaMape());
+  if (vPohybu) {
+    if (!stinyRozsah || !stredMimoBezpeci() || performance.now() - stinyVPohybuMs < 700) { naplanujStinyDomu(400); return; }
+    stinyVPohybuMs = performance.now();
+  }
   const z = mapa.getZoom();
   if (z < STINY_OD_Z - 0.1 - dohledDz() || stinSvetlo.sila <= 0) { zneplatniStiny(); return; }
   const t0 = performance.now();
@@ -3276,20 +3310,38 @@ function prepoctiStinyDomu() {
   const pohledPx = Math.max(kont.clientWidth || 800, kont.clientHeight || 800);
   const strop = pohledPx / (512 * Math.pow(2, z)) * 3;
   let x0, x1, y0, y1;
-  try {
-    const b = mapa.getBounds();
-    x0 = mercX(b.getWest()); x1 = mercX(b.getEast());
-    y0 = mercY(b.getNorth()); y1 = mercY(b.getSouth());
-  } catch (e) { x0 = cx - strop / 3; x1 = cx + strop / 3; y0 = cy - strop / 3; y1 = cy + strop / 3; }
-  x0 = Math.max(x0, cx - strop); x1 = Math.min(x1, cx + strop);
-  y0 = Math.max(y0, cy - strop); y1 = Math.min(y1, cy + strop);
   let r = stinyRozsah;
+  if (vPohybu && r && r.vw) {
+    // engine 345: v pohybu BEZ getBounds (s terénem raycast + readPixels) – plátno stejné
+    // velikosti posunuté o posun středu; stromy nového okraje předem z workeru
+    const dx = cx - r.cx, dy = cy - r.cy;
+    r = { x0: r.x0 + dx, x1: r.x1 + dx, y0: r.y0 + dy, y1: r.y1 + dy, z, cx, cy, vw: r.vw, vh: r.vh, roz: r.roz };
+    x0 = cx - r.vw / 2; x1 = cx + r.vw / 2; y0 = cy - r.vh / 2; y1 = cy + r.vh / 2;
+    predNacistStromy(r);
+  } else {
+    try {
+      const b = mapa.getBounds();
+      x0 = mercX(b.getWest()); x1 = mercX(b.getEast());
+      y0 = mercY(b.getNorth()); y1 = mercY(b.getSouth());
+    } catch (e) { x0 = cx - strop / 3; x1 = cx + strop / 3; y0 = cy - strop / 3; y1 = cy + strop / 3; }
+    x0 = Math.max(x0, cx - strop); x1 = Math.min(x1, cx + strop);
+    y0 = Math.max(y0, cy - strop); y1 = Math.min(y1, cy + strop);
+  }
   if (!r || x0 < r.x0 || x1 > r.x1 || y0 < r.y0 || y1 > r.y1 || Math.abs(r.z - z) > 0.3) {
-    const okX = (x1 - x0) * 0.3, okY = (y1 - y0) * 0.3;
-    r = { x0: x0 - okX, x1: x1 + okX, y0: y0 - okY, y1: y1 + okY, z };
+    // ⭐ engine 345 (výtka T 23. 9.: „stíny stromů se stále načtou až po zastavení“):
+    // okraj plátna 30 → 70 % výřezu – běžný posun zůstane uvnitř spočítaného plátna;
+    // stromy okraje dodá worker dekorací předem (predNacistStromy), jinak by v okraji
+    // chyběly (MapLibre žádá jen dlaždice výřezu) a jejich stíny naskočily až po zastavení
+    const okX = (x1 - x0) * 0.7, okY = (y1 - y0) * 0.7;
+    r = { x0: x0 - okX, x1: x1 + okX, y0: y0 - okY, y1: y1 + okY, z, cx, cy, vw: x1 - x0, vh: y1 - y0 };
+    predNacistStromy(r);
   }
   const pomer = (r.x1 - r.x0) / (r.y1 - r.y0);
-  const ROZ = z >= 16.5 ? STINY_ROZ : STINY_ROZ / 2;   // 1024 / 512 px (engine 218)
+  // 1024 / 512 px (engine 218); engine 345: ×1,5 s okrajem 70 % (stejné m/px) a hystereze
+  // ±0,35 kolem z16,5 – zoom se při posunu kolébe s terénem a přepínal rozlišení
+  let ROZ = Math.round((z >= 16.5 ? STINY_ROZ : STINY_ROZ / 2) * 1.5);
+  if (r.roz && Math.abs(z - 16.5) < 0.35) ROZ = r.roz;
+  r.roz = ROZ;
   const W = pomer >= 1 ? ROZ : Math.max(64, Math.round(ROZ * pomer));
   const H = pomer >= 1 ? Math.max(64, Math.round(ROZ / pomer)) : ROZ;
   const kx = W / (r.x1 - r.x0), ky = H / (r.y1 - r.y0);
@@ -3381,7 +3433,7 @@ function prepoctiStinyDomu() {
       const c = f.geometry && f.geometry.coordinates;
       if (!c) continue;
       const bx = (mercX(c[0]) - r.x0) * kx, by = (mercY(c[1]) - r.y0) * ky;
-      const Hm = STROM_VYSKA_M * k * (+p.ev || 1);
+      const Hm = STROM_VYSKA_M * k;                        // engine 345: bez ev (plná perspektiva ikon)
       const rp = 0.36 * Hm * mpu * kx;                      // poloměr koruny (px), engine 218: 0,33 → 0,36
       const okraj = Hm * tg * Math.max(Math.abs(sxM), Math.abs(syM)) + rp * 2 + 2;
       if (bx < -okraj || bx > W + okraj || by < -okraj || by > H + okraj) continue;
@@ -3391,7 +3443,7 @@ function prepoctiStinyDomu() {
     stromy.sort((a, b) => a.d - b.d);
     // engine 333: při oddálení (pod z15,5) nejvýš 1 500 nejbližších stromů –
     // každý je silueta přes drawImage a na hrubém plátně mají pár pixelů
-    const stropStromu = z >= 15.5 ? STINY_MAX_STROMU : Math.min(STINY_MAX_STROMU, 4000);   // engine 342: 1 500 → 4 000
+    const stropStromu = STINY_MAX_STROMU;                  // engine 345: jeden strop (bez prahu, který kolébal zoom)
     if (stromy.length > stropStromu) stromy.length = stropStromu;
   }
   // --- podpis: nic nového → nekreslit
@@ -3454,7 +3506,7 @@ function prepoctiStinyDomu() {
     W, H, F, w2, h2, kryti, sxM, syM, tg, smer, pxNaMetr: mpu * kx,
     // engine 333: při oddálení (pod z15,5) má strom na plátně pár pixelů –
     // místo siluety spritu (drawImage s transformací) stačí elipsa + kmen
-    siluety: z >= 14.8,          // engine 342: 15,5 → 14,8 (přepnutí tvaru mimo běžný zoom)
+    siluety: siluetyStinuZoom(z),   // engine 342: 15,5 → 14,8; engine 345: s hysterezí ±0,3
     teren: teren ? { id: teren.maska.id, dx: teren.dx, dy: teren.dy, dw: teren.dw, dh: teren.dh } : null,
   });
   if (wk) {
@@ -6301,7 +6353,10 @@ function aplikujNoc() {
     // MŮRY u rozsvícených oken a NETOPÝŘI (září–listopad, od šera);
     // ve dne BABÍ LÉTO (září–říjen) a PADAJÍCÍ LISTÍ (říjen–listopad)
     const podzim = mesic >= 9 && mesic <= 11;
-    window.__muryAktivni = krok >= 2 && podzim;
+    // ⭐ engine 345 (přání T 23. 9.): NETOPÝŘI podle skutečnosti duben–říjen (zimní spánek
+    // XI–III); v létě mezi světluškami, na jaře a na podzim s můrami u oken
+    window.__netopyriAktivni = krok >= 2 && mesic >= 4 && mesic <= 10;
+    window.__muryAktivni = krok >= 2 && (podzim || mesic === 4 || mesic === 5);
     window.__babiLetoAktivni = krok <= 1 && (mesic === 9 || mesic === 10);
     window.__listiAktivni = krok <= 1 && (mesic === 10 || mesic === 11);
     // ⭐ ZIMA (v1.593): v prosinci–únoru včely spí a ve dne se snáší
@@ -10785,7 +10840,17 @@ function registrujKlikMista() {
   // 200 ms, a trefoval se do pauz MEZI tahy → zaseknutí dalšího dotyku): po
   // zastavení až za 0,6 s (naplanujStinyDomu drží první plán; během pohybu
   // nebo s prstem na mapě se prepoctiStinyDomu sám odloží).
-  mapa.on('moveend', () => naplanujStinyDomu(600));
+  // engine 345: 600 → 350 ms (kresba je ve workeru, hlavní vlákno jen sbírá; spolu s okrajem
+  // 70 % a stromy předem stíny naskočí hned)
+  mapa.on('moveend', () => naplanujStinyDomu(350));
+  // engine 345: během pohybu hlídat bezpečnou zónu plátna stínů (4× za s, bez getBounds)
+  let stinyPohybKontrola = 0;
+  mapa.on('move', () => {
+    const t = performance.now();
+    if (t - stinyPohybKontrola < 250) return;
+    stinyPohybKontrola = t;
+    if (stredMimoBezpeci()) naplanujStinyDomu(0);
+  });
   // ⭐⭐ engine 333 (výkon v klidu, změřeno na TT 22. 9.): každé mihotání
   // světel (feature-state) spustí nové rozmístění všech symbolů a MapLibre ho
   // rozkládá po 2 ms do ~4–5 snímků (záplata bundlu: `continuePlacement`

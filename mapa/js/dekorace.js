@@ -600,9 +600,16 @@ const Dekorace = (() => {
         // 0,08 dělal stromy 38 m), roste a klesá přesně s krajinou.
         // `ev` = výškový faktor terénu (vyskovyFaktor): co je výš, je blíž
         // k oku, tak o kus větší (přání 5. 9. večer)
+        // ⭐⭐ engine 345 (výtka T 23. 9.: „mění se jejich velikost podle terénu při
+        // posunech“): MapLibre tlumí perspektivu symbolů (0,5 + 0,5·c2c/d) a zbytek
+        // velikosti bral ze ZOOMU – a zoom se při posunu mění s terénem pod středem
+        // (±0,2), takže všechny stromy „dýchaly“. Záplata bundlu (`#define
+        // OKOLNIK_PERSPEKTIVA`, jen tahle vrstva) dává PLNOU perspektivu: velikost
+        // = konst. / vzdálenost stromu od kamery – zoom se vykrátí. `ev` tím odpadá
+        // (výš = blíž kameře = větší, teď skutečně).
         'icon-size': ['interpolate', ['exponential', 2], ['zoom'],
-          13.25, ['*', ['get', 'k'], ['coalesce', ['get', 'ev'], 1], 0.046],
-          22, ['*', ['get', 'k'], ['coalesce', ['get', 'ev'], 1], 19.7]],
+          13.25, ['*', ['get', 'k'], 0.046],
+          22, ['*', ['get', 'k'], 19.7]],
       },
       paint: {
         // rychlý a pro všechny druhy stejně dlouhý nástup — hodnoty
@@ -1217,6 +1224,21 @@ const Dekorace = (() => {
     const z = Math.max(HMYZ_DEN_OD_Z, Math.min(19, mapa.getZoom()));
     return 0.6 + (z - HMYZ_DEN_OD_Z) / 3 * 0.6;
   }
+  // ⭐ engine 345 (přání T 23. 9.): NETOPÝR v měřítku SVĚTA jako ptáci – rozpětí 3,5 m
+  // (stylizace ~7 × 0,3 m^0,8), letí 8 m nad terénem; px na metr vodorovně na obrazovce
+  // v místě a výšce netopýra (perspektiva). Dřív velikost podle zoomu s podlahou 60 %
+  // → při oddálení rostl proti krajině. SVG má rozpětí 20 px.
+  const NETOPYR_ROZPETI_M = 3.5, NETOPYR_NAD_M = 8;
+  function meritkoNetopyra(m) {
+    try {
+      const tr = mapa._camera.transform, h = (typeof m.vyska === 'number' ? m.vyska : 0) + NETOPYR_NAD_M;
+      const b = mapa.getBearing() * Math.PI / 180, kx = 111320 * Math.cos(m.y * Math.PI / 180);
+      const a = tr.locationToScreenPoint(new maplibregl.LngLat(m.x, m.y), { getElevationForLngLat: () => h });
+      const c = tr.locationToScreenPoint(new maplibregl.LngLat(m.x + Math.cos(b) * 3 / kx, m.y - Math.sin(b) * 3 / 111320),
+                                         { getElevationForLngLat: () => h });
+      return Math.min(3, NETOPYR_ROZPETI_M * (Math.hypot(c.x - a.x, c.y - a.y) / 3) / 20);
+    } catch (e) { return 0.6; }
+  }
   function velikostMusky() {
     const z = Math.max(13.2, Math.min(17.6, mapa.getZoom()));
     // exp 1,6 mezi 13,2→0,27 a 17,6→1,0 (44 px prvek)
@@ -1238,9 +1260,10 @@ const Dekorace = (() => {
       for (const m of musky) {
         if (!m.el) continue;
         const ll = new maplibregl.LngLat(m.x, m.y);
-        const p = (ter && typeof m.vyska === 'number')
+        const hM = typeof m.vyska === 'number' ? m.vyska + (m.typ === 'netopyr' ? NETOPYR_NAD_M : 0) : null;
+        const p = (ter && hM !== null)
           ? tr.locationToScreenPoint(ll,
-              { getElevationForLngLat: () => m.vyska })
+              { getElevationForLngLat: () => hM })
           : tr.locationToScreenPoint(ll);
         m.el.style.transform = 'translate(-50%, -50%) translate('
             + p.x + 'px, ' + p.y + 'px)';
@@ -1353,8 +1376,10 @@ const Dekorace = (() => {
       // půl na půl jich byla polovina k nerozeznání od smítka.
       let typ;
       if (rezim === 'podzimnoc') {
-        typ = (musky.length % 7 === 3 || !(okna && okna.length))
-            ? 'netopyr' : 'mura';
+        // engine 345: netopýři jen ve svém období (IV–X), v listopadu už spí
+        const netopyri = !!window.__netopyriAktivni;
+        if (!(okna && okna.length)) { if (!netopyri) break; typ = 'netopyr'; }
+        else typ = (netopyri && musky.length % 7 === 3) ? 'netopyr' : 'mura';
       } else if (rezim === 'zimaden') {
         typ = 'vlocka';
       } else if (rezim === 'podzimden') {
@@ -1369,7 +1394,8 @@ const Dekorace = (() => {
       } else if (den) {
         typ = musky.length % 2 === 0 ? 'moucha' : 'vcela';
       } else {
-        typ = 'svetluska';
+        // engine 345: v létě létají mezi světluškami i netopýři (každý devátý)
+        typ = (window.__netopyriAktivni && musky.length % 9 === 4) ? 'netopyr' : 'svetluska';
       }
       const zdrojKotev = (typ === 'mura' && okna && okna.length)
           ? okna : (kotvy.length ? kotvy : okna);
@@ -1558,8 +1584,8 @@ const Dekorace = (() => {
       const podlaha = m.typ === 'vcela' ? 0.72 : 0.6;
       const denniTyp = m.typ === 'vcela' || m.typ === 'moucha'
           || m.typ === 'babileto' || m.typ === 'list';
-      const mer = m.typ === 'svetluska'
-          ? meritko : (denniTyp ? meritkoDen : Math.max(podlaha, meritko) * 0.95);
+      const mer = m.typ === 'netopyr' ? meritkoNetopyra(m)
+          : (m.typ === 'svetluska' ? meritko : (denniTyp ? meritkoDen : Math.max(podlaha, meritko) * 0.95));
       // včela se natáčí po směru letu (SVG má hlavu nahoře)
       const otoceni = m.typ === 'vcela'
           ? ' rotate(' + ((m.smer * 180 / Math.PI + 90) % 360).toFixed(0)
@@ -2809,6 +2835,43 @@ const Dekorace = (() => {
       }
     }, 700);
   }
+  /// ⭐ engine 345 (výtka T 23. 9.: „stíny stromů se stále načtou až po zastavení“):
+  /// stromy (evidence) pro CELÝ rozsah plátna stínů PŘEDEM – MapLibre žádá jen dlaždice
+  /// výřezu, takže stromy v okraji plátna chyběly a jejich stíny naskočily až po zastavení.
+  /// Worker je vyrobí hned (a má je v keši, až je mapa při posunu bude chtít).
+  const wPrip = new Set();
+  function wPripravOblast(w, s, e, n) {
+    if (!wDek || wStav !== 1 || !mapa) return Promise.resolve(0);
+    let zD = 14;
+    try { zD = Math.max(12, Math.min(15, Math.floor(mapa.getZoom()))); } catch (er) { /* nic */ }
+    const N = Math.pow(2, zD);
+    const tx = (lon) => Math.floor((lon + 180) / 360 * N);
+    const tyF = (lat) => { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * N; };
+    const x0 = tx(w), x1 = tx(e), y0 = Math.floor(tyF(n)), y1 = Math.floor(tyF(s));
+    let cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    try { const c = mapa.getCenter(); cx = (c.lng + 180) / 360 * N; cy = tyF(c.lat); } catch (er) { /* nic */ }
+    const fronta = [];
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+      const k = zD + '/' + x + '/' + y;
+      if (wEvidence.has(k) || wPrip.has(k)) continue;
+      fronta.push([x, y, (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2]);
+    }
+    if (!fronta.length) return Promise.resolve(0);
+    fronta.sort((a, b) => a[2] - b[2]);
+    if (fronta.length > 60) fronta.length = 60;
+    let nove = 0, i = 0;
+    const jeden = () => {
+      if (i >= fronta.length) return Promise.resolve();
+      const [x, y] = fronta[i++];
+      const k = zD + '/' + x + '/' + y;
+      wPrip.add(k);
+      return wPozadej({ typ: 'dlazdice', z: zD, x, y }).then((odp) => {
+        wPrip.delete(k);
+        if (odp && !odp.chyba && odp.ev) { wUlozEvidenci(zD, x, y, odp.ev); nove++; }
+      }).then(jeden);
+    };
+    return Promise.all([jeden(), jeden(), jeden()]).then(() => nove);
+  }
   function wUlozEvidenci(z, x, y, ev) {
     const k = z + '/' + x + '/' + y;
     wEvidence.delete(k);
@@ -3055,6 +3118,7 @@ const Dekorace = (() => {
   }
   return { pripoj, nastavStin, nastavDohled, zapsane,
     kotvyAnimaci: () => wKotvyAnimaci(), kotvyVerze: () => wKotvyVerze,
+    pripravOblast: (w, s, e, n) => wPripravOblast(w, s, e, n),
     kontextPtaku: (w, s, e, n) => wKontextPtaku(w, s, e, n),
     _ladeni: { worker: wLadeni, diag: wDiag,
     zmenaMlhy: (o) => { if (wStav === 1) wZmenaMlhy(o === undefined ? {} : o); },
