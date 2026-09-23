@@ -325,6 +325,8 @@ const Pocasi = (() => {
       vitr: w && isFinite(w.vitr) ? w.vitr : 0,
       vitrSmer: w && isFinite(w.vitrSmer) ? w.vitrSmer : 0,
       naraz: w && isFinite(w.naraz) ? w.naraz : 0,
+      // engine 340: teplota u středu mapy (°C, null = bez dat) – kouř z komínů, led na vodě
+      teplota: w && isFinite(w.teplota) ? w.teplota : null,
     };
     if (window.__vynutSvetlo && typeof window.__vynutSvetlo === 'object') {
       Object.assign(st, window.__vynutSvetlo);

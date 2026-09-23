@@ -46,8 +46,12 @@ const Dekorace = (() => {
     // zůstávají, o ty uživatel nežádal. Pozor při dalším zvyšování:
     // dekorace jsou body symbolové vrstvy, každý kus stojí kolizi.
     strom: {
-      rozestup: 62,               // m mezi kandidáty (NEJJEMNĚJŠÍ, viz Z_JEMNE)
+      rozestup: 44,               // m mezi kandidáty (NEJJEMNĚJŠÍ, viz Z_JEMNE)
                                   // v1.419: 70→62 („hustší lesy“)
+                                  // ⭐ engine 340 (23. 9. 2026, „udělej stromy 2×“):
+                                  // 62 → 44 m = 2× stromů (62/√2). Zátěžový test na TT:
+                                  // ×2 bez měřitelného zhoršení, ×3 na hraně (viz
+                                  // PLAN 150. kolo) – dál jen s měřením
       zjemnit: true,
       vrstvy: ['les'],              // sady a zahrady mají vlastní druh `ovocny`
       // ⭐ 8. 8. 2026: „stromy ať se ukazují už od zoomu 54 %".
@@ -75,7 +79,7 @@ const Dekorace = (() => {
     // než lesní strom, hustě (zahrada u domu mívá pár stromů). Dřív byly
     // zahrady v „sadu" a nesly stromy lesní velikosti přes střechy.
     ovocny: {
-      rozestup: 40,
+      rozestup: 28,               // engine 340: 40 → 28 m = 2× (spolu s lesními)
       zjemnit: true,
       vrstvy: ['sad', 'zahrada'],
       z0: 15.4,                   // engine 202: 14,6 → 15,4 (kandidátů 40 m bylo moc)
@@ -201,6 +205,22 @@ const Dekorace = (() => {
       ikony: ['svetluska-zare'],
       k: 0.3,
       hustota: 0.35,
+    },
+    // ⭐ engine 340 (animace nad mapou): KOTVY NA VODĚ pro kroužky od ryb.
+    // Nekreslí se jako dekorace – `sv:4` jde jen do evidence (přes mlhu, jen
+    // objevené), body uvnitř vodních ploch; kreslí je animace.js. Ve starém
+    // generátoru (záloha) se přeskakují (`kotva`). Ikona jen formálně.
+    ryba: {
+      kotva: true,
+      sv: 4,
+      rozestup: 70,
+      zjemnit: true,
+      vrstvy: ['voda'],
+      naVode: true,
+      z0: 14.8,
+      ikony: ['svetluska-zare'],
+      k: 0,
+      hustota: 0.5,
     },
     // ⭐ SNĚHULÁK (v1.593, „v zimě sem tam stojí sněhulák"): jen
     // v zimě a řídce — na loukách a polích, kde by ho děti postavily.
@@ -2268,6 +2288,7 @@ const Dekorace = (() => {
     // dosypy po každém zastavení) tak nestojí vůbec nic.
     passId++;
     for (const [druh, cfg] of Object.entries(DRUHY)) {
+      if (cfg.kotva) continue;              // engine 340: kotvy animací jen z workeru
       if (z < cfg.z0 - 0.4 - DZ) continue;
       // v1.592 rostla v Dobyvateli světla sídel a kotvy roje —
       // v1.599 (přání 2. 9. večer) v Dobyvateli NIC: bojiště je bez
@@ -2776,7 +2797,27 @@ const Dekorace = (() => {
     wEvidence.delete(k);
     wEvidence.set(k, { z, x, y, sv: ev.sv || [], stromy: ev.stromy, pf: null });
     while (wEvidence.size > 140) wEvidence.delete(wEvidence.keys().next().value);
+    wKotvyVerze++;
     wNaplanujSvetla();
+  }
+  /// ⭐ engine 340: kotvy animací nad mapou (animace.js) z evidence dlaždic z15 –
+  /// komíny (sv:3, těžiště domů) a voda (sv:4); jen objevené (worker je pustí přes mlhu)
+  let wKotvyVerze = 0;
+  function wKotvyAnimaci() {
+    const out = { komin: [], voda: [] };
+    if (wStav !== 1) return out;
+    const vid = new Set();
+    for (const t of wEvidence.values()) {
+      if (t.z !== 15) continue;
+      for (const f of t.sv) {
+        if (f.sv !== 3 && f.sv !== 4) continue;
+        const k = f.sv + ':' + f.id;
+        if (vid.has(k)) continue;
+        vid.add(k);
+        (f.sv === 3 ? out.komin : out.voda).push(f);
+      }
+    }
+    return out;
   }
   function wNaplanujSvetla() {
     if (wSvetlaT) return;
@@ -2793,6 +2834,7 @@ const Dekorace = (() => {
     const podleId = new Map();
     for (const t of wEvidence.values()) {
       for (const f of t.sv) {
+        if (f.sv !== 1 && f.sv !== 2) continue;   // engine 340: 3/4 = kotvy animací
         if (f.lon < w - rw || f.lon > e + rw || f.lat < s - rh || f.lat > n + rh) continue;
         const k = f.sv + ':' + f.id;              // týž bod z různých úrovní má totéž id
         if (!podleId.has(k)) podleId.set(k, f);
@@ -2974,7 +3016,9 @@ const Dekorace = (() => {
     if (!mapa || !mapa.getSource('dekorace')) return [];
     return wStav === 1 ? wZapsane() : zapsaneFeatury;
   }
-  return { pripoj, nastavStin, nastavDohled, zapsane, _ladeni: { worker: wLadeni, diag: wDiag,
+  return { pripoj, nastavStin, nastavDohled, zapsane,
+    kotvyAnimaci: () => wKotvyAnimaci(), kotvyVerze: () => wKotvyVerze,
+    _ladeni: { worker: wLadeni, diag: wDiag,
     zmenaMlhy: (o) => { if (wStav === 1) wZmenaMlhy(o === undefined ? {} : o); },
     selhani: (d) => wSelhal(d || 'ruční test zálohy'), postavIndex, plochyPodBodem, dopln, casy: () => casy,
     stav: () => ({ kes: kesDlazdic.size, mrizka: idxMrizka && idxMrizka.size,

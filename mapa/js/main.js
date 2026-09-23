@@ -2161,6 +2161,8 @@ function aplikujDoplnky() {
     try { Ptaci.pripoj(mapa); } catch (e) { console.warn('[ptaci]', e); }
     // engine 328: větrné kudrlinky při silném větru (vitr.js)
     try { if (window.Vitr) Vitr.pripoj(mapa); } catch (e) { console.warn('[vitr]', e); }
+    // ⭐ engine 340: animace nad mapou (kouř z komínů, hejna ptáků, kroužky na vodě)
+    try { if (window.AnimaceNadMapou) AnimaceNadMapou.pripoj(mapa); } catch (e) { console.warn('[animace]', e); }
     try { nasadDomalovani(); } catch (e) { console.warn('[domalovani]', e); }
   } else {
     Pocasi.zavri();

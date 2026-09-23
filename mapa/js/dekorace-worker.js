@@ -637,9 +637,51 @@ async function generuj(z, x, y) {
           else if (q.indexOf('les-listnaty') >= 0 || q.indexOf('sad') >= 0) ikony = N.listnate;
         }
         const ikona = ikony[Math.floor(hash(ix, iy, 3) * ikony.length)];
-        const sv = druh === 'svetlo' ? 1 : (druh === 'svetluska' ? 2 : 0);
+        // engine 340: `cfg.sv` = kotvy animací (ryba 4); jinak světla 1 a světlušky 2
+        const sv = cfg.sv || (druh === 'svetlo' ? 1 : (druh === 'svetluska' ? 2 : 0));
         const id = sv ? ((ix * 92821 + iy * 31397 + sv * 7451) >>> 0) : 0;
         pridej(lon, lat, px, py, ikona, cfg.k, cfg.z0, sv, id);
+      }
+    }
+  }
+  // ⭐ engine 340 (animace nad mapou): KOMÍNY pro kouř – těžiště domů velikosti
+  // rodinného domu (40–450 m², celý obrys v dlaždici), ~35 % podle hashe
+  // polohy (stejný výběr na všech úrovních). Nekreslí se: sv:3 jde přes mlhu do
+  // evidence, kouř kreslí animace.js.
+  if (z === Z_MAX) {
+    const dB = defs.find((d) => d.id === 'budovy-vypln');
+    const zdB = dB && zdrojove[dB.zdroj];
+    const vBud = zdB && zdB.vrstvy[dB.vrstva];
+    if (vBud) {
+      const kB = EXT / vBud.extent;
+      const m2NaPx2 = mNaPx * mNaPx;
+      let komnu = 0;
+      // ⛔ budovy jsou v dlaždicích SLOUČENÉ do pár multipolygonů (5 prvků =
+      // stovky domů) → každý VNĚJŠÍ prstenec (kladná plocha, MVT v2) je dům
+      for (const f of vBud.prvky) {
+        if (komnu >= 400) break;
+        if (f.typ !== 3 || !dB.fn(f.vl, f.typ)) continue;
+        for (const r of geomPrvku(vBud, f)) {
+          if (komnu >= 400) break;
+          let a = 0, cx = 0, cy = 0, venku = false;
+          for (let i = 0; i < r.length; i += 2) {
+            const x0 = r[i] * kB * zdB.m + zdB.ox, y0 = r[i + 1] * kB * zdB.m + zdB.oy;
+            if (x0 < 0 || x0 > EXT || y0 < 0 || y0 > EXT) { venku = true; break; }
+            const j = (i + 2) % r.length;
+            const x1 = r[j] * kB * zdB.m + zdB.ox, y1 = r[j + 1] * kB * zdB.m + zdB.oy;
+            const c = x0 * y1 - x1 * y0;
+            a += c; cx += (x0 + x1) * c; cy += (y0 + y1) * c;
+          }
+          if (venku || a <= 1e-6) continue;          // díra (záporná) nebo mimo dlaždici
+          const plocha = (a / 2) * m2NaPx2;
+          if (plocha < 40 || plocha > 450) continue;
+          const px = cx / (3 * a), py = cy / (3 * a);
+          const lon = lonZ((x + px / EXT) / n), lat = latZ((y + py / EXT) / n);
+          const ha = Math.round(lon * 1e5), hb = Math.round(lat * 1e5);
+          if (hash(ha, hb, 11) > 0.35) continue;
+          pridej(lon, lat, px, py, 'svetluska-zare', 0, 15.2, 3, ((ha * 92821 + hb * 31397 + 3 * 7451) >>> 0));
+          komnu++;
+        }
       }
     }
   }
