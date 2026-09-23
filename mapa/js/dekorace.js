@@ -355,10 +355,16 @@ const Dekorace = (() => {
     lavicka:  { ikony: ['deko-lavicka'],  H: 72,  vyskaM: 2.0, z0: 16.1 },
     studna:   { ikony: ['deko-studna'],   H: 128, vyskaM: 4,   z0: 15.8 },
     schranka: { ikony: ['deko-schranka'], H: 96,  vyskaM: 3,   z0: 16.1 },
+    // engine 350: lampy z dat měst – sadová lampa a svítidlo na zdi (jen noční svit, bez kresby)
+    lampa_park: { ikony: ['deko-lampa-park'], H: 128, vyskaM: 5, z0: 15.2, sv: 5, zare: 'lampa-park-zare' },
+    svit:     { ikony: [],                H: 192, vyskaM: 8,   z0: 14.9, sv: 5, zare: 'lampa-zare' },
+    // engine 350: stromy z OSM (ikony stromů ZABAGED podle `j`, k 0,81–1,09)
+    strom:    { strom: true, k: 0.95, z0: 13.9 },
   };
   const drobnostiProWorker = () => {
     const out = {};
     for (const [t, c] of Object.entries(DROBNOSTI)) {
+      if (c.strom) { out[t] = { strom: true, k: c.k, z0: c.z0, ikony: [], sv: 0 }; continue; }
       out[t] = { ikony: c.ikony, k: +(c.vyskaM / (c.H * 0.1167)).toFixed(4), z0: c.z0, sv: c.sv || 0, zare: c.zare || null };
     }
     return out;
@@ -973,9 +979,45 @@ const Dekorace = (() => {
     g.beginPath(); g.moveTo(27.8, 40); g.lineTo(24, 42.6); g.stroke();
     return g.getImageData(0, 0, W, H);
   }
+  /// engine 350: sadová lampa (Brno „Stožár sadový“): tmavý štíhlý sloupek s lucernou (64×128)
+  function lampaParkSprite() {
+    const W = 64, H = 128, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 32, yb, 9);
+    trs(g, 27, yb - 14, 10, 14, '#2f3a33');                    // patka
+    g.beginPath(); g.moveTo(30.4, yb - 14); g.lineTo(31, 36); g.lineTo(33, 36); g.lineTo(33.6, yb - 14); g.closePath();
+    g.fillStyle = '#34413a'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.4; g.stroke();
+    trs(g, 28, 32, 8, 4, '#2c3630');                           // límec
+    // lucerna: stříška, sklo, spodek
+    g.beginPath(); g.moveTo(22, 17); g.lineTo(32, 8); g.lineTo(42, 17); g.closePath();
+    g.fillStyle = '#28322c'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.4; g.stroke();
+    g.beginPath(); g.moveTo(24, 17); g.lineTo(40, 17); g.lineTo(38, 30); g.lineTo(26, 30); g.closePath();
+    g.fillStyle = '#fff0c4'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.4; g.stroke();
+    g.strokeStyle = 'rgba(40,50,44,0.8)'; g.lineWidth = 1; g.beginPath(); g.moveTo(32, 17); g.lineTo(32, 30); g.stroke();
+    trs(g, 25, 30, 14, 3, '#28322c');
+    return g.getImageData(0, 0, W, H);
+  }
+  /// engine 350: noční svit sadové lampy (256×128, stejná pata a k)
+  const LAMPA_PARK_SKLO = [0, 23];
+  function lampaParkZareSprite() {
+    const W = 256, H = 128, yb = H - 10, cx = W / 2;
+    const [c, g] = platnoDrobnosti(W, H);
+    g.save(); g.translate(cx, yb - 2); g.scale(1, 0.26);
+    let r = g.createRadialGradient(0, 0, 0, 0, 0, 84);
+    r.addColorStop(0, 'rgba(255,226,160,0.5)'); r.addColorStop(0.5, 'rgba(255,214,140,0.24)'); r.addColorStop(1, 'rgba(255,205,120,0)');
+    g.fillStyle = r; g.beginPath(); g.arc(0, 0, 84, 0, Math.PI * 2); g.fill();
+    g.restore();
+    const sx = cx + LAMPA_PARK_SKLO[0], sy = LAMPA_PARK_SKLO[1];
+    r = g.createRadialGradient(sx, sy, 0, sx, sy, 30);
+    r.addColorStop(0, 'rgba(255,252,240,1)'); r.addColorStop(0.2, 'rgba(255,238,190,0.85)');
+    r.addColorStop(0.55, 'rgba(255,214,140,0.28)'); r.addColorStop(1, 'rgba(255,205,120,0)');
+    g.fillStyle = r; g.beginPath(); g.arc(sx, sy, 30, 0, Math.PI * 2); g.fill();
+    return g.getImageData(0, 0, W, H);
+  }
   const SPRITY_DROBNOSTI = { 'deko-lampa': lampaSprite, 'deko-posed': posedSprite, 'deko-krmelec': krmelecSprite,
                              'deko-lavicka': lavickaSprite, 'deko-studna': studnaSprite, 'deko-schranka': schrankaSprite,
-                             'lampa-zare': lampaZareSprite };
+                             'lampa-zare': lampaZareSprite,
+                             'deko-lampa-park': lampaParkSprite, 'lampa-park-zare': lampaParkZareSprite };
 
   /// ⭐ Sněhulák pečený štětcem (v1.593): tři koule se studeným
   /// stínem, uhlíky, mrkev, klacíkové ruce, hrnec a šála. Kreslí se
@@ -2953,7 +2995,9 @@ const Dekorace = (() => {
       out[id] = url.slice('pmtiles://'.length);
     }
     // engine 349: drobnosti z OSM – samostatný archiv (není ve stylu, čte ho jen worker)
-    try { out.drobnosti = r2('drobnosti1.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez drobností */ }
+    // engine 350: drobnosti2 = + stromy z OSM; lampy_mesta1 = Brno (CC BY 4.0), Plzeň, Děčín
+    try { out.drobnosti = r2('drobnosti2.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez drobností */ }
+    try { out.lampymesta = r2('lampy_mesta1.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez lamp měst */ }
     return out;
   }
   function wNastaveni() {

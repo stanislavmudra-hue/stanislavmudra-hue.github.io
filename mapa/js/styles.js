@@ -235,7 +235,7 @@ function stylTuristicka(ctx) {
     sky: obloha(),
     sources: zdroje(ctx, {
     krajina: { type: 'vector', url: r2('krajina11.pmtiles'), promoteId: 'fid',
-               attribution: '© ČÚZK ZABAGED®' },
+               attribution: '© ČÚZK ZABAGED® · veřejné osvětlení © Statutární město Brno (CC BY 4.0), Plzeň, Děčín' },
     }),
     layers: [
       { id: 'pozadi', type: 'background',
@@ -663,7 +663,7 @@ function stylHerni(ctx) {
       // + tools/lesy_schema.yml → planetiler). Vrstva `lesy`, vlastnost
       // d = J jehličnaté / L listnaté / S smíšené / N bez určení, v = výška.
       lesy: { type: 'vector', url: r2('lesy.pmtiles'),
-              attribution: '© ČÚZK ZABAGED®' },
+              attribution: '© ČÚZK ZABAGED® · veřejné osvětlení © Statutární město Brno (CC BY 4.0), Plzeň, Děčín' },
       // 5. 9. večer: KRAJINA ze ZABAGED (tools/krajina_zabaged_export.py):
       // t = orna / louka / sad / zahrada / vinice / chmel / kroviny / mokrad /
       // voda / skaly / hrbitov; vrstva `body` (t strom/balvan/komin) a `cary`
@@ -674,7 +674,7 @@ function stylHerni(ctx) {
       // (komíny, věže, vodojemy, větrníky, těžní věže, sila – čtverce, h, fid)
       // engine 234: promoteId → feature-state odkrytí staveb/vertikál podle fid
       krajina: { type: 'vector', url: r2('krajina11.pmtiles'), promoteId: 'fid',
-                 attribution: '© ČÚZK ZABAGED®' },
+                 attribution: '© ČÚZK ZABAGED® · veřejné osvětlení © Statutární město Brno (CC BY 4.0), Plzeň, Děčín' },
     }),
     layers: [
       // ===== BAREVNÉ PATRO (pod mlhou — odkrývá se objevováním) =====
@@ -1318,7 +1318,7 @@ function stylDobyvatel(ctx) {
     sky: obloha(),
     sources: zdroje(ctx, {
     krajina: { type: 'vector', url: r2('krajina11.pmtiles'), promoteId: 'fid',
-               attribution: '© ČÚZK ZABAGED®' },
+               attribution: '© ČÚZK ZABAGED® · veřejné osvětlení © Statutární město Brno (CC BY 4.0), Plzeň, Děčín' },
     }),
     layers: [
       { id: 'pozadi', type: 'background',

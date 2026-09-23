@@ -596,8 +596,10 @@ async function generuj(z, x, y) {
     potreba.get('krajina').add('body');
     if (z >= 14) potreba.get('krajina').add('cary');
   }
-  // ⭐ engine 349: drobnosti z OSM (archiv `drobnosti`, vrstva body, jen z14) do dlaždic z14 a z15
+  // ⭐ engine 349: drobnosti z OSM (archiv `drobnosti`, vrstva body, jen z14) do dlaždic z14 a z15;
+  // engine 350: + lampy z dat měst (archiv `lampymesta`)
   if (z >= 14 && N.zdroje.drobnosti && N.drobnosti) potreba.set('drobnosti', new Set(['body']));
+  if (z >= 14 && N.zdroje.lampymesta && N.drobnosti) potreba.set('lampymesta', new Set(['body']));
   // výška terénu se začne shánět hned (hlavní vlákno bývá při startu mapy
   // vytížené – na TT čekání až 0,5 s), souběžně se zdrojovými dlaždicemi
   const zD = Math.min(12, z), dD = z - zD;
@@ -713,6 +715,16 @@ async function generuj(z, x, y) {
       }
     }
   }
+  // engine 350: buňky pro vyřazení dvojníků (stromy ZABAGED × OSM, lampy měst × OSM)
+  const kxM = 111320 * Math.cos(latStred * Math.PI / 180);
+  const bunkaM = (lon, lat, m) => Math.floor(lon * kxM / m) + ':' + Math.floor(lat * 111320 / m);
+  const blizkoBunky = (mn, lon, lat, m) => {
+    if (!mn.size) return false;
+    const gx = Math.floor(lon * kxM / m), gy = Math.floor(lat * 111320 / m);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (mn.has((gx + a) + ':' + (gy + b))) return true;
+    return false;
+  };
+  const zabStromy = new Set();
   // ⭐ přesné dekorace ze ZABAGED (osamělé stromy, lesíky, balvany; aleje
   // od z14) – totéž jako presneDekorace v dekorace.js
   if (presne && zdrojove.krajina) {
@@ -739,6 +751,7 @@ async function generuj(z, x, y) {
           pocet++;
           if (t === 'balvan') { pridej(lon, lat, px, py, 'deko-kamen-' + (1 + Math.floor(hash(a, b, 6) * 3)), 0.4, 14.2, 0, 0); continue; }
           const lesik = f.vl.s === 'L';
+          zabStromy.add(bunkaM(lon, lat, 6));                              // engine 350
           pridej(lon, lat, px, py, listnaty(a, b), lesik ? 1.0 : 1.15, 12.8, 0, 0);
           if (lesik) {
             const kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 111320;
@@ -794,13 +807,18 @@ async function generuj(z, x, y) {
   // DROBNOSTI SE ZNÁMOU POLOHOU z OpenStreetMap – stojí přesně tam, kde jsou (žádná mřížka ani
   // kontrola ploch), velikost ±8 % podle hashe polohy. Lampa má navíc noční svit (sv 5 → evidence,
   // hlavní vlákno ho kreslí vrstvou `dekorace-lampy`, jen v noci) se STEJNÝM k jako kresba.
-  if (z >= 14 && zdrojove.drobnosti && N.drobnosti) {
-    const zd = zdrojove.drobnosti, vD = zd.vrstvy.body;
-    if (vD) {
+  // ⭐ engine 350: + LAMPY Z OTEVŘENÝCH DAT MĚST (Brno, Plzeň, Děčín – archiv `lampymesta`, zvlášť od
+  // ODbL); OSM lampa do 15 m od městské se vynechá (táž lampa). + STROMY z OSM (natural=tree, `j` =
+  // jehličnatý) – dvojník stromu ZABAGED do 6 m se vynechá; ikony jako u stromů ZABAGED.
+  if (z >= 14 && N.drobnosti && (zdrojove.drobnosti || zdrojove.lampymesta)) {
+    const mestske = new Set();          // buňky 15 m s lampou z dat města
+    let pocetD = 0;
+    const zpracuj = (zd, osm) => {
+      const vD = zd && zd.vrstvy.body;
+      if (!vD) return;
       const kD = EXT / vD.extent;
-      let pocetD = 0;
       for (const f of vD.prvky) {
-        if (pocetD >= 3000) break;
+        if (pocetD >= 4000) break;
         const cfg = N.drobnosti[f.vl.t];
         if (!cfg) continue;
         for (const c of geomPrvku(vD, f)) {
@@ -808,14 +826,26 @@ async function generuj(z, x, y) {
           if (px < 0 || px >= EXT || py < 0 || py >= EXT) continue;
           const lon = lonZ((x + px / EXT) / n), lat = latZ((y + py / EXT) / n);
           const a = Math.round(lon * 1e6), b = Math.round(lat * 1e6);
-          const ik = cfg.ikony[Math.floor(hash(a, b, 13) * cfg.ikony.length)];
+          if (cfg.sv) {
+            if (osm && blizkoBunky(mestske, lon, lat, 15)) continue;      // lampu už má město
+            if (!osm) mestske.add(bunkaM(lon, lat, 15));
+          }
+          if (cfg.strom) {
+            if (blizkoBunky(zabStromy, lon, lat, 6)) continue;             // týž strom ze ZABAGED
+            const ik = f.vl.j ? N.jehlicnate : N.listnate;
+            pridej(lon, lat, px, py, ik[Math.floor(hash(a, b, 13) * ik.length)], cfg.k * (0.85 + hash(a, b, 14) * 0.3), cfg.z0, 0, 0);
+            pocetD++;
+            continue;
+          }
           const kk = cfg.k * (0.92 + hash(a, b, 14) * 0.16);
-          pridej(lon, lat, px, py, ik, kk, cfg.z0, 0, 0);
+          if (cfg.ikony.length) pridej(lon, lat, px, py, cfg.ikony[Math.floor(hash(a, b, 13) * cfg.ikony.length)], kk, cfg.z0, 0, 0);
           if (cfg.sv) pridej(lon, lat, px, py, cfg.zare, kk, cfg.z0, cfg.sv, ((a * 92821 + b * 31397 + cfg.sv * 7451) >>> 0));
           pocetD++;
         }
       }
-    }
+    };
+    zpracuj(zdrojove.lampymesta, false);
+    zpracuj(zdrojove.drobnosti, true);
   }
   const pocetK = K.lon.length;
   const tKand = performance.now();
@@ -1093,6 +1123,7 @@ self.onmessage = (ev) => {
       vrstvyZdroju.get('krajina').add('body');
       vrstvyZdroju.get('krajina').add('cary');
       vrstvyZdroju.set('drobnosti', new Set(['body']));       // engine 349
+      vrstvyZdroju.set('lampymesta', new Set(['body']));      // engine 350
       zdrojDl.clear();
       oKesV.clear();
       cfgKlic = JSON.stringify([m.verze, m.sezona, m.dz, m.ex, m.herni, m.zdroje, m.plochy, Object.keys(m.druhy)]);
