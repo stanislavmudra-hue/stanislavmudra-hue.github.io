@@ -381,6 +381,7 @@ const Dekorace = (() => {
       }
     }
     ikonyHotove = true;
+    if (wStav === 1) wPridejVrstvu();   // engine 336: dlaždice až s malbami v atlasu
   }
 
   /// Podloží bitmapu na plátno s průhledným okrajem 4 px — ochrana
@@ -409,12 +410,19 @@ const Dekorace = (() => {
   /// prázdný během style.load zůstal STERILNÍ — setData pak plnil data
   /// i querySourceFeatures, ale dlaždice se nikdy nevykreslily (ověřeno
   /// pokusně; zdroj založený rovnou s daty kreslí okamžitě).
-  function pridejVrstvu(data, svetla) {
+  function pridejVrstvu(data, svetla, vektor) {
     if (!mapa || mapa.getSource('dekorace')) return;
-    // buffer 0: s allow-overlap netřeba přesah — levnější přeskládání
-    mapa.addSource('dekorace',
-        { type: 'geojson', data, buffer: 0, maxzoom: 14 });
-    zapsaneFeatury = (data && data.features) || [];
+    if (vektor) {
+      // ⭐ engine 336: vektorové dlaždice z workeru (protokol dekorace://);
+      // z15 nese vše včetně jemné mřížky, výš se jen přetahuje
+      mapa.addSource('dekorace', { type: 'vector', minzoom: 12, maxzoom: 15,
+                                   tiles: ['dekorace://v' + wVerze + '/{z}/{x}/{y}'] });
+    } else {
+      // buffer 0: s allow-overlap netřeba přesah — levnější přeskládání
+      mapa.addSource('dekorace',
+          { type: 'geojson', data, buffer: 0, maxzoom: 14 });
+    }
+    zapsaneFeatury = (!vektor && data && data.features) || [];
     // ⛔⛔ engine 264: SVĚTLA SÍDEL VE VLASTNÍM ZDROJI. Mihotání přes
     // `setFeatureState` na zdroji `dekorace` (tisíce stromů) přestavovalo
     // paint buffery všech dekorací každých 400 ms (dlouhé úlohy 60–88 ms)
@@ -464,6 +472,7 @@ const Dekorace = (() => {
     //  kreslí main.js na plátno stínů spolu s domy)
     mapa.addLayer({
       id: 'akvarel-dekorace', type: 'symbol', source: 'dekorace',
+      ...(vektor ? { 'source-layer': 'd' } : {}),
       // stromy nastupují od z13,25 (54 % ukazatele), vrstva musí být dřív
       minzoom: 13.2 - DZ,
       // světla sídel (sv) kreslí vlastní vrstva `dekorace-svetla` níž
@@ -2216,6 +2225,7 @@ const Dekorace = (() => {
   // buněk zůstává, takže opakování je levné).
   let doplnBeh = null;
   function dopln() {
+    if (wStav === 1) { wNaplanujSvetla(); return; }   // engine 336: generuje worker
     if (doplnBeh) doplnBeh.zrus = true;
     const beh = { zrus: false, it: null, ms: 0 };
     doplnBeh = beh;
@@ -2546,6 +2556,300 @@ const Dekorace = (() => {
     dosypT = [500, 1200, 2500, 5000].map((ms) => setTimeout(dopln, ms));
   }
 
+  // =========================================================================
+  // ⭐⭐ engine 336: DEKORACE VE WORKERU (krok 3 plánu výkonu, 23. 9. 2026)
+  // =========================================================================
+  // Index ploch (querySourceFeatures + převod geometrie) stál hlavní vlákno
+  // 59–219 ms na jedno sestavení (TT 23. 9., z15,2) a dosyp běžel po 4 ms
+  // v každém snímku. Teď body generuje js/dekorace-worker.js: sám čte
+  // dlaždice krajiny (PMTiles přes proxy s keší na disku) a posílá je mapě
+  // jako vektorové dlaždice protokolu dekorace:// (z12–15). Na mlhu a výšku
+  // terénu se ptá sem (Mlha.jeObjeveno, DEM), světla sídel, kotvy roje
+  // a stromy pro stíny chodí zpátky jako „evidence“ dlaždice.
+  // Záloha: starý generátor na hlavním vlákně, když worker nejde / selže.
+  // A/B: localStorage `okolnikDekoraceWorker` = '0' (platí po načtení stylu)
+  // nebo window.__okolnikDekoraceWorker = false.
+  let wDek = null;
+  let wStav = 0;                     // 0 nezkoušeno, 1 worker, −1 starý generátor, −2 selhal
+  let wVerze = 1;
+  let wId = 0;
+  const wCekani = new Map();         // id → resolve
+  const wEvidence = new Map();       // 'z/x/y' → { z, x, y, sv, stromy, pf }
+  const wChyby = new Map();          // 'z/x/y' → pokusů
+  let wSvetlaT = null, wMlhaT = null, wMlhaReset = false;
+  const wStat = { dlazdic: 0, prvku: 0, mlhaBodu: 0, mlhaMs: 0, demDotazu: 0, chyb: 0 };
+
+  function wZapnuto() {
+    if (window.__okolnikDekoraceWorker === false) return false;
+    try { if (localStorage.getItem('okolnikDekoraceWorker') === '0') return false; } catch (e) { /* nic */ }
+    return typeof Worker !== 'undefined' && typeof maplibregl !== 'undefined' && !!maplibregl.addProtocol;
+  }
+  /// URL archivů PMTiles zdrojů ploch; null = některý zdroj není PMTiles
+  function wZdroje(defs) {
+    const st = mapa.getStyle().sources || {};
+    const out = {};
+    const ids = new Set(defs.map((d) => d.zdroj));
+    if (st.krajina) ids.add('krajina');
+    for (const id of ids) {
+      const zd = st[id];
+      if (!zd) continue;
+      const url = zd.url || '';
+      if (!url.startsWith('pmtiles://')) return null;
+      out[id] = url.slice('pmtiles://'.length);
+    }
+    return out;
+  }
+  function wNastaveni() {
+    const defs = (definicePloch() || []).filter((d) => d.nosna || d.cara);
+    if (!defs.length) return null;
+    const zdroje = wZdroje(defs);
+    if (!zdroje) return null;
+    let ex = 1;
+    try { ex = (mapa.getTerrain && mapa.getTerrain() && +mapa.getTerrain().exaggeration) || 1; } catch (e) { ex = 1; }
+    return {
+      verze: wVerze, herni: true, sezona: sezonaMalby(), dz: DZ, ex,
+      druhy: DRUHY, jehlicnate: STROMY_JEHLICNATE, listnate: STROMY_LISTNATE,
+      plochy: defs.map((d) => ({ id: d.id, zdroj: d.zdroj, vrstva: d.vrstva,
+                                 filtr: d.filtr === undefined ? null : d.filtr,
+                                 nosna: d.nosna, cara: d.cara,
+                                 zmin: d.zmin == null ? null : d.zmin,
+                                 zmax: d.zmax == null ? null : d.zmax })),
+      zdroje, sirkyCar: SIRKY_CAR, rampa: RAMPA_ZAKLAD, sirkaNastupu: SIRKA_NASTUPU,
+    };
+  }
+  function wPripravit() {
+    if (wStav === -2) return;          // selhal – do konce běhu starý generátor
+    wStav = 0;
+    if (!wZapnuto()) { wStav = -1; return; }
+    let cfg = null;
+    try { cfg = wNastaveni(); } catch (e) { cfg = null; }
+    if (!cfg) { wStav = -1; return; }
+    try {
+      if (!wDek) {
+        const sk = Array.from(document.scripts).find((x) => /\/dekorace\.js/.test(x.src || ''));
+        const q = sk && sk.src.indexOf('?') >= 0 ? sk.src.slice(sk.src.indexOf('?')) : '';
+        wDek = new Worker('js/dekorace-worker.js' + q);
+        wDek.onmessage = wZprava;
+        wDek.onerror = (e) => wSelhal('onerror ' + (e && e.message ? e.message : e));
+      }
+      wProtokol();
+      wDek.postMessage(Object.assign({ typ: 'nastav' }, cfg));
+      wStav = 1;
+    } catch (e) { wStav = -1; console.warn('[dekorace] worker nejde:', e); }
+  }
+  function wPridejVrstvu() {
+    if (wStav !== 1 || !mapa || mapa.getSource('dekorace')) return;
+    try { pridejVrstvu(null, null, true); } catch (e) { console.warn('[dekorace] vrstva workeru', e); }
+  }
+  function wProtokol() {
+    if (wProtokol.hotovo || typeof maplibregl === 'undefined' || !maplibregl.addProtocol) return;
+    wProtokol.hotovo = true;
+    maplibregl.addProtocol('dekorace', async (params) => {
+      const m = /dekorace:\/\/v(\d+)\/(\d+)\/(\d+)\/(\d+)/.exec((params && params.url) || '');
+      if (!m || !wDek || wStav !== 1) return { data: new ArrayBuffer(0) };
+      const z = +m[2], x = +m[3], y = +m[4];
+      const odp = await wPozadej({ typ: 'dlazdice', z, x, y });
+      if (!odp || odp.chyba || !odp.data) {
+        wChybaDlazdice(z, x, y, odp && odp.chyba);
+        throw new Error('dekorace ' + z + '/' + x + '/' + y + ': ' + ((odp && odp.chyba) || 'bez odpovědi'));
+      }
+      wStat.dlazdic++;
+      if (odp.ev) { wStat.prvku += odp.ev.prvku || 0; wUlozEvidenci(z, x, y, odp.ev); }
+      return { data: odp.data };
+    });
+  }
+  function wPozadej(zprava) {
+    return new Promise((res) => {
+      if (!wDek) { res(null); return; }
+      const id = ++wId;
+      const t = setTimeout(() => { if (wCekani.delete(id)) res(null); }, 20000);
+      wCekani.set(id, (m) => { clearTimeout(t); res(m); });
+      zprava.id = id;
+      try { wDek.postMessage(zprava); } catch (e) { wCekani.delete(id); clearTimeout(t); res(null); }
+    });
+  }
+  function wZprava(ev) {
+    const m = ev.data || {};
+    if (m.typ === 'dlazdice' || m.typ === 'stav') {
+      const f = wCekani.get(m.id);
+      if (f) { wCekani.delete(m.id); f(m); }
+      return;
+    }
+    if (m.typ === 'mlha') { wOdpovezMlha(m); return; }
+    if (m.typ === 'dem') { wOdpovezDem(m); return; }
+    if (m.typ === 'obnov') {
+      try {
+        if (mapa && mapa.getSource('dekorace') && mapa.refreshTiles) mapa.refreshTiles('dekorace', m.dlazdice);
+      } catch (e) { /* styl se zrovna mění */ }
+      return;
+    }
+    if (m.typ === 'chyba') wSelhal(m.msg);
+  }
+  /// mlha pro body z workeru – TÝŽ dotaz jako starý generátor (memo v Mlha)
+  function wOdpovezMlha(m) {
+    const t0 = performance.now();
+    const b = m.body;
+    const n = b.length / 2;
+    const out = new Uint8Array(n);
+    const M = (typeof Mlha !== 'undefined' && Mlha && typeof Mlha.jeObjeveno === 'function') ? Mlha : null;
+    for (let i = 0; i < n; i++) {
+      let ok = true;
+      if (M) { try { ok = M.jeObjeveno(b[2 * i], b[2 * i + 1]); } catch (e) { ok = true; } }
+      out[i] = ok ? 1 : 0;
+    }
+    wStat.mlhaBodu += n; wStat.mlhaMs += performance.now() - t0;
+    try { if (wDek) wDek.postMessage({ typ: 'mlha', id: m.id, maska: out }, [out.buffer]); } catch (e) { /* nic */ }
+  }
+  /// výška terénu (DemSource jako stíny kopců) – kopie, originál je v keši
+  function wOdpovezDem(m) {
+    wStat.demDotazu++;
+    const posli = (d) => {
+      try { if (wDek) wDek.postMessage({ typ: 'dem', id: m.id, data: d }, d ? [d.buffer] : []); } catch (e) { /* nic */ }
+    };
+    const D = window.__okolnikDem;
+    if (!D || !D.getDemTile) { posli(null); return; }
+    D.getDemTile(m.z, m.x, m.y)
+      .then((t) => posli((t && t.data && t.width === 256) ? new Float32Array(t.data) : null))
+      .catch(() => posli(null));
+  }
+  function wChybaDlazdice(z, x, y, proc) {
+    const k = z + '/' + x + '/' + y;
+    const n = (wChyby.get(k) || 0) + 1;
+    wChyby.set(k, n);
+    wStat.chyb++;
+    if (wStat.chyb <= 5) console.warn('[dekorace] dlaždice', k, proc || '');
+    // zkusit znovu (MapLibre chybnou dlaždici sám znovu nežádá)
+    if (n <= 3) {
+      setTimeout(() => {
+        try { if (mapa && mapa.getSource('dekorace')) mapa.refreshTiles('dekorace', [{ z, x, y }]); } catch (e) { /* nic */ }
+      }, 2500 * n);
+    }
+  }
+  function wSelhal(msg) {
+    if (wStav === -2) return;
+    console.warn('[dekorace] worker → starý generátor:', msg);
+    wStav = -2;
+    try { if (wDek) wDek.terminate(); } catch (e) { /* nic */ }
+    wDek = null;
+    for (const f of wCekani.values()) f(null);
+    wCekani.clear();
+    wEvidence.clear();
+    try {
+      if (mapa) {
+        for (const id of ['akvarel-dekorace', 'dekorace-svetla']) if (mapa.getLayer(id)) mapa.removeLayer(id);
+        for (const id of ['dekorace', 'dekorace-svetla-zdroj']) if (mapa.getSource(id)) mapa.removeSource(id);
+      }
+    } catch (e) { /* nic */ }
+    dekoracePodpis = ''; svetlaPodpis = '';
+    try { naplanujDosyp(); dopln(); } catch (e) { /* nic */ }
+  }
+  /// nová verze URL = MapLibre přenačte všechny dlaždice (dohled, reset mlhy)
+  function wPrenacti(sNastavenim) {
+    wVerze++;
+    if (sNastavenim && wDek) {
+      let cfg = null;
+      try { cfg = wNastaveni(); } catch (e) { cfg = null; }
+      if (cfg) wDek.postMessage(Object.assign({ typ: 'nastav' }, cfg));
+    }
+    try {
+      const zd = mapa && mapa.getSource('dekorace');
+      if (zd && zd.setTiles) zd.setTiles(['dekorace://v' + wVerze + '/{z}/{x}/{y}']);
+    } catch (e) { /* styl se zrovna mění */ }
+  }
+  /// odkrytí mlhy (kruh) / reset (null) – worker přeptá neobjevené body
+  function wZmenaMlhy(o) {
+    if (o === null) wMlhaReset = true;
+    clearTimeout(wMlhaT);
+    wMlhaT = setTimeout(() => {
+      if (!wDek || wStav !== 1) return;
+      if (wMlhaReset) {
+        wMlhaReset = false;
+        wDek.postMessage({ typ: 'mlha-zmena', o: null });
+        wPrenacti(false);
+      } else {
+        wDek.postMessage({ typ: 'mlha-zmena', o: {} });
+      }
+    }, 700);
+  }
+  function wUlozEvidenci(z, x, y, ev) {
+    const k = z + '/' + x + '/' + y;
+    wEvidence.delete(k);
+    wEvidence.set(k, { z, x, y, sv: ev.sv || [], stromy: ev.stromy, pf: null });
+    while (wEvidence.size > 140) wEvidence.delete(wEvidence.keys().next().value);
+    wNaplanujSvetla();
+  }
+  function wNaplanujSvetla() {
+    if (wSvetlaT) return;
+    wSvetlaT = setTimeout(() => { wSvetlaT = null; wObnovSvetla(); }, 400);
+  }
+  /// světla sídel (vlastní zdroj, mihotání), kotvy roje a díry nočního
+  /// překryvu z evidence dlaždic ve výřezu ± půl obrazovky (jako dřív)
+  function wObnovSvetla() {
+    if (!mapa || wStav !== 1) return;
+    let b = null;
+    try { b = mapa.getBounds(); } catch (e) { return; }
+    const w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
+    const rw = (e - w) * 0.5, rh = (n - s) * 0.5;
+    const podleId = new Map();
+    for (const t of wEvidence.values()) {
+      for (const f of t.sv) {
+        if (f.lon < w - rw || f.lon > e + rw || f.lat < s - rh || f.lat > n + rh) continue;
+        const k = f.sv + ':' + f.id;              // týž bod z různých úrovní má totéž id
+        if (!podleId.has(k)) podleId.set(k, f);
+      }
+    }
+    const featury = [];
+    for (const f of podleId.values()) {
+      const cfg = DRUHY[f.sv === 1 ? 'svetlo' : 'svetluska'];
+      featury.push({ type: 'Feature', id: f.id,
+                     properties: Object.assign({ ik: f.ik, k: cfg.k, sv: f.sv, rot: 0 }, nastup(cfg.z0)),
+                     geometry: { type: 'Point', coordinates: [f.lon, f.lat] } });
+    }
+    svetlaEvidence = featury;
+    const svetlaFeat = featury.filter((f) => f.properties.sv === 1);
+    try {
+      window.__svetlaBody = svetlaFeat.map((f) => f.geometry.coordinates);
+      if (window.__nocniDiry) window.__nocniDiry();
+    } catch (err) { /* nevadí */ }
+    const zs = mapa.getSource('dekorace-svetla-zdroj');
+    if (!zs) return;
+    const ps = svetlaFeat.length + ':' + (svetlaFeat.length ? posledniPodpis(svetlaFeat) : '');
+    if (ps === svetlaPodpis) return;
+    svetlaPodpis = ps;
+    const kolekce = { type: 'FeatureCollection', features: svetlaFeat };
+    if (typeof zapisAzVKlidu === 'function') zapisAzVKlidu('deko-svetla', () => zs.setData(kolekce));
+    else zs.setData(kolekce);
+  }
+  /// stromy pro stíny (main.js) z evidence dlaždic právě kreslené úrovně
+  function wZapsane() {
+    let zD = 14;
+    try { zD = Math.max(12, Math.min(15, Math.floor(mapa.getZoom()))); } catch (e) { /* nic */ }
+    const out = [];
+    for (const t of wEvidence.values()) {
+      if (t.z !== zD || !t.stromy) continue;
+      if (!t.pf) {
+        const S = t.stromy, m = S.lon.length, pf = new Array(m);
+        for (let j = 0; j < m; j++) {
+          const p = Object.assign({ ik: S.ik[j], k: S.k[j] }, nastup(S.z0[j]));
+          if (S.ev[j]) p.ev = S.ev[j];
+          pf[j] = { type: 'Feature', properties: p, geometry: { type: 'Point', coordinates: [S.lon[j], S.lat[j]] } };
+        }
+        t.pf = pf;
+      }
+      for (const f of t.pf) out.push(f);
+    }
+    return out;
+  }
+  /// ladění (CDP): proč (ne)vznikla dekorace u bodu (z15)
+  function wDiag(lon, lat) { return wDek ? wPozadej({ typ: 'diag', lon, lat }) : Promise.resolve(null); }
+  /// ladění (CDP): stav workeru dekorací
+  function wLadeni() {
+    const zakl = { stav: wStav, verze: wVerze, evidence: wEvidence.size, cekani: wCekani.size,
+                   chybDlazdic: wChyby.size, stat: Object.assign({}, wStat, { mlhaMs: +wStat.mlhaMs.toFixed(1) }) };
+    if (!wDek) return Promise.resolve(zakl);
+    return wPozadej({ typ: 'stav' }).then((m) => Object.assign(zakl, { worker: m }));
+  }
+
   function registrujHooky() {
     if (hooky || !mapa) return;
     hooky = true;
@@ -2599,8 +2903,12 @@ const Dekorace = (() => {
     // holé až do dalšího posunu mapy (dekorace v mlze nevznikají)
     if (typeof Mlha !== 'undefined' && Mlha
         && typeof Mlha.priObjeveni === 'function') {
-      try { Mlha.priObjeveni(function () { naplanujDosyp(); }); }
-      catch (e) { /* mlha ještě neběží */ }
+      try {
+        Mlha.priObjeveni(function (o) {
+          if (wStav === 1) wZmenaMlhy(o === undefined ? {} : o);   // engine 336
+          else naplanujDosyp();
+        });
+      } catch (e) { /* mlha ještě neběží */ }
     }
   }
 
@@ -2617,8 +2925,10 @@ const Dekorace = (() => {
     plochyDef = null;
     kesDlazdic.clear();
     idxMrizka = null;
+    wPripravit();             // engine 336: worker (jinak starý generátor níž)
     nactiMalby();             // async; dopln čeká na ikonyHotove
     registrujHooky();
+    if (wStav === 1) return;  // body do vrstvy dodá worker (vrstva po malbách)
     const featury = [];
     for (const f of bunky.values()) {
       if (f && !f.properties.ik.startsWith('deko-stricha')) {
@@ -2654,13 +2964,19 @@ const Dekorace = (() => {
         const f = (typeof window.__nocniFaktorDekorace === 'number') ? window.__nocniFaktorDekorace : 1;
         if (window.__ztlumDekorace) window.__ztlumDekorace(f);
       }
-      dopln();
+      if (wStav === 1) wPrenacti(true);     // engine 336: obsah úrovní závisí na dohledu
+      else dopln();
     } catch (e) { /* styl se zrovna mění */ }
   }
   /// engine 334: zapsané dekorace pro stíny (prázdné, když zdroj neexistuje –
   /// po přepnutí na styl bez dekorací nesmí zůstat stíny „starých“ stromů)
-  function zapsane() { return (mapa && mapa.getSource('dekorace')) ? zapsaneFeatury : []; }
-  return { pripoj, nastavStin, nastavDohled, zapsane, _ladeni: { postavIndex, plochyPodBodem, dopln, casy: () => casy,
+  function zapsane() {
+    if (!mapa || !mapa.getSource('dekorace')) return [];
+    return wStav === 1 ? wZapsane() : zapsaneFeatury;
+  }
+  return { pripoj, nastavStin, nastavDohled, zapsane, _ladeni: { worker: wLadeni, diag: wDiag,
+    zmenaMlhy: (o) => { if (wStav === 1) wZmenaMlhy(o === undefined ? {} : o); },
+    selhani: (d) => wSelhal(d || 'ruční test zálohy'), postavIndex, plochyPodBodem, dopln, casy: () => casy,
     stav: () => ({ kes: kesDlazdic.size, mrizka: idxMrizka && idxMrizka.size,
                    velke: idxVelke.length, zoomy: idxZoomy, zCil: idxZCil,
                    dlazdic: idxDlazdice && idxDlazdice.size }) } };
