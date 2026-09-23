@@ -2712,9 +2712,25 @@ function predNacistStromy(r) {
     }).catch(() => {});
   } catch (e) { /* nic */ }
 }
+// ⭐ engine 347 (výtka T 23. 9.: „stíny se stále dokreslují po přiblížení“): změřeno na TT – po přiblížení
+// se plátno (z menšího zoomu, hrubší) přepočítá ostřeji, kresba ve workeru trvá 10–20 ms, ale stíny zostřily
+// až 0,55–0,8 s po zastavení (plán po moveend 350 ms + odklad publikace 220 ms), tedy až po donačtení mapy
+// jako samostatné „dokreslení“. Po PŘIBLÍŽENÍ teď plán nejvýš 120 ms a první publikace plátna nového zoomu
+// se odkladem 60 ms → stíny zostří 0,15–0,35 s po zastavení, spolu s dlaždicemi mapy. Přepočet už během
+// štípnutí nepomůže (zdroje se donačítají, brána engine 341 ho odloží) – proto jen po zastavení.
+let stinyCasovacKdy = 0;
 function naplanujStinyDomu(zaMs) {
-  if (stinyCasovac) return;
-  stinyCasovac = setTimeout(() => { stinyCasovac = null; prepoctiStinyDomu(); }, zaMs || 300);
+  let za = zaMs || 300;
+  try {
+    if (stinyRozsah && mapa && !(mapa.isMoving && mapa.isMoving()) && mapa.getZoom() > stinyRozsah.z + 0.3) za = Math.min(za, 120);
+  } catch (e) { /* nic */ }
+  const kdy = performance.now() + za;
+  if (stinyCasovac) {
+    if (kdy >= stinyCasovacKdy - 5) return;     // throttle (ne debounce): čekající plán nechat
+    clearTimeout(stinyCasovac);                  // engine 347: dřívější plán předběhne pozdější
+  }
+  stinyCasovacKdy = kdy;
+  stinyCasovac = setTimeout(() => { stinyCasovac = null; prepoctiStinyDomu(); }, za);
 }
 /// ⭐ engine 262: JEDNA VÝMĚNA DLAŽDIC NARAZ. Dva `setTiles` těsně po sobě
 /// (domy hned, kopce po workeru o ~150 ms) MapLibre nesloučí: každou dlaždici
@@ -2733,9 +2749,13 @@ let stinyOdklad = null;
 // pozdeji) do jedne - trailing debounce 220 ms. Zmereno sadou gest: s branou
 // 0,9 s bez slouceni 215-251 snimku nad 33 ms, se sloucenim 173-207 (zaklad
 // pred zmenou 145-164, sum +-20); stiny po skoku presto do ~0,5 s.
+let stinyPublZ = null;            // engine 347: zoom plátna poslední publikace
 function publikujStiny() {
   if (stinyOdklad) clearTimeout(stinyOdklad);
-  stinyOdklad = setTimeout(() => { stinyOdklad = null; publikujStinyHned(); }, 220);
+  // engine 347: první publikace plátna NOVÉHO zoomu (po přiblížení ostřejší) jen s odkladem 60 ms;
+  // sloučení s druhou vlnou (kopce, stromy okraje) zůstává pro publikace téhož zoomu
+  const rychle = !!stinyRozsah && (stinyPublZ === null || Math.abs(stinyRozsah.z - stinyPublZ) > 0.3);
+  stinyOdklad = setTimeout(() => { stinyOdklad = null; publikujStinyHned(); }, rychle ? 60 : 220);
 }
 function publikujStinyHned() {
   if (!mapa || !mapa.getSource('stiny-domu')) return;
@@ -2766,6 +2786,7 @@ function publikujStinyHned() {
   if (stinyZnovuCasovac) { clearTimeout(stinyZnovuCasovac); stinyZnovuCasovac = null; }
   stinyVerze++;
   stinyNacitaOd = ted;
+  stinyPublZ = stinyRozsah ? stinyRozsah.z : null;
   try { mapa.getSource('stiny-domu').setTiles(['stiny://' + stinyVerze + '/{z}/{x}/{y}']); }
   catch (e) { stinyNacitaOd = 0; /* zdroj se zrovna mění */ }
 }

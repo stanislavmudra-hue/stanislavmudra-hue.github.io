@@ -1820,7 +1820,9 @@ const AnimaceNadMapou = (() => {
       const ovocny = k < 0.9;
       const h = h32(ix, iy, noc_);
       if (zima && (!hejnko || h < hejnko.h) && veVsi(lon, lat)) hejnko = { h, lon, lat, k, ev: +pr.ev || 1, ix, iy };
-      if (h > (ovocny ? 1 / 14 : 1 / 18)) continue;        // hustota stálá, nezávislá na zoomu (nic nenaskakuje)
+      // hustota stálá, nezávislá na zoomu (nic nenaskakuje); engine 347 (výtka T: „je jich hodně“):
+      // 1/14 a 1/18 → 1/40 a 1/50 (ve vsi na z16 dřív ~5 sov ve výřezu, teď 1–2)
+      if (h > (ovocny ? 1 / 40 : 1 / 50)) continue;
       const h2 = h32(ix + 7, iy - 3, noc_), h3 = h32(ix - 5, iy + 11, noc_), h4 = h32(ix + 13, iy + 17, noc_);
       let druh;
       if (ovocny) druh = veVsi(lon, lat) ? (h2 < 0.5 ? 'sycek' : 'sova_palena') : (h2 < 0.6 ? 'kalous' : 'pustik');
@@ -1836,7 +1838,7 @@ const AnimaceNadMapou = (() => {
     }
     const c = mapa.getCenter();
     nove.sort((a2, b2) => Math.hypot(a2.lon - c.lng, a2.lat - c.lat) - Math.hypot(b2.lon - c.lng, b2.lat - c.lat));
-    sedici = nove.slice(0, 16);
+    sedici = nove.slice(0, 6);                             // engine 347: 16 → 6 nejbližších
     const ton = tonNoci(performance.now());
     const hPx = 3.2 * 0.19686 * Math.pow(2, z - 13.25);
     pripravSprity(Array.from(new Set(sedici.map((q) => q.druh))), tridaSovy(hPx), ton, true);
@@ -1868,8 +1870,9 @@ const AnimaceNadMapou = (() => {
     const br = mapa.getBearing() * Math.PI / 180, rx = Math.cos(br), ry = -Math.sin(br);   // vodorovně na obrazovce (v, s)
     const W = platno.width / hustota, H = platno.height / hustota;
     const zakl = 0.19686 * Math.pow(2, z - 13.25);          // px na metr stromu při perspektivě 1
-    // engine 346 (výtka T: „možná by jim mohly více svítit oči“): silnější odlesk + měkký svit kolem
-    const leskA = [0, 0.5, 0.8, 0.95][ton] || 0;
+    // engine 346 (výtka T: „možná by jim mohly více svítit oči“): silnější odlesk + měkký svit kolem;
+    // engine 347 (výtka T: „svítí až moc“): mezi 345 (0,25/0,45/0,6, bez svitu) a 346 (0,5/0,8/0,95)
+    const leskA = [0, 0.35, 0.55, 0.7][ton] || 0;
     for (const q of sedici) {
       q.vidi = false;
       if (q.pryc) continue;
@@ -1896,14 +1899,14 @@ const AnimaceNadMapou = (() => {
       if (leskA > 0 && q.fr <= 2) {                        // odlesk očí v noci
         ctx.setTransform(hustota, 0, 0, hustota, 0, 0);
         for (const [ex, ey, er] of sp.oci[q.fr]) {
-          const gx = x + (ex - sp.N / 2) * sc, gy = y + (ey - sp.N * 0.9) * sc, rr = Math.max(1.5, er * sc * 2.2);
-          const halo = ctx.createRadialGradient(gx, gy, 0, gx, gy, rr * 2.6);      // měkký svit kolem
-          halo.addColorStop(0, 'rgba(255,190,110,0.55)'); halo.addColorStop(1, 'rgba(255,170,90,0)');
-          ctx.globalAlpha = leskA * 0.55;
+          const gx = x + (ex - sp.N / 2) * sc, gy = y + (ey - sp.N * 0.9) * sc, rr = Math.max(1.2, er * sc * 1.9);
+          const halo = ctx.createRadialGradient(gx, gy, 0, gx, gy, rr * 1.9);      // měkký svit kolem (347: menší, slabší)
+          halo.addColorStop(0, 'rgba(255,190,110,0.4)'); halo.addColorStop(1, 'rgba(255,170,90,0)');
+          ctx.globalAlpha = leskA * 0.35;
           ctx.fillStyle = halo;
-          ctx.beginPath(); ctx.arc(gx, gy, rr * 2.6, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(gx, gy, rr * 1.9, 0, Math.PI * 2); ctx.fill();
           const gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, rr);
-          gr.addColorStop(0, '#fff6d8'); gr.addColorStop(0.35, SOVY[q.druh].lesk); gr.addColorStop(1, 'rgba(255,170,90,0)');
+          gr.addColorStop(0, '#ffe9c4'); gr.addColorStop(0.4, SOVY[q.druh].lesk); gr.addColorStop(1, 'rgba(255,170,90,0)');
           ctx.globalAlpha = leskA;
           ctx.fillStyle = gr;
           ctx.beginPath(); ctx.arc(gx, gy, rr, 0, Math.PI * 2); ctx.fill();
