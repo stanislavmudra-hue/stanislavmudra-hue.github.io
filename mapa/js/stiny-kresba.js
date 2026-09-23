@@ -155,11 +155,21 @@
   /// tolik pixelů, kolik na ni připadá ze zdroje (mocnina 2, 64 až Dmax) –
   /// víc detailu mít nemůže, MapLibre ji roztáhne sám (engine 333).
   function vyrez(platno, r, z, x, y, Dmax, nove) {
-    if (!r || !platno || !platno.width) return null;
+    if (!platno) return null;
+    const o = obdelnik(platno.width, platno.height, r, z, x, y, Dmax);
+    if (!o) return null;
+    const c = nove(o.D);
+    c.getContext('2d').drawImage(platno, o.sx, o.sy, o.sw, o.sh, o.dx, o.dy, o.dw, o.dh);
+    return c;
+  }
+  /// Zdrojový obdélník (px plátna w×h) a cílový v dlaždici D×D; null = mimo
+  /// (engine 335: sdílí i kresba na grafické kartě, stiny-gl.js)
+  function obdelnik(w, h, r, z, x, y, Dmax) {
+    if (!r || !w || !h) return null;
     const n = Math.pow(2, z);
     const tx0 = x / n, tx1 = (x + 1) / n, ty0 = y / n, ty1 = (y + 1) / n;
     if (tx1 <= r.x0 || tx0 >= r.x1 || ty1 <= r.y0 || ty0 >= r.y1) return null;
-    const kx = platno.width / (r.x1 - r.x0), ky = platno.height / (r.y1 - r.y0);
+    const kx = w / (r.x1 - r.x0), ky = h / (r.y1 - r.y0);
     let sx = (tx0 - r.x0) * kx, sy = (ty0 - r.y0) * ky;
     let sw = (tx1 - tx0) * kx, sh = (ty1 - ty0) * ky;
     let D = 64;
@@ -167,13 +177,11 @@
     let dx = 0, dy = 0, dw = D, dh = D;
     if (sx < 0) { dx = -sx / sw * dw; dw -= dx; sw += sx; sx = 0; }
     if (sy < 0) { dy = -sy / sh * dh; dh -= dy; sh += sy; sy = 0; }
-    if (sx + sw > platno.width) { const o = sx + sw - platno.width; dw -= o / sw * dw; sw -= o; }
-    if (sy + sh > platno.height) { const o = sy + sh - platno.height; dh -= o / sh * dh; sh -= o; }
+    if (sx + sw > w) { const o = sx + sw - w; dw -= o / sw * dw; sw -= o; }
+    if (sy + sh > h) { const o = sy + sh - h; dh -= o / sh * dh; sh -= o; }
     if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return null;
-    const c = nove(D);
-    c.getContext('2d').drawImage(platno, sx, sy, sw, sh, dx, dy, dw, dh);
-    return c;
+    return { D, sx, sy, sw, sh, dx, dy, dw, dh };
   }
 
-  G.StinyKresba = { kresli, vyrez };
+  G.StinyKresba = { kresli, vyrez, obdelnik };
 })(typeof self !== 'undefined' ? self : this);

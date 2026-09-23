@@ -2896,6 +2896,9 @@ function zpravaKresby(ev) {
       window.__casy.stinyKresbaMs = Math.round(m.ms);
       window.__casy.stinyKresbaCelkemMs = Math.round(performance.now() - b.t0);
       window.__casy.stinyWorker = true;
+      window.__casy.stinyGL = !!m.gl;                 // engine 335: grafická karta
+      window.__casy.stinyGLZtrat = m.glZtrat || 0;
+      if (m.glChyba) window.__casy.stinyGLChyba = m.glChyba;
     } catch (e) { /* nic */ }
     if (kresbaZnovu || b.gen !== stinyGen) { kresbaZnovu = false; naplanujStinyDomu(30); }
     return;
@@ -2906,6 +2909,8 @@ function zpravaKresby(ev) {
     return;
   }
   if (m.typ === 'chyba') { kresbaSelhala(m.co + ': ' + m.msg); return; }
+  // engine 335: obsah na grafické kartě zmizel (ztracený kontext) → znovu (2D)
+  if (m.typ === 'znovu') { zneplatniStiny(); naplanujStinyDomu(50); return; }
   const f = kresbaLadeni.get(m.id);
   if (f) { kresbaLadeni.delete(m.id); f(m); }
 }
@@ -2939,6 +2944,13 @@ function dlazdiceStinuZWorkeru(z, x, y) {
     catch (e) { kresbaDlazdice.delete(id); clearTimeout(casovac); res(null); }
   });
 }
+/// Ladění (CDP): simulace ztráty kontextu grafické karty ve workeru.
+window.__stinyZtratGL = function () {
+  const wk = kresbaWorker;
+  if (!wk || kresbaStav !== 2) return Promise.resolve(null);
+  const id = ++kresbaId;
+  return new Promise((res) => { kresbaLadeni.set(id, res); wk.postMessage({ typ: 'ladeni-ztrat-gl', id }); });
+};
 /// Ladění (CDP): pixely plátna ve workeru → { w, h, px }.
 window.__stinyPixelyWorkeru = function () {
   const wk = kresbaWorker;
@@ -3444,7 +3456,10 @@ function prepoctiStinyDomu() {
       const id = ++kresbaId;
       kresbaBezi = { id, podpis, r, gen: stinyGen, t0, casovac: setTimeout(() => kresbaVyprsela(id), 5000) };
       const P = zad.prstence, T = zad.stromy;
-      wk.postMessage({ typ: 'kresli', id, zad, rozsah: { x0: r.x0, x1: r.x1, y0: r.y0, y1: r.y1, z: r.z } },
+      // engine 335: kresba na grafické kartě (WebGL2 ve workeru), záloha 2D;
+      // A/B: window.__okolnikStinyGL = false → 2D plátno ve workeru
+      wk.postMessage({ typ: 'kresli', id, zad, rozsah: { x0: r.x0, x1: r.x1, y0: r.y0, y1: r.y1, z: r.z },
+                       gl: window.__okolnikStinyGL !== false },
                      [P.xy.buffer, P.zac.buffer, P.L.buffer, T.d.buffer, T.ik.buffer]);
     } catch (e) { kresbaSelhala('postMessage ' + (e && e.message ? e.message : e)); return; }
     zapisCasyStinu(t0, prstence.length, stromy.length, W, H);
