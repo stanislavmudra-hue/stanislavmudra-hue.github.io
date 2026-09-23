@@ -3377,7 +3377,7 @@ function prepoctiStinyDomu() {
       if (k < 0.3) continue;
       if ((p[oKlic] == null ? 1 : +p[oKlic]) < 0.5) continue;
       // engine 342: lichá buňka jemné mřížky mizí mezi z15,45 a z15,0 – stín až od půlky
-      if (p.lic && (z - 15.0) / 0.45 < 0.5) continue;
+      if (p.lic && (z - 14.0) / 0.45 < 0.5) continue;       // engine 343: přechod 14,45 → 14,0
       const c = f.geometry && f.geometry.coordinates;
       if (!c) continue;
       const bx = (mercX(c[0]) - r.x0) * kx, by = (mercY(c[1]) - r.y0) * ky;

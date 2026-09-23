@@ -28,6 +28,11 @@ importScripts('../vendor/pmtiles.js');
 
 const EXT = 4096;                   // rozsah výstupních dlaždic (MVT)
 const Z_MIN = 12, Z_MAX = 15;       // výstupní úrovně (z15 = vše, jemná mřížka)
+// ⭐ engine 343 (výtka T 23. 9.: „proč neukazuješ stále všechny stromy? Působí to zvláštně,
+// když něco mizí a zase se objevuje“): plná jemná mřížka už od z14 (dřív jen z15 – pod z15
+// zmizely 3/4 stromů a u hranice je při posunu kolébal zoom terénu). Ztenčení na sudé
+// buňky až v z13 (strom má tam ~8 px) s plynulým přechodem z14,45 → z14,0.
+const Z_PLNE = 14;
 const KES_VYSTUP = 120;             // vygenerovaných dlaždic v paměti (~100 kB kus)
 const KES_ZDROJ = 24;               // dekódovaných zdrojových dlaždic (výřez ≈ 6 × 3 zdroje)
 const MRIZKA_IDX = 16;              // index ploch: 16×16 buněk na dlaždici
@@ -604,14 +609,14 @@ async function generuj(z, x, y) {
   const tIdx = performance.now();
   // kandidáti
   const K = { lon: [], lat: [], px: [], py: [], ik: [], k: [], z0: [], sv: [], id: [], lic: [] };
-  // engine 342: `lic` = lichá buňka jemné mřížky (jen z15) – ta v dlaždicích z14 chybí
+  // engine 342/343: `lic` = lichá buňka jemné mřížky v dlaždici z14 – v dlaždicích z13 chybí
   const pridej = (lon, lat, px, py, ik, k, z0, sv, id, lic) => {
     K.lon.push(lon); K.lat.push(lat); K.px.push(px); K.py.push(py); K.ik.push(idxRetezce(ik));
     K.k.push(k); K.z0.push(z0); K.sv.push(sv); K.id.push(id); K.lic.push(lic ? 1 : 0);
   };
   const vPx = (lon, lat) => [(mercX(lon) * n - x) * EXT, (mercY(lat) * n - y) * EXT];
   for (const [druh, cfg] of druhy) {
-    const jemne = z >= Z_MAX || !cfg.zjemnit;          // všechny buňky
+    const jemne = z >= Z_PLNE || !cfg.zjemnit;         // všechny buňky (engine 343: od z14)
     const dLat = cfg.rozestup / 111320;
     const iy0 = Math.floor(south / dLat) - 1, iy1 = Math.ceil(north / dLat) + 1;
     for (let iy = iy0; iy <= iy1; iy++) {
@@ -661,7 +666,7 @@ async function generuj(z, x, y) {
         }
         const id = sv ? ((ix * 92821 + iy * 31397 + sv * 7451) >>> 0) : 0;
         pridej(lon, lat, px, py, ikona, sv === 4 ? kRyba : cfg.k, cfg.z0, sv, id,
-               z >= Z_MAX && cfg.zjemnit && ((ix & 1) || (iy & 1)));
+               z === Z_PLNE && cfg.zjemnit && ((ix & 1) || (iy & 1)));
       }
     }
   }
@@ -890,6 +895,7 @@ function nastup(z0) {
 /// (zoom se s terénem kolébe ±0,2) blikaly i při posunu. Liché buňky proto mezi zoomem
 /// 15,45 a 15,0 plynule zeslábnou: o9 (zoom 15,0) = 0, o10 (15,45) = běžná hodnota,
 /// a pod 15,0 mají 0 i na zarážkách rampy (z15 dlaždice jako záskok při oddálení).
+/// ⭐ engine 343: plná mřížka už od z14 → totéž o úroveň níž (14,45 → 14,0).
 /// Zarážky 15,0/15,45 jsou v ZOOMU MAPY (pevné, hranice dlaždic), rampa je posunutá
 /// o dohled → hodnota pro zarážku = nástup v základním zoomu (zoom + dz).
 const oKesX = new Map();
@@ -897,7 +903,7 @@ function nastupX(z0) {
   let o = oKesX.get(z0);
   if (!o) {
     const w = N.sirkaNastupu, dz = N.dz || 0;
-    o = [15.0, 15.45].map((z) => Math.max(0, Math.min(1, (z + dz - z0) / w)));
+    o = [14.0, 14.45].map((z) => Math.max(0, Math.min(1, (z + dz - z0) / w)));
     oKesX.set(z0, o);
   }
   return o;
@@ -918,7 +924,7 @@ function vystupDlazdice(v) {
     if (v.ev[i]) vl.ev = v.ev[i];
     const lic = v.lic && v.lic[i];
     const dzV = N.dz || 0;
-    for (let j = 0; j < o.length; j++) vl['o' + (j + 1)] = (lic && N.rampa[j] - dzV < 15.0) ? 0 : o[j];
+    for (let j = 0; j < o.length; j++) vl['o' + (j + 1)] = (lic && N.rampa[j] - dzV < 14.0) ? 0 : o[j];
     const ox = nastupX(v.z0[i]);
     vl.o9 = lic ? 0 : ox[0];
     vl.o10 = ox[1];

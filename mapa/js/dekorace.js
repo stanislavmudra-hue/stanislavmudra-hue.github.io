@@ -345,7 +345,8 @@ const Dekorace = (() => {
   /// přechodem na dlaždice z14, viz nastupX ve workeru). ⛔ Zoomový interpolate musí
   /// zůstat KOŘENEM výrazu (násobek nočního ztlumení jde dovnitř na výstupy).
   function vyrazRampy(faktor) {
-    const zar = RAMPA.map((z, i) => [z, 'o' + (i + 1)]).concat([[15.0, 'o9'], [15.45, 'o10']]);
+    // engine 343: plná mřížka od dlaždic z14 → přechod lichých buněk 14,45 → 14,0
+    const zar = RAMPA.map((z, i) => [z, 'o' + (i + 1)]).concat([[14.0, 'o9'], [14.45, 'o10']]);
     zar.sort((a, b) => a[0] - b[0]);
     const vyr = ['interpolate', ['linear'], ['zoom']];
     let posl = -Infinity;

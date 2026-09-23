@@ -51,7 +51,7 @@ const Ptaci = (() => {
     // ⭐ engine 258: STÍN VE TVARU KÁNĚTE. Byla to elipsa s přechodem; teď je
     // to TÁŽ silueta jako pták, jen načerno (`brightness(0)`), rozmazaná
     // a zploštělá – a mává křídly zároveň s ním (třída `kane-machani`).
-    + '.kane-stin svg{filter:brightness(0) blur(4px);opacity:.6;}';
+    + '.kane-stin svg{filter:brightness(0) blur(2px);opacity:.6;}';
 
   // Káně SHORA, letí nahoru (-y). Proporce káněte: rozpětí ≈ 2,4× délka,
   // široká zaoblená křídla s rovnější přední hranou a 5 roztaženými
@@ -131,7 +131,7 @@ const Ptaci = (() => {
 
   function smiLetat() {
     if (!mapa || document.visibilityState !== 'visible') return false;
-    if (mapa.getZoom() < 12) return false;
+    if (mapa.getZoom() < 14.8) return false;        // engine 343: pod ~5 px nelétá (velikost ze světa)
     if (typeof STYLY !== 'undefined' && typeof aktualniKod !== 'undefined'
         && STYLY && STYLY[aktualniKod] && !STYLY[aktualniKod].mlha) return false;
     const st = svetlo();
@@ -175,6 +175,21 @@ const Ptaci = (() => {
   }
 
   /// Měřítko jako stromy (dekorace.js): exponential 1,8 mezi stopy.
+  // ⭐ engine 343 (výtka T: „zvětšování ptáků při oddalování je nepřirozené, mají být nad
+  // povrchem realisticky“): káně ve STEJNÉM měřítku jako ostatní ptáci (animace.js) –
+  // rozpětí 8,4 m světa (stylizace 7 × 1,25 m^0,8), px na metr v místě a výšce ptáka;
+  // dřív ~38 m na z16 a při oddálení rostlo proti krajině. Strop 130 px (velký zoom).
+  const ROZPETI_M = 8.4, SIRKA_SVG = 116, MAX_PX = 130;
+  function meritkoSvet(p, tr, h) {
+    try {
+      const ll = new maplibregl.LngLat(p.x, p.y);
+      const ll2 = new maplibregl.LngLat(p.x + 5 / (111320 * Math.cos(p.y * Math.PI / 180)), p.y);
+      const a = tr.locationToScreenPoint(ll, { getElevationForLngLat: () => h });
+      const b = tr.locationToScreenPoint(ll2, { getElevationForLngLat: () => h });
+      const pxNaM = Math.hypot(b.x - a.x, b.y - a.y) / 5;
+      return Math.min(MAX_PX, ROZPETI_M * pxNaM) / SIRKA_SVG;
+    } catch (e) { return meritko(); }
+  }
   function meritko() {
     const z = mapa.getZoom();
     // ⛔ 5. 9. večer: růst do z22 jako u stromů byl OMYL – káně na z19 mělo
@@ -332,7 +347,16 @@ const Ptaci = (() => {
     let tr;
     try { tr = mapa._camera.transform; } catch (e) { return; }
     const ter = mapa.terrain;
-    const mer = meritko();
+    const merZoom = meritko();
+    // engine 343: výška letu nejvýš 0,3 × výšky kamery (při velkém přiblížení je kamera
+    // jen desítky metrů nad zemí a káně ve 120 m by vletělo „do objektivu“)
+    let vyskaLetu = VYSKA_LETU;
+    try {
+      const c = mapa.getCenter();
+      const kamera = tr.cameraToCenterDistance * 78271.52 / Math.pow(2, mapa.getZoom())
+        * Math.cos(c.lat * Math.PI / 180) * Math.cos(mapa.getPitch() * Math.PI / 180);
+      if (kamera > 0) vyskaLetu = Math.min(VYSKA_LETU, 0.3 * kamera);
+    } catch (e) { /* nic */ }
     for (const p of ptaci) {
       const teren = typeof p.teren === 'number' ? p.teren : 0;
       const ll = new maplibregl.LngLat(p.x, p.y);
@@ -340,9 +364,10 @@ const Ptaci = (() => {
       try {
         bod = ter
           ? tr.locationToScreenPoint(ll,
-              { getElevationForLngLat: () => teren + VYSKA_LETU })
+              { getElevationForLngLat: () => teren + vyskaLetu })
           : tr.locationToScreenPoint(ll);
       } catch (e) { continue; }
+      const mer = ter ? meritkoSvet(p, tr, teren + vyskaLetu) : merZoom;
       // engine 233: směr letu je v mapě, prvek je na obrazovce → odečíst natočení mapy
       let otoc = (p.smer || 0) * 180 / Math.PI - (mapa.getBearing ? mapa.getBearing() : 0);
       // engine 292: úhel bez skoku přes 360° – CSS přechod by jinak otočil
@@ -367,7 +392,7 @@ const Ptaci = (() => {
       let sx = 0, sy = 0, sila = 0.3;
       if (st && typeof st.slunceEl === 'number' && st.slunceEl > 0) {
         const el = Math.max(12, st.slunceEl) * Math.PI / 180;
-        const delkaM = Math.min(160, VYSKA_LETU / Math.tan(el));
+        const delkaM = Math.min(160, vyskaLetu / Math.tan(el));
         const az = ((st.slunceAz || 0) + 180) * Math.PI / 180;
         sx = Math.sin(az) * delkaM;
         sy = Math.cos(az) * delkaM;
@@ -390,11 +415,13 @@ const Ptaci = (() => {
           ? tr.locationToScreenPoint(lls, { getElevationForLngLat: () => terenStin })
           : tr.locationToScreenPoint(lls);
       } catch (e) { continue; }
+      // engine 343: stín ve světě stejně velký jako pták (rovnoběžné paprsky), na zemi
+      // o kus menší na obrazovce (dál od kamery); zploštělý náklonem
+      const merS = ter ? meritkoSvet({ x: p.x + sx * mLon, y: p.y + sy * mLat }, tr, terenStin) : mer * 0.6;
       p.stin.style.opacity = (sila * p.op).toFixed(2);
       p.stin.style.transform = 'translate(-50%, -50%) translate(' + bs.x.toFixed(1)
         + 'px, ' + bs.y.toFixed(1) + 'px) rotate(' + otoc.toFixed(1) + 'deg) scale('
-        // engine 259: stín je MENŠÍ než pták (leží 120 m pod ním) a měkký
-        + (mer * 0.55).toFixed(3) + ', ' + (mer * 0.40).toFixed(3) + ')';
+        + (merS * 0.95).toFixed(3) + ', ' + (merS * 0.8).toFixed(3) + ')';
     }
   }
 
