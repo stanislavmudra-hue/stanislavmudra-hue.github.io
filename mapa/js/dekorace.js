@@ -46,12 +46,14 @@ const Dekorace = (() => {
     // zůstávají, o ty uživatel nežádal. Pozor při dalším zvyšování:
     // dekorace jsou body symbolové vrstvy, každý kus stojí kolizi.
     strom: {
-      rozestup: 44,               // m mezi kandidáty (NEJJEMNĚJŠÍ, viz Z_JEMNE)
+      rozestup: 40,               // m mezi kandidáty (NEJJEMNĚJŠÍ, viz Z_JEMNE)
                                   // v1.419: 70→62 („hustší lesy“)
                                   // ⭐ engine 340 (23. 9. 2026, „udělej stromy 2×“):
                                   // 62 → 44 m = 2× stromů (62/√2). Zátěžový test na TT:
                                   // ×2 bez měřitelného zhoršení, ×3 na hraně (viz
                                   // PLAN 150. kolo) – dál jen s měřením
+                                  // engine 341 („ještě přidej malinko stromů“): 44 → 40 m
+                                  // (+21 %, celkem ×2,4 proti 62 m)
       zjemnit: true,
       vrstvy: ['les'],              // sady a zahrady mají vlastní druh `ovocny`
       // ⭐ 8. 8. 2026: „stromy ať se ukazují už od zoomu 54 %".
@@ -79,7 +81,7 @@ const Dekorace = (() => {
     // než lesní strom, hustě (zahrada u domu mívá pár stromů). Dřív byly
     // zahrady v „sadu" a nesly stromy lesní velikosti přes střechy.
     ovocny: {
-      rozestup: 28,               // engine 340: 40 → 28 m = 2× (spolu s lesními)
+      rozestup: 26,               // engine 340: 40 → 28 m = 2×, engine 341: 26 m (+16 %)
       zjemnit: true,
       vrstvy: ['sad', 'zahrada'],
       z0: 15.4,                   // engine 202: 14,6 → 15,4 (kandidátů 40 m bylo moc)

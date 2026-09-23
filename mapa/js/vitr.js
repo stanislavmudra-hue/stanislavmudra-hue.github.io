@@ -24,9 +24,13 @@
 // (čte se přes Pocasi.stavSvetla, ne přímo z dat).
 (function () {
   'use strict';
+  // ⭐ engine 341 (výtka T: „nevidím na mapě malovaný vítr“): stupeň 0,5 = VÁNEK
+  // (vítr ≥ 6 nebo nárazy ≥ 14 km/h) – jedna slabší kudrlinka jednou za 20–34 s;
+  // při běžném větru 10 km/h dřív nebylo nic
+  const STUPEN05 = { vitr: 6, naraz: 14 };
   const STUPEN1 = { vitr: 15, naraz: 35 };
   const STUPEN2 = { vitr: 25, naraz: 50 };
-  const OD_Z = 15;
+  const OD_Z = 14;                 // engine 341: 15 → 14
   let mapa = null;
   let kudrlinky = [];        // { el, x, y, vx, vy, zivot, t, maxOpac, meritko }
   let dalsiPoryvMs = 0;
@@ -68,6 +72,7 @@
       if (!v) return 0;
       if (v.kmh >= STUPEN2.vitr || v.naraz >= STUPEN2.naraz) return 2;
       if (v.kmh >= STUPEN1.vitr || v.naraz >= STUPEN1.naraz) return 1;
+      if (v.kmh >= STUPEN05.vitr || v.naraz >= STUPEN05.naraz) return 0.5;
       return 0;
     } catch (e) { return 0; }
   }
@@ -109,8 +114,8 @@
     if (!W || !H) return;
     const s = smerNaObrazovce();
     const kolmo = { x: -s.y, y: s.x };
-    const pocet = st === 2 ? 4 : 2;
-    const rychlost = (st === 2 ? 130 : 80) * (0.85 + Math.random() * 0.3);   // px/s
+    const pocet = st === 2 ? 4 : (st === 1 ? 2 : 1);
+    const rychlost = (st === 2 ? 130 : (st === 1 ? 80 : 60)) * (0.85 + Math.random() * 0.3);   // px/s
     const noc = typeof krokNoci === 'number' && krokNoci >= 2;
     const R = Math.hypot(W, H) / 2 + 40;
     for (let i = 0; i < pocet; i++) {
@@ -133,7 +138,7 @@
         faze: Math.random() * Math.PI * 2,
         kolmo, uhel: s.uhelDeg - 90,
         zpozdeni: i * (0.25 + Math.random() * 0.35),   // s – ať neletí v řadě
-        t: 0, maxOpac: (noc ? 0.4 : 0.85) * (0.8 + Math.random() * 0.2),
+        t: 0, maxOpac: (noc ? 0.4 : 0.85) * (0.8 + Math.random() * 0.2) * (st < 1 ? 0.8 : 1),
         zivot: 2.4 + Math.random() * 1.0,                // s – délka života
         W, H,
       });
@@ -157,7 +162,7 @@
         if ((mapa.isMoving && mapa.isMoving())
             || t - (window.__posledniPohybMs || 0) < 1500) return;
         zrodPoryv(st);
-        const [a, b] = st === 2 ? [6000, 12000] : [14000, 24000];
+        const [a, b] = st === 2 ? [6000, 12000] : (st === 1 ? [14000, 24000] : [20000, 34000]);
         dalsiPoryvMs = t + a + Math.random() * (b - a);
         return;
       }

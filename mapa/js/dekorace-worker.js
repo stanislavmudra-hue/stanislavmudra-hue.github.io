@@ -639,8 +639,27 @@ async function generuj(z, x, y) {
         const ikona = ikony[Math.floor(hash(ix, iy, 3) * ikony.length)];
         // engine 340: `cfg.sv` = kotvy animací (ryba 4); jinak světla 1 a světlušky 2
         const sv = cfg.sv || (druh === 'svetlo' ? 1 : (druh === 'svetluska' ? 2 : 0));
+        // ⭐ engine 341 (výtka T: „žbluňknutí na řece lezou i na louku“): u kotvy
+        // ryby DOSAH VODY – největší poloměr (m), na kterém je voda do 8 směrů;
+        // kroužek ho nesmí přerůst. Pod 2 m (úzký potok) kotva nevznikne.
+        let kRyba = cfg.k;
+        if (sv === 4) {
+          const pxNaM = 1 / mNaPx;
+          let dosah = 0;
+          for (const d of [2, 3, 4.5, 6, 8, 10, 13]) {
+            let vse = true;
+            for (let a = 0; a < 8 && vse; a++) {
+              const q2 = plochyPod(idx, px + Math.cos(a * 0.7854) * d * pxNaM, py + Math.sin(a * 0.7854) * d * pxNaM);
+              if (q2.indexOf('voda') < 0) vse = false;
+            }
+            if (!vse) break;
+            dosah = d;
+          }
+          if (dosah < 2) continue;
+          kRyba = dosah;
+        }
         const id = sv ? ((ix * 92821 + iy * 31397 + sv * 7451) >>> 0) : 0;
-        pridej(lon, lat, px, py, ikona, cfg.k, cfg.z0, sv, id);
+        pridej(lon, lat, px, py, ikona, sv === 4 ? kRyba : cfg.k, cfg.z0, sv, id);
       }
     }
   }
@@ -871,7 +890,8 @@ function vystupDlazdice(v) {
     if (!v.maska[i]) continue;
     const ik = retezce[v.ik[i]];
     if (v.sv[i]) {
-      sv.push({ id: v.id[i], sv: v.sv[i], ik, lon: v.lon[i], lat: v.lat[i] });
+      // engine 341: `r` = u ryb dosah vody (m), jinak velikost druhu
+      sv.push({ id: v.id[i], sv: v.sv[i], ik, lon: v.lon[i], lat: v.lat[i], r: v.k[i] });
       continue;
     }
     const o = nastup(v.z0[i]);

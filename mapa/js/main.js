@@ -2691,6 +2691,7 @@ function naplanujStinyDomu(zaMs) {
 /// se po `sourcedata` s `isSourceLoaded` (záloha 2,6 s). Plátno je vždy
 /// aktuální – protokol `stiny://` z něj řeže až při požadavku.
 let stinyNacitaOd = 0;
+let stinyCekaOd = 0;              // engine 341: od kdy se čeká na donačtení zdrojů (bliknutí po zoomu)
 let stinyZnovu = false;
 let stinyZnovuCasovac = null;
 let stinyPosluchacMapy = null;
@@ -3428,6 +3429,21 @@ function prepoctiStinyDomu() {
     const exT = (mapa.getTerrain && mapa.getTerrain() && +mapa.getTerrain().exaggeration) || 1;
     teren = terenStinu(r, W, H, mpu, stred.lat, exT);
   } catch (eT) { console.warn('[stíny] terén', eT); }
+  // ⭐⭐ engine 341 (výtka T 23. 9.: „po přiblížení nebo oddálení bliknou stíny“):
+  // přepočet po změně zoomu běžel DŘÍV, než dojely dlaždice nové úrovně – dekorace
+  // (stíny stromů), domy a DEM (stíny kopců). Vyšla neúplná sada (bez stromů/kopců),
+  // o ~0,3 s později úplná → stíny zmizely a vrátily se (záznam snímků CDP). Dokud se
+  // zdroje donačítají, NEPUBLIKOVAT: dál visí staré plátno; nejvýš 2 s, pak kreslit.
+  // Bez starého plátna (první kresba) se kreslí hned – něco je lepší než nic.
+  {
+    const hotov = (id) => { try { return !mapa.getSource(id) || mapa.isSourceLoaded(id); } catch (e) { return true; } };
+    const neuplne = DEM_CEKAME.size > 0 || !hotov('dekorace') || !hotov('omt');
+    if (neuplne && stinyRozsah) {
+      if (!stinyCekaOd) stinyCekaOd = performance.now();
+      if (performance.now() - stinyCekaOd < 2000) { naplanujStinyDomu(200); return; }
+    }
+    stinyCekaOd = 0;
+  }
   // ⭐ engine 334: ZADÁNÍ KRESBY v typových polích (kreslí StinyKresba –
   // ve workeru, záloha na hlavním vlákně; vzhled stejný jako engine 333)
   const zad = zabalZadaniStinu(prstence, stromy, {

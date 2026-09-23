@@ -344,6 +344,24 @@ void main() { o = texture(uTex, vUV) * uK; }`;
       gl.disable(gl.STENCIL_TEST);
     }
 
+    // ⭐ engine 341: maska měkkého okraje plátna (vnějších 12 %, smoothstep) – totéž
+    // jako StinyKresba (2D); násobí se výsledek (blend ZERO, SRC_ALPHA)
+    let texOkraj = null;
+    function zajistiOkraj() {
+      if (texOkraj) return texOkraj;
+      const N = 64, px = new Uint8Array(N * N * 4);
+      const f = (q) => { const d = Math.min(q, 1 - q) / 0.12; return d >= 1 ? 1 : (d <= 0 ? 0 : d * d * (3 - 2 * d)); };
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) px[(j * N + i) * 4 + 3] = Math.round(255 * f((i + 0.5) / N) * f((j + 0.5) / N));
+      texOkraj = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texOkraj);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, N, N, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return texOkraj;
+    }
+
     function kresli(zad) {
       if (ztracen || gl.isContextLost()) throw new Error('kontext ztracen');
       const F = zad.F, S = 1 / F, w2 = zad.w2, h2 = zad.h2;
@@ -383,6 +401,13 @@ void main() { o = texture(uTex, vUV) * uK; }`;
       // 4) půdorysy ven (stín neleží na střeše)
       gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
       stencilem(pudorys, M, 0, 0, 0, 1);
+      // 4b) engine 341: měkký okraj plátna (výsledek × maska)
+      gl.blendFunc(gl.ZERO, gl.SRC_ALPHA);
+      kvadr.n = 0;
+      kvadr.v(0, 0, 0, 0); kvadr.v(Wp, 0, 1, 0); kvadr.v(0, Hp, 0, 1);
+      kvadr.v(Wp, 0, 1, 0); kvadr.v(Wp, Hp, 1, 1); kvadr.v(0, Hp, 0, 1);
+      nahraj(vboTex, kvadr);
+      texturou(zajistiOkraj(), 0, 6, M);
       // 5) MSAA → textura
       gl.disable(gl.BLEND);
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb.msaa);

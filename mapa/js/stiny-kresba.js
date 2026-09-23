@@ -22,6 +22,26 @@
   const BARVA_STROMU = 'rgba(42,29,16,0.8)';
   let bx = new Float64Array(256), by = new Float64Array(256);
 
+  // ⭐ engine 341 (výtka T 23. 9.: „po oddálení bliknou stíny“): MĚKKÝ OKRAJ plátna –
+  // vnějších 12 % každé strany plynule dozní (smoothstep). Plátno sahá 30 % za pohled,
+  // takže je okraj normálně mimo obrazovku; po oddálení nebo rychlém posunu za plátno
+  // (než doběhne přepočet) už není vidět ostrá hrana hustých stínů. Týž tvar má maska
+  // v stiny-gl.js.
+  const OKRAJ = 0.12;
+  function okrajF(u) { const d = Math.min(u, 1 - u) / OKRAJ; return d >= 1 ? 1 : (d <= 0 ? 0 : d * d * (3 - 2 * d)); }
+  let maskaOkraje = null;
+  function maska() {
+    if (maskaOkraje) return maskaOkraje;
+    const N = 64;
+    const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(N, N) : document.createElement('canvas');
+    c.width = N; c.height = N;
+    const x = c.getContext('2d'), img = x.createImageData(N, N);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) img.data[(j * N + i) * 4 + 3] = Math.round(255 * okrajF((i + 0.5) / N) * okrajF((j + 0.5) / N));
+    x.putImageData(img, 0, 0);
+    maskaOkraje = c;
+    return c;
+  }
+
   function kresli(tmp, cil, zad, zdroje) {
     const F = zad.F, S = 1 / F, w2 = zad.w2, h2 = zad.h2;
     if (tmp.width !== w2 || tmp.height !== h2) { tmp.width = w2; tmp.height = h2; }
@@ -148,6 +168,11 @@
     vctx.globalAlpha = zad.kryti;
     vctx.drawImage(tmp, 0, 0);
     vctx.globalAlpha = 1;
+    // engine 341: měkký okraj (viz maska)
+    vctx.globalCompositeOperation = 'destination-in';
+    vctx.imageSmoothingEnabled = true;
+    vctx.drawImage(maska(), 0, 0, w2, h2);
+    vctx.globalCompositeOperation = 'source-over';
   }
 
   /// Rastrová dlaždice z/x/y vyříznutá z výsledného plátna (rozsah r

@@ -727,6 +727,17 @@ function stylHerni(ctx) {
                    'sad', '#8FB04A', 'vinice', '#B9A24A', 'chmel', '#A8A052',
                    'kroviny', '#3E6B34', '#4C8C86'],
                  'fill-opacity': 0.16, 'fill-antialias': false } },
+      // ⭐ engine 341: HRANICE POZEMKŮ – obrysy polí, luk, sadů a vinic (ZABAGED bloky
+      // využití půdy; jednotlivé parcely katastru k dispozici nejsou) jako jemná
+      // „mez“; pod lesem, takže okraje lesa kryje les
+      { id: 'pozemky-hranice', type: 'line', source: 'krajina', 'source-layer': 'krajina',
+        minzoom: 14.5,
+        filter: ['in', ['get', 't'], ['literal', ['orna', 'louka', 'sad', 'vinice', 'chmel', 'kroviny']]],
+        layout: { 'line-join': 'round' },
+        paint: { 'line-color': '#6E5E3A',
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 14.5, 0, 15.5, 0.48, 17, 0.62],
+                 'line-width': ['interpolate', ['linear'], ['zoom'], 14.5, 0.7, 17, 1.8, 19, 2.8],
+                 'line-blur': 0.4 } },
       // Vzory = jen BEZTVARÉ laviny barvy (žádné rozpoznatelné objekty
       // — jejich přeskládání mezi zoomy pak není vidět); stromy, kytky
       // a střechy kreslí jako skutečné BODY mapy js/dekorace.js
@@ -781,10 +792,19 @@ function stylHerni(ctx) {
         paint: AKVAREL
           ? { 'fill-pattern': 'vzor-louka', 'fill-opacity': 0.5 }
           : { 'fill-color': '#C3D98B', 'fill-opacity': 0.55 } },
+      // ⭐ engine 341 (výtka T: „šly by zvýraznit hranice pozemků a ploty?“): ploty
+      // tmavší a silnější (#6F5F3F 0,5 → #574530 0,7), od z16,5 se SLOUPKY (tečky
+      // přes čárkování s kulatým koncem)
       { id: 'zahrada-plot', type: 'line', source: 'krajina', 'source-layer': 'krajina',
         minzoom: 15, filter: ['==', ['get', 't'], 'zahrada'],
-        paint: { 'line-color': '#6F5F3F', 'line-opacity': 0.5,
-                 'line-width': sirkaMetry(0.5, 0.45, 15) } },
+        paint: { 'line-color': '#574530', 'line-opacity': 0.7,
+                 'line-width': sirkaMetry(0.7, 0.55, 15) } },
+      { id: 'zahrada-plot-sloupky', type: 'line', source: 'krajina', 'source-layer': 'krajina',
+        minzoom: 16.5, filter: ['==', ['get', 't'], 'zahrada'],
+        layout: { 'line-cap': 'round' },
+        paint: { 'line-color': '#453421',
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 16.5, 0, 17, 0.8],
+                 'line-width': sirkaMetry(1.4, 1.1, 16.5), 'line-dasharray': [0, 3] } },
       // zdi (ZABAGED: opěrné, ostatní, protihlukové) – kamenná linka
       { id: 'zed', type: 'line', source: 'krajina', 'source-layer': 'cary',
         minzoom: 15, filter: ['==', ['get', 't'], 'zed'],
@@ -794,10 +814,15 @@ function stylHerni(ctx) {
       // parcel (RÚIAN: hrana zastavěná plocha/zahrada × ulice), předpočítané
       // na PC. ZABAGED plot nemá, OSM fence je na venkově děravé.
       { id: 'plot', type: 'line', source: 'krajina', 'source-layer': 'ploty',
-        minzoom: 15.5, layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#6F5F3F',
-                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 15.5, 0, 16.2, 0.6],
-                 'line-width': sirkaMetry(0.6, 0.35, 15.5) } },
+        minzoom: 15.3, layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#574530',
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 15.3, 0, 16, 0.82],
+                 'line-width': sirkaMetry(0.9, 0.55, 15.3) } },
+      { id: 'plot-sloupky', type: 'line', source: 'krajina', 'source-layer': 'ploty',
+        minzoom: 16.5, layout: { 'line-cap': 'round' },
+        paint: { 'line-color': '#453421',
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 16.5, 0, 17, 0.85],
+                 'line-width': sirkaMetry(1.7, 1.2, 16.5), 'line-dasharray': [0, 2.6] } },
       { id: 'hrbitov', type: 'fill', source: 'omt', 'source-layer': 'landuse',
         minzoom: 12, filter: ['==', ['get', 'class'], 'cemetery'],
         paint: { 'fill-color': '#B7C4A6', 'fill-opacity': 0.55 } },

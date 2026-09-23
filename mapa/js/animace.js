@@ -3,7 +3,8 @@
  *
  * Vlastní PLÁTNO nad mapou – mapa se kvůli animacím NEPŘEKRESLUJE (animace uvnitř
  * mapy: TT stihne jen ~30 překreslení/s a CPU +50 %). Pravidla ze zátěžového testu:
- *  - takt: při pohybu mapy každý snímek, v klidu 24 Hz, po minutě bez pohybu 12 Hz;
+ *  - takt: při pohybu mapy každý snímek v události `render` (týž snímek jako mapa),
+ *    v klidu 24 Hz, po minutě bez pohybu 12 Hz;
  *    plátno v nižším rozlišení (≤ 1,5 px na CSS px),
  *  - polohy LEVNOU projekcí: výška terénu kotvy jednou (queryTerrainElevation), pak
  *    `transform.locationToScreenPoint(ll, {getElevationForLngLat: () => h})` – jako káně
@@ -168,7 +169,7 @@ const AnimaceNadMapou = (() => {
           .map((f) => stare.get(f.id) || { id: f.id, sv: 3, lon: f.lon, lat: f.lat, h: null, dalsi: 0, faze: (f.id % 997) / 997 })
       : [];
     vodni = z >= VODA_OD_Z
-      ? k.voda.filter(vIn).slice(0, MAX_VODNICH).map((f) => ({ id: f.id, sv: 4, lon: f.lon, lat: f.lat, h: null }))
+      ? k.voda.filter(vIn).slice(0, MAX_VODNICH).map((f) => ({ id: f.id, sv: 4, lon: f.lon, lat: f.lat, h: null, r: +f.r || 3 }))
       : [];
     for (const a of kominy) if (a.h === null) a.h = vyskaKotvy(a);
     for (const a of vodni) if (a.h === null) a.h = vyskaKotvy(a);
@@ -227,29 +228,38 @@ const AnimaceNadMapou = (() => {
     ctx.globalAlpha = 1;
   }
   function noveHejno() {
-    // ⛔ TT 23. 9.: dráha přes náhodný bod zeměpisného výřezu (s náklonem sahá
-    // daleko k obzoru) + výška letu → hejno letělo po HORNÍM OKRAJI obrazovky.
-    // Cíl dráhy je proto bod na OBRAZOVCE ve střední až dolní části (vyvýšené
-    // hejno se posune nahoru); unproject jednou za hejno (~1×/min) nevadí.
+    // ⭐ engine 341 (výtka T: „ptáci ať se takto nerozplynou“): hejno VLÉTNE zpoza
+    // jednoho okraje obrazovky a VYLÉTNE za druhým – dřív se na začátku a konci
+    // dráhy prolínalo do ztracena uprostřed obrazovky. Vlevo↔vpravo ve spodních
+    // 2/3 výšky (nahoře je s náklonem daleko obzor); 90 px za okrajem (rozpětí
+    // hejna). unproject dvakrát za hejno (~1×/min) nevadí.
     const kont = mapa.getContainer(), W = kont.clientWidth, H = kont.clientHeight;
-    let c = null;
-    try { c = mapa.unproject([W * (0.3 + Math.random() * 0.4), H * (0.5 + Math.random() * 0.3)]); } catch (e) { c = null; }
-    if (!c) c = mapa.getCenter();
-    const kx = 111320 * Math.cos(c.lat * Math.PI / 180), ky = 111320;
-    const mPx = 78271.52 / Math.pow(2, mapa.getZoom()) * Math.cos(c.lat * Math.PI / 180);
-    const R = 0.7 * Math.hypot(W, H) * mPx;
-    const smer = Math.random() * Math.PI * 2;
+    const zleva = Math.random() < 0.5, okraj = 90;
+    let A = null, B = null;
+    try {
+      A = mapa.unproject([zleva ? -okraj : W + okraj, H * (0.35 + Math.random() * 0.5)]);
+      B = mapa.unproject([zleva ? W + okraj : -okraj, H * (0.3 + Math.random() * 0.55)]);
+    } catch (e) { return null; }
+    if (!A || !B) return null;
+    const kx = 111320 * Math.cos(A.lat * Math.PI / 180), ky = 111320;
+    const dx = (B.lng - A.lng) * kx, dy = (B.lat - A.lat) * ky;
+    const delka = Math.hypot(dx, dy);
+    if (!(delka > 20)) return null;
+    const smer = Math.atan2(dy, dx);
     const n = 6 + Math.floor(Math.random() * 7);
     const ptaci = [];
+    let ocas = 0;
     for (let i = 0; i < n; i++) {
       const j = i - (n - 1) / 2;
-      ptaci.push({ podel: -Math.abs(j) * 7 + (Math.random() - 0.5) * 3, bok: j * 6 + (Math.random() - 0.5) * 2,
+      const podel = -Math.abs(j) * 7 + (Math.random() - 0.5) * 3;
+      ocas = Math.max(ocas, -podel);
+      ptaci.push({ podel, bok: j * 6 + (Math.random() - 0.5) * 2, vel: 0.9 + Math.random() * 0.2,
                    faze: Math.random() * 6.28, frek: 3 + Math.random(), klouze: false, prepni: Math.random() * 3 });
     }
-    const hT = vyskaTerenu(c.lng, c.lat);
-    return { x: c.lng - Math.cos(smer) * R / kx, y: c.lat - Math.sin(smer) * R / ky,
-             smer, v: 16 + Math.random() * 6, nad: 60 + Math.random() * 40,     // špačci/holubi ~20 m/s
-             teren: hT === null ? 300 : hT, terenCil: hT === null ? 300 : hT, mereni: 0, uleteno: 0, R, ptaci };
+    const hT = vyskaTerenu(A.lng, A.lat);
+    return { x: A.lng, y: A.lat, smer, delka, ocas,
+             v: 16 + Math.random() * 6, nad: 60 + Math.random() * 40,     // špačci/holubi ~20 m/s
+             teren: hT === null ? 300 : hT, terenCil: hT === null ? 300 : hT, mereni: 0, uleteno: 0, ptaci };
   }
   function krokPtaci(dt, t, st) {
     if (!hejno) return;
@@ -268,36 +278,43 @@ const AnimaceNadMapou = (() => {
       p.prepni -= dt;
       if (p.prepni < 0) { p.klouze = !p.klouze; p.prepni = p.klouze ? 1 + Math.random() * 2 : 2 + Math.random() * 3; }
     }
-    if (h.uleteno > 2.1 * h.R || !ptaciSmi(st) || mapa.getZoom() < PTACI_OD_Z - 0.5) {
+    // konec, až je za okrajem i OCAS hejna (rozestupy rostou se zoomem → rezerva)
+    if (h.uleteno > h.delka + h.ocas * 4 + 60 || !ptaciSmi(st) || mapa.getZoom() < PTACI_OD_Z - 0.5) {
       hejno = null;
       dalsiHejnoMs = t + 35000 + Math.random() * 45000;
     }
   }
-  /// silueta racka („M“ ze dvou oblouků) VZPŘÍMENĚ jako v ilustrovaných mapách –
-  /// natočená podle směru letu vypadala jako klikyháky (TT 23. 9.); směr ukazuje
-  /// pohyb hejna a mírný náklon (±0,3 rad podle vodorovné složky letu)
+  /// ⭐ engine 341 („ptáky udělej hezčí“): PLNÁ silueta – dvě srpková křídla (u ramene
+  /// silná, ke špičce tenká) a malé tělo, VZPŘÍMENĚ jako v ilustrovaných mapách
+  /// (natočená podle směru letu vypadala jako klikyháky); mávání zvedá ramena a
+  /// spouští špičky, mírný náklon podle vodorovné složky letu
   function kresliPtaka(x, y, uhel, s, mach, barva, alfa) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(0.3 * Math.cos(uhel));
     ctx.globalAlpha = alfa;
-    ctx.strokeStyle = barva;
-    ctx.lineWidth = Math.max(1, s * 0.11);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    const rameno = -s * (0.22 + 0.2 * mach);        // výška ramen (záporně = nahoru)
-    const spicka = s * (0.02 - 0.12 * mach);         // špičky křídel
+    ctx.fillStyle = barva;
+    const rameno = -s * (0.2 + 0.18 * mach);       // výška ramen (záporně = nahoru)
+    const spicka = s * (0.03 - 0.13 * mach);        // špičky křídel
+    const tl = s * 0.075;                            // tloušťka křídla u ramene
     ctx.beginPath();
-    ctx.moveTo(-s / 2, spicka);
-    ctx.quadraticCurveTo(-s / 4, rameno, 0, s * 0.06);
-    ctx.quadraticCurveTo(s / 4, rameno, s / 2, spicka);
-    ctx.stroke();
+    ctx.moveTo(0, s * 0.02);
+    ctx.quadraticCurveTo(-s * 0.2, rameno - tl, -s * 0.5, spicka);        // náběžná hrana
+    ctx.quadraticCurveTo(-s * 0.24, rameno + tl * 1.4, -s * 0.03, s * 0.1); // odtoková hrana
+    ctx.lineTo(s * 0.03, s * 0.1);
+    ctx.quadraticCurveTo(s * 0.24, rameno + tl * 1.4, s * 0.5, spicka);
+    ctx.quadraticCurveTo(s * 0.2, rameno - tl, 0, s * 0.02);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();                                  // tělo a hlava
+    ctx.ellipse(0, s * 0.07, s * 0.045, s * 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
   function kresliPtaky(t, st) {
     if (!hejno) return;
     const h = hejno, z = mapa.getZoom();
-    const s = 15 * Math.max(0.55, Math.min(1.9, 0.55 + (z - 13.5) * 0.35));
+    const s = 17 * Math.max(0.55, Math.min(1.9, 0.55 + (z - 13.5) * 0.35));
     const ex = Math.cos(h.smer), ey = Math.sin(h.smer);
     const kx = 111320 * Math.cos(h.y * Math.PI / 180), ky = 111320;
     const p0 = bod(h.x, h.y, h.teren + h.nad), p1 = bod(h.x + ex * 30 / kx, h.y + ey * 30 / ky, h.teren + h.nad);
@@ -310,10 +327,6 @@ const AnimaceNadMapou = (() => {
       sx = -Math.sin(az) * d; sy = -Math.cos(az) * d;
       stin = 0.16 * (1 - Math.min(0.8, st.oblacnost || 0));
     }
-    // objevení a zmizení (prvních a posledních 12 % dráhy) – i když hejno vletí rovnou do záběru
-    const podil = h.uleteno / (2.1 * h.R);
-    const prechod = Math.max(0, Math.min(1, podil / 0.12, (1 - podil) / 0.12));
-    if (prechod <= 0.01) return;
     // rozestupy v hejnu aspoň ~0,8 velikosti ptáka na obrazovce (jinak se na nízkém
     // zoomu slijí do chuchvalce a na vyšším se překrývají)
     const mPx = 78271.52 / Math.pow(2, z) * Math.cos(h.y * Math.PI / 180);
@@ -324,10 +337,10 @@ const AnimaceNadMapou = (() => {
       const mach = p.klouze ? 0.1 : Math.sin(p.faze + t / 1000 * p.frek * 6.283);
       if (stin > 0.02) {
         const q = bod(lon + sx / kx, lat + sy / ky, h.teren);
-        kresliPtaka(q.x, q.y, uhel, s * 0.9, mach, '#000', stin * prechod);
+        kresliPtaka(q.x, q.y, uhel, s * 0.9 * p.vel, mach, '#000', stin);
       }
       const q = bod(lon, lat, h.teren + h.nad + 1.5 * Math.sin(p.faze + t / 900));
-      kresliPtaka(q.x, q.y, uhel, s, mach, '#2b2622', 0.85 * prechod);
+      kresliPtaka(q.x, q.y, uhel, s * p.vel, mach, '#2c2621', 0.9);
     }
     ctx.globalAlpha = 1;
   }
@@ -339,7 +352,10 @@ const AnimaceNadMapou = (() => {
     if (krouzky.length >= MAX_KROUZKU) return;
     const k = vodni[Math.floor(Math.random() * vodni.length)];
     if (k.h === null || !k.vidi) return;
-    krouzky.push({ k, t0: t, zivot: 2.6, rMax: 4 + Math.random() * 3, pocet: Math.random() < 0.5 ? 3 : 2 });
+    // engine 341 (výtka T: „žbluňknutí na řece lezou i na louku“): poloměr (m, už se
+    // stylizací) nejvýš 0,9 dosahu vody u kotvy (worker: voda do 8 směrů)
+    const rMaxM = Math.min(k.r * 0.9, (4 + Math.random() * 3) * 2.2);
+    krouzky.push({ k, t0: t, zivot: 2.6, rMaxM, pocet: Math.random() < 0.5 ? 3 : 2 });
   }
   /// kroužek = tmavší „údolí“ pod světlou linkou (na malované vodě s bílými vlnkami
   /// samotná bílá linka zanikla – TT 23. 9.) + krátké šplouchnutí uprostřed
@@ -354,13 +370,14 @@ const AnimaceNadMapou = (() => {
         ctx.globalAlpha = zakl * (1 - a / 0.3);
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.ellipse(k.sx, k.sy, 1.4 * pxm, 1.4 * pxm * zplosteni, 0, 0, Math.PI * 2);
+        const rs = Math.min(1.4, r.rMaxM * 0.3) * pxm;
+        ctx.ellipse(k.sx, k.sy, rs, rs * zplosteni, 0, 0, Math.PI * 2);
         ctx.fill();
       }
       for (let i = 0; i < r.pocet; i++) {
         const ai = a - i * 0.35, zivotI = r.zivot - i * 0.35;
         if (ai <= 0 || ai >= zivotI) continue;
-        const rx = Math.min(46, r.rMax * 2.2 * Math.pow(ai / zivotI, 0.7) * pxm);
+        const rx = Math.min(46, r.rMaxM * Math.pow(ai / zivotI, 0.7) * pxm);
         if (rx < 0.8) continue;
         const alfa = zakl * (1 - ai / zivotI);
         ctx.lineWidth = 2.2;
@@ -387,17 +404,11 @@ const AnimaceNadMapou = (() => {
   }
 
   // ------------------------------------------------------------------ smyčka
-  function snimek(t) {
-    raf = 0;
-    if (!smi()) { vycisti(true); return; }
-    // TAKT: při pohybu mapy KAŽDÝ snímek (mapa se překresluje stejně a kouř/kroužky
-    // musí sedět na domech a vodě – při 30 Hz by proti mapě „plavaly“), v klidu 24 Hz,
-    // po minutě bez pohybu 12 Hz (každý snímek WebView = snímek Flutteru, baterie:
-    // 30 Hz napořád stálo v klidu +57 % jádra – TT 23. 9.)
-    let pohyb = false;
-    try { pohyb = (mapa.isMoving && mapa.isMoving()) || (typeof prstNaMape === 'function' && prstNaMape()); } catch (e) { /* nic */ }
-    const interval = pohyb ? 0 : (t - aktivitaMs > 60000 ? 83 : 42);
-    if (t - posledni < interval - 3) { naplanuj(); return; }
+  function pohybMapy() {
+    try { return (mapa.isMoving && mapa.isMoving()) || (typeof prstNaMape === 'function' && prstNaMape()); }
+    catch (e) { return false; }
+  }
+  function vykresli(t) {
     const dt = Math.min(0.1, Math.max(0.001, (t - posledni) / 1000));
     posledni = t;
     const t0 = performance.now();
@@ -419,7 +430,27 @@ const AnimaceNadMapou = (() => {
     if (cenaEma > 6 && uroven < UROVNE.length - 1) { uroven++; cenaEma = 3; kotvySig = ''; levneOd = t; }
     else if (cenaEma < 2.5 && uroven > 0) { if (!levneOd) levneOd = t; else if (t - levneOd > 10000) { uroven--; levneOd = t; kotvySig = ''; } }
     else if (cenaEma >= 2.5) levneOd = 0;
+    return st;
+  }
+  // TAKT: v klidu 24 Hz, po minutě bez pohybu 12 Hz (každý snímek WebView = snímek
+  // Flutteru, baterie: 30 Hz napořád stálo v klidu +57 % jádra – TT 23. 9.).
+  // ⭐ engine 341: PŘI POHYBU MAPY se kreslí v události `render` (hned po snímku mapy,
+  // s aktuální kamerou) – z vlastního rAF před vykreslením mapy by kouř a kroužky
+  // o snímek zaostávaly a při tahu „plavaly“ (jako káně, výtka T 23. 9.)
+  function snimek(t) {
+    raf = 0;
+    if (!smi()) { vycisti(true); return; }
+    if (pohybMapy()) { naplanuj(); return; }
+    const interval = t - aktivitaMs > 60000 ? 83 : 42;
+    if (t - posledni < interval - 3) { naplanuj(); return; }
+    const st = vykresli(t);
     if (neco(st)) naplanuj(); else vycisti(false);
+  }
+  function naRender() {
+    if (!mapa || !platno || !pohybMapy() || !smi()) return;
+    const t = performance.now();
+    if (!neco(pocasi(t))) { vycisti(false); return; }
+    vykresli(t);
   }
   function kontrola() {
     if (!smi()) { vycisti(true); return; }
@@ -432,6 +463,7 @@ const AnimaceNadMapou = (() => {
     const st = pocasi(t);
     if (!hejno && (t > dalsiHejnoMs || vynut().ptaciHned) && mapa.getZoom() >= PTACI_OD_Z && ptaciSmi(st)) {
       hejno = noveHejno();
+      if (!hejno) dalsiHejnoMs = t + 10000;
       if (window.__animaceVynut) window.__animaceVynut.ptaciHned = false;
     }
     if (neco(st)) naplanuj();
@@ -444,6 +476,7 @@ const AnimaceNadMapou = (() => {
     if (!pripoj.hotovo) {
       pripoj.hotovo = true;
       mapa.on('move', aktivita);
+      mapa.on('render', naRender);
       mapa.on('moveend', () => obnovKotvy(false));
       mapa.on('resize', velikost);
       try { mapa.getCanvas().addEventListener('touchstart', aktivita, { passive: true }); } catch (e) { /* nic */ }
@@ -462,7 +495,8 @@ const AnimaceNadMapou = (() => {
       hejnoTed: (predskok) => {
         if (!mapa) return false;
         hejno = noveHejno();
-        const d = (predskok || 0) * hejno.R, kx = 111320 * Math.cos(hejno.y * Math.PI / 180);
+        if (!hejno) return false;
+        const d = (predskok || 0) * hejno.delka, kx = 111320 * Math.cos(hejno.y * Math.PI / 180);
         hejno.x += Math.cos(hejno.smer) * d / kx; hejno.y += Math.sin(hejno.smer) * d / 111320; hejno.uleteno = d;
         naplanuj();
         return true;
@@ -471,7 +505,7 @@ const AnimaceNadMapou = (() => {
       hejnoPoloha: () => {
         if (!hejno) return null;
         const p = bod(hejno.x, hejno.y, hejno.teren + hejno.nad);
-        return { x: Math.round(p.x), y: Math.round(p.y), uleteno: Math.round(hejno.uleteno), R: Math.round(hejno.R), teren: Math.round(hejno.teren) };
+        return { x: Math.round(p.x), y: Math.round(p.y), uleteno: Math.round(hejno.uleteno), delka: Math.round(hejno.delka), teren: Math.round(hejno.teren) };
       },
     },
   };

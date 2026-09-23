@@ -98,6 +98,14 @@ const Ptaci = (() => {
       document.head.appendChild(s);
     }
     if (!bezi) { bezi = true; poslT = performance.now(); requestAnimationFrame(snimek); }
+    // ⭐ engine 341 (výtka T: „když se posouvám, káně se trochu posouvá taky – nedrží
+    // pozici“): vlastní rAF běžel PŘED vykreslením mapy, takže bral kameru o snímek
+    // starší a při tahu pták klouzal. Při pohybu mapy se proto znovu umístí v události
+    // `render` (hned po vykreslení snímku mapy, s aktuální kamerou, týž snímek).
+    if (!pripoj.render) {
+      pripoj.render = true;
+      mapa.on('render', () => { try { if (bezi && ptaci.length && mapaSeHybe()) umisti(); } catch (e) { /* nic */ } });
+    }
     if (window.KlidovyTakt) KlidovyTakt.pridej('ptaci', (t) => krokVKlidu(t), 1);
   }
 
