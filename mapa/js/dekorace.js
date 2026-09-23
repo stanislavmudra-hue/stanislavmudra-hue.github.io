@@ -414,6 +414,7 @@ const Dekorace = (() => {
     // buffer 0: s allow-overlap netřeba přesah — levnější přeskládání
     mapa.addSource('dekorace',
         { type: 'geojson', data, buffer: 0, maxzoom: 14 });
+    zapsaneFeatury = (data && data.features) || [];
     // ⛔⛔ engine 264: SVĚTLA SÍDEL VE VLASTNÍM ZDROJI. Mihotání přes
     // `setFeatureState` na zdroji `dekorace` (tisíce stromů) přestavovalo
     // paint buffery všech dekorací každých 400 ms (dlouhé úlohy 60–88 ms)
@@ -2501,9 +2502,10 @@ const Dekorace = (() => {
           // ⚡ zápis až v klidu (zapisAzVKlidu v main.js): během gesta
           // by shodil drapovací textury; dávky se slévají na poslední
           if (typeof zapisAzVKlidu === 'function') {
-            zapisAzVKlidu('deko', () => zdroj.setData(kolekce));
+            zapisAzVKlidu('deko', () => { zdroj.setData(kolekce); zapsaneFeatury = kolekce.features; });
           } else {
             zdroj.setData(kolekce);
+            zapsaneFeatury = kolekce.features;
           }
         }
       } else if (featury.length) {
@@ -2520,6 +2522,11 @@ const Dekorace = (() => {
   // průchody s plnou keší jsou skoro zadarmo, takže dávka nebolí.
   // Otisk poslední odeslané sestavy dekorací (viz `setData` výš).
   let dekoracePodpis = '';
+  // ⭐ engine 334: co je PRÁVĚ ZAPSANÉ ve zdroji `dekorace` (tytéž objekty
+  // Feature). Stíny stromů v main.js čtou tohle místo
+  // querySourceFeatures('dekorace'), které prvky znovu skládá z dlaždic –
+  // změřeno na TT 23. 9.: 38 ms na přepočet stínů (z14,6, 1 400 prvků).
+  let zapsaneFeatury = [];
 
   /// Levný otisk sestavy: počet + souřadnice prvního a posledního prvku.
   /// Dekorace se rodí po buňkách, takže když přibude nebo ubude bod,
@@ -2650,7 +2657,10 @@ const Dekorace = (() => {
       dopln();
     } catch (e) { /* styl se zrovna mění */ }
   }
-  return { pripoj, nastavStin, nastavDohled, _ladeni: { postavIndex, plochyPodBodem, dopln, casy: () => casy,
+  /// engine 334: zapsané dekorace pro stíny (prázdné, když zdroj neexistuje –
+  /// po přepnutí na styl bez dekorací nesmí zůstat stíny „starých“ stromů)
+  function zapsane() { return (mapa && mapa.getSource('dekorace')) ? zapsaneFeatury : []; }
+  return { pripoj, nastavStin, nastavDohled, zapsane, _ladeni: { postavIndex, plochyPodBodem, dopln, casy: () => casy,
     stav: () => ({ kes: kesDlazdic.size, mrizka: idxMrizka && idxMrizka.size,
                    velke: idxVelke.length, zoomy: idxZoomy, zCil: idxZCil,
                    dlazdic: idxDlazdice && idxDlazdice.size }) } };

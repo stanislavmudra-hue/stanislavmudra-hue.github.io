@@ -426,7 +426,7 @@ function aplikujDohled() {
   } catch (e) { console.warn('[dohled] budovy 3d', e); }
   try {
     if (mapa.getLayer('stin-domu')) mapa.setLayerZoomRange('stin-domu', STINY_OD_Z - dz, 24);
-    stinyPodpis = ''; naplanujStinyDomu(50);
+    zneplatniStiny(); naplanujStinyDomu(50);
   } catch (e) { console.warn('[dohled] stíny', e); }
   try { if (typeof Dekorace !== 'undefined' && Dekorace.nastavDohled) Dekorace.nastavDohled(dz); }
   catch (e) { console.warn('[dohled] dekorace', e); }
@@ -2622,6 +2622,14 @@ const STINY_MAX_STROMU = 3000;
 const STINY_DLAZDICE = 512;      // engine 221: velikost rastrové dlaždice stínů (px)
 const STROM_VYSKA_M = 22.9;      // sprite 98 CSS px × icon-size 19,7 na z22 = 22,9 m × k × ev
 let budovyKes = { cas: 0, prvky: [] };
+// ⭐ engine 334: kresba stínů ve WORKERU (js/stiny-kresba-worker.js, kód
+// kresby sdílí js/stiny-kresba.js). Hlavní vlákno jen posbírá domy a stromy;
+// kreslení i řezání dlaždic stiny:// běží mimo něj.
+// ⛔ Podpis se nuluje JEN přes zneplatniStiny(): kresba ve workeru je
+// asynchronní a nulování během ní by se ztratilo (dokončení by podpis zase
+// nastavilo a přepočet po dojití masky kopců by se nekonal) – hlídá stinyGen.
+let stinyGen = 0;
+function zneplatniStiny() { stinyPodpis = ''; stinyGen++; }
 
 /// Budovy v načtených dlaždicích – sdílená keš pro 3D domy i stíny (oba
 /// běží na idle a dotaz do dlaždic není zadarmo).
@@ -2663,7 +2671,7 @@ function krytiStinu(z) {
 function nastavKrytiStinu() {
   // změna síly světla o > 0,03 → překreslit (alfa je v plátně)
   const k = Math.min(STINY_KRYTI_MAX, Math.max(0, stinSvetlo.sila));
-  if (Math.abs(k - stinKrytiPosledni) > 0.03) { stinKrytiPosledni = k; stinyPodpis = ''; naplanujStinyDomu(); }
+  if (Math.abs(k - stinKrytiPosledni) > 0.03) { stinKrytiPosledni = k; zneplatniStiny(); naplanujStinyDomu(); }
 }
 /// ⛔ NE debounce (clearTimeout + nový časovač): `idle` chodí i na STOJÍCÍ
 /// mapě každých ~500 ms (animace včel, mraků…), takže odklad 600 ms se pořád
@@ -2762,37 +2770,35 @@ function registrujProtokolStinu() {
   maplibregl.addProtocol('stiny', async (params) => {
     const m = /stiny:\/\/(\d+)\/(\d+)\/(\d+)\/(\d+)/.exec(params.url || '');
     const r = stinyRozsah;
-    if (!m || !r || !stinyPlatno || !stinyPlatno.width) return { data: await prazdnaDlazdice() };
+    if (!m || !r) return { data: await prazdnaDlazdice() };
     const z = +m[2], x = +m[3], y = +m[4];
     const n = Math.pow(2, z);
-    const tx0 = x / n, tx1 = (x + 1) / n, ty0 = y / n, ty1 = (y + 1) / n;   // Mercator 0..1
-    if (tx1 <= r.x0 || tx0 >= r.x1 || ty1 <= r.y0 || ty0 >= r.y1) return { data: await prazdnaDlazdice() };
-    const kx = stinyPlatno.width / (r.x1 - r.x0), ky = stinyPlatno.height / (r.y1 - r.y0);
-    // sub-rect plátna pro dlaždici; části mimo plátno oříznout (dest úměrně)
-    let sx = (tx0 - r.x0) * kx, sy = (ty0 - r.y0) * ky;
-    let sw = (tx1 - tx0) * kx, sh = (ty1 - ty0) * ky;
-    // ⭐ engine 333 (výkon, profil gest TT 22. 9.: řezání dlaždic drawImage +
-    // createImageBitmap 2,2 s za sadu gest): dlaždice má jen tolik pixelů,
-    // kolik jich na ni připadá ze zdrojového plátna (mocnina 2, 64–512) – víc
-    // detailu dlaždice mít nemůže, MapLibre ji roztáhne na tileSize sám.
-    // Dřív vždy 512×512 = 1 MB na dlaždici i tam, kde zdroj dal ~150 px.
-    let D = 64;
-    while (D < STINY_DLAZDICE && D < Math.max(sw, sh) * 1.15) D *= 2;
-    let dx = 0, dy = 0, dw = D, dh = D;
-    if (sx < 0) { dx = -sx / sw * dw; dw -= dx; sw += sx; sx = 0; }
-    if (sy < 0) { dy = -sy / sh * dh; dh -= dy; sh += sy; sy = 0; }
-    if (sx + sw > stinyPlatno.width) { const o = sx + sw - stinyPlatno.width; dw -= o / sw * dw; sw -= o; }
-    if (sy + sh > stinyPlatno.height) { const o = sy + sh - stinyPlatno.height; dh -= o / sh * dh; sh -= o; }
-    if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return { data: await prazdnaDlazdice() };
+    if ((x + 1) / n <= r.x0 || x / n >= r.x1 || (y + 1) / n <= r.y0 || y / n >= r.y1) {
+      return { data: await prazdnaDlazdice() };
+    }
+    // ⭐ engine 334: výsledné plátno drží worker kresby → dlaždici vyřízne
+    // on (drawImage + transferToImageBitmap mimo hlavní vlákno)
+    if (stinyObsahVeWorkeru) {
+      const bmp = await dlazdiceStinuZWorkeru(z, x, y);
+      return { data: bmp || await prazdnaDlazdice() };
+    }
+    if (!stinyPlatno || !stinyPlatno.width || typeof StinyKresba === 'undefined') {
+      return { data: await prazdnaDlazdice() };
+    }
+    // sub-rect plátna pro dlaždici (engine 333: dlaždice jen v rozlišení
+    // zdroje, 64–512 px – viz StinyKresba.vyrez)
+    const c = StinyKresba.vyrez(stinyPlatno, r, z, x, y, STINY_DLAZDICE, (D) => {
+      const k = document.createElement('canvas');
+      k.width = D; k.height = D;
+      return k;
+    });
+    if (!c) return { data: await prazdnaDlazdice() };
     // ⛔ engine 236: ZKOUŠENO A VRÁCENO – vlastní PNG BEZ KOMPRESE (stored
     // bloky zlibu) a poloviční rozlišení dlaždice. Mikrotest sliboval
     // 60 → 27 ms na dlaždici, jenže celá sada gest se ZDVOJNÁSOBILA
     // (144 → 275 snímků nad 33 ms, dlouhé úlohy 1,3 → 6,7 s): komprimovaný
     // PNG dekóduje Chrome mimo hlavní vlákno, kdežto megabajtový
     // nekomprimovaný se dekóduje draho v něm. Měřit celou sadu, ne kodér.
-    const c = document.createElement('canvas');
-    c.width = D; c.height = D;
-    c.getContext('2d').drawImage(stinyPlatno, sx, sy, sw, sh, dx, dy, dw, dh);
     // engine 272 ("stiny domu se nacitaji hrozne pomalu"): misto PNG (toBlob
     // + dekodovani, ~60 ms na dlazdici, 17 dlazdic = 1,1 s) rovnou ImageBitmap –
     // MapLibre v6 ho v odpovedi protokolu bere (kontrola isImageBitmap).
@@ -2819,6 +2825,127 @@ function srovnejPoradiStinu(vzdy) {
   // za budovy-vypln); ponecháno jako místo pro případný návrat
   void vzdy;
 }
+/// ⭐ engine 334: WORKER KRESBY STÍNŮ (viz js/stiny-kresba.js). Do potvrzení
+/// schopností (`umis`) a po jakékoli chybě kreslí hlavní vlákno TÝMŽ kódem.
+/// A/B měření: `window.__okolnikStinyWorker = false` → hlavní vlákno.
+let kresbaWorker = null;
+let kresbaStav = 0;                 // 0 nezkoušeno, 1 čeká na „umis", 2 funguje, −1 nejde
+let kresbaBezi = null;              // kresba v letu { id, podpis, r, gen, t0, casovac }
+let kresbaZnovu = false;            // během kresby přišel další požadavek
+let kresbaVyprselo = 0;             // vypršení v řadě (3 → worker se vypne)
+let kresbaId = 0;
+let kresbaTerenId = null;           // maska kopců, kterou worker už má
+const kresbaSiluety = new Set();    // siluety stromů, které worker už má
+const kresbaDlazdice = new Map();   // id → resolve (dlaždice v letu)
+const kresbaLadeni = new Map();     // id → resolve (ladicí zprávy)
+let stinyObsahVeWorkeru = false;    // publikované plátno drží worker (ne hlavní vlákno)
+function stinyKresbaWorker() {
+  if (window.__okolnikStinyWorker === false) return null;
+  if (kresbaStav === 2) return kresbaWorker;
+  if (kresbaStav !== 0) return null;
+  kresbaStav = -1;
+  try {
+    if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined'
+        || typeof StinyKresba === 'undefined') return null;
+    const sk = Array.from(document.scripts).find((x) => /\/main\.js/.test(x.src || ''));
+    const q = sk && sk.src.indexOf('?') >= 0 ? sk.src.slice(sk.src.indexOf('?')) : '';
+    kresbaWorker = new Worker('js/stiny-kresba-worker.js' + q);
+    kresbaWorker.onmessage = zpravaKresby;
+    kresbaWorker.onerror = (e) => kresbaSelhala('onerror ' + (e && e.message ? e.message : e));
+    kresbaStav = 1;
+    kresbaWorker.postMessage({ typ: 'umis' });
+  } catch (e) { kresbaStav = -1; kresbaWorker = null; }
+  return null;                      // do potvrzení kreslí hlavní vlákno
+}
+function kresbaSelhala(proc) {
+  console.warn('[stíny] worker kresby → kresba na hlavním vlákně:', proc);
+  kresbaStav = -1;
+  try { if (kresbaWorker) kresbaWorker.terminate(); } catch (e) { /* nic */ }
+  kresbaWorker = null;
+  if (kresbaBezi) clearTimeout(kresbaBezi.casovac);
+  kresbaBezi = null; kresbaZnovu = false;
+  for (const res of kresbaDlazdice.values()) res(null);
+  kresbaDlazdice.clear();
+  stinyObsahVeWorkeru = false;
+  zneplatniStiny(); naplanujStinyDomu(30);
+}
+function zpravaKresby(ev) {
+  const m = ev.data || {};
+  if (m.typ === 'dlazdice') {
+    const res = kresbaDlazdice.get(m.id);
+    kresbaDlazdice.delete(m.id);
+    if (res) res(m.bmp || null);
+    else if (m.bmp && m.bmp.close) m.bmp.close();   // pozdě (časovač) – zahodit
+    return;
+  }
+  if (m.typ === 'nakresleno') {
+    kresbaVyprselo = 0;                         // worker žije (i pozdní odpověď)
+    const b = kresbaBezi;
+    if (!b || b.id !== m.id) return;
+    clearTimeout(b.casovac);
+    kresbaBezi = null;
+    // nulování během kresby (maska kopců, nastavení…) → podpis nechat prázdný,
+    // ať další průchod kreslí znovu; nakreslené se ale publikuje hned
+    stinyPodpis = b.gen === stinyGen ? b.podpis : '';
+    stinyRozsah = b.r;
+    stinyObsahVeWorkeru = true;
+    srovnejPoradiStinu(true);
+    publikujStiny();
+    try {
+      window.__casy = window.__casy || {};
+      window.__casy.stinyKresbaMs = Math.round(m.ms);
+      window.__casy.stinyKresbaCelkemMs = Math.round(performance.now() - b.t0);
+      window.__casy.stinyWorker = true;
+    } catch (e) { /* nic */ }
+    if (kresbaZnovu || b.gen !== stinyGen) { kresbaZnovu = false; naplanujStinyDomu(30); }
+    return;
+  }
+  if (m.typ === 'umis') {
+    if (m.ok && kresbaStav === 1) kresbaStav = 2;
+    else if (kresbaStav === 1) kresbaSelhala('umis ' + JSON.stringify(m));
+    return;
+  }
+  if (m.typ === 'chyba') { kresbaSelhala(m.co + ': ' + m.msg); return; }
+  const f = kresbaLadeni.get(m.id);
+  if (f) { kresbaLadeni.delete(m.id); f(m); }
+}
+/// Kresba neodpověděla do 5 s. ⛔ NEVYPÍNAT worker hned: WebView uspaná na
+/// pozadí (pauseTimers) po návratu spustí prošlý časovač dřív, než worker
+/// stihne odpovědět – jednorázové vypršení = jen nový pokus; vypnout až
+/// po třech v řadě (pak kreslí hlavní vlákno, jako před engine 334).
+function kresbaVyprsela(id) {
+  if (!kresbaBezi || kresbaBezi.id !== id) return;
+  kresbaBezi = null;
+  kresbaVyprselo++;
+  if (kresbaVyprselo >= 3) { kresbaSelhala('kresba 3× neodpověděla do 5 s'); return; }
+  kresbaZnovu = false;
+  zneplatniStiny(); naplanujStinyDomu(200);
+}
+/// Dlaždice stiny:// z plátna ve workeru (ImageBitmap) nebo null.
+function dlazdiceStinuZWorkeru(z, x, y) {
+  const wk = kresbaWorker;
+  if (!wk || kresbaStav !== 2) return Promise.resolve(null);
+  const id = ++kresbaId;
+  return new Promise((res) => {
+    // vypršení (uspaná WebView, zahlcený worker) → prázdná dlaždice + nová
+    // publikace, ať se dlaždice natáhne znovu a stín nezůstane pryč
+    const casovac = setTimeout(() => {
+      if (!kresbaDlazdice.delete(id)) return;
+      res(null);
+      setTimeout(publikujStiny, 300);
+    }, 8000);
+    kresbaDlazdice.set(id, (bmp) => { clearTimeout(casovac); res(bmp); });
+    try { wk.postMessage({ typ: 'dlazdice', id, z, x, y, Dmax: STINY_DLAZDICE }); }
+    catch (e) { kresbaDlazdice.delete(id); clearTimeout(casovac); res(null); }
+  });
+}
+/// Ladění (CDP): pixely plátna ve workeru → { w, h, px }.
+window.__stinyPixelyWorkeru = function () {
+  const wk = kresbaWorker;
+  if (!wk || kresbaStav !== 2) return Promise.resolve(null);
+  const id = ++kresbaId;
+  return new Promise((res) => { kresbaLadeni.set(id, res); wk.postMessage({ typ: 'pixely', id }); });
+};
 /// Zdroj + vrstva vznikají líně; vrstva jde jako poslední drapovaná
 /// (viz výše), jen ve stylech, které mají `budovy-vypln`.
 function zajistiVrstvuStinu() {
@@ -2829,6 +2956,7 @@ function zajistiVrstvuStinu() {
     stinyPlatno.width = 64; stinyPlatno.height = 64;
   }
   registrujProtokolStinu();
+  stinyKresbaWorker();              // engine 334: worker kresby se probudí napřed
   try {
     if (!mapa.getSource('stiny-domu')) {
       mapa.addSource('stiny-domu', { type: 'raster', tileSize: STINY_DLAZDICE,
@@ -2842,7 +2970,7 @@ function zajistiVrstvuStinu() {
                       paint: { 'raster-fade-duration': 0, 'raster-opacity': 1 } }, za);
     }
   } catch (e) { console.warn('[stíny domů] vrstva', e); return false; }
-  stinyPodpis = '';                 // nová vrstva/zdroj → překreslit
+  zneplatniStiny();                 // nová vrstva/zdroj → překreslit
   return true;
 }
 /// engine 220: SILUETA SPRITU pro stín stromu/keře – alfa obrázku z atlasu
@@ -2869,7 +2997,7 @@ function siluetaSpritu(ik) {
         if (a > 24) { dst[i] = 42; dst[i + 1] = 29; dst[i + 2] = 16; dst[i + 3] = Math.min(255, a * 0.85); }
       }
       cx.putImageData(out, 0, 0);
-      vysl = { platno: c, w, h };
+      vysl = { platno: c, w, h, px: dst };   // engine 334: px → worker kresby
     }
   } catch (e) { vysl = null; }
   if (vysl) stinySiluety.set(ik, vysl);   // bez spritu zkusit příště znovu
@@ -2915,13 +3043,13 @@ function zajistiStinyWorker() {
         const podpis = poz.podpis;
         try {
           // engine 262: rozsah a světlo masky – kvůli dočasnému použití, než
-          // dojde nová (kresliStarouMaskuTerenu)
-          terenMaska = { podpis, G: m.G, img: new ImageData(new Uint8ClampedArray(m.px), m.G, m.G), veStinu: m.veStinu,
+          // dojde nová (staraMaskaTerenu)
+          terenMaska = { id: m.id, podpis, G: m.G, img: new ImageData(new Uint8ClampedArray(m.px), m.G, m.G), veStinu: m.veStinu,
                          rozsah: poz.rozsah, az: poz.az, el: poz.el };
         } catch (e) { terenMaska = null; return; }
         if (terenCekaPodpis === podpis) terenCekaPodpis = '';
         try { window.__casy = window.__casy || {}; window.__casy.stinyTerenMs = m.ms; window.__casy.stinyTerenBunek = m.veStinu; window.__casy.stinyTerenWorker = true; } catch (e) { /* nic */ }
-        stinyPodpis = '';
+        zneplatniStiny();
         naplanujStinyDomu(30);
       }
     };
@@ -2930,7 +3058,7 @@ function zajistiStinyWorker() {
       stinyWorkerChyba = true;
       try { stinyWorker.terminate(); } catch (e2) { /* nic */ }
       stinyWorker = null; terenCekaPodpis = ''; terenPozadavky.clear();
-      stinyPodpis = ''; naplanujStinyDomu(50);
+      zneplatniStiny(); naplanujStinyDomu(50);
     };
   } catch (e) { stinyWorkerChyba = true; stinyWorker = null; }
   return stinyWorker;
@@ -2945,7 +3073,7 @@ function demDlazdice(z, x, y) {
       if (stinyWorker) { try { stinyWorker.postMessage({ typ: 'dem', klic: k, data }); } catch (e) { /* nic */ } }
       while (DEM_KES.size > DEM_KES_MAX) DEM_KES.delete(DEM_KES.keys().next().value);
       DEM_CEKAME.delete(k);
-      if (!DEM_CEKAME.size) { stinyPodpis = ''; naplanujStinyDomu(150); }   // až dojdou všechny
+      if (!DEM_CEKAME.size) { zneplatniStiny(); naplanujStinyDomu(150); }   // až dojdou všechny
     };
     window.__okolnikDem.getDemTile(z, x, y)
       .then((t) => hotovo((t && t.data && t.width === 256) ? t.data : null))
@@ -2986,28 +3114,36 @@ function demMozaikaPro(zD, x0, y0, x1, y1) {
 /// r (maska zná svůj rozsah v Mercatoru → lineární přeložení, přesah ořízne
 /// plátno). Jen při podobném světle: do 6° azimutu a 4° výšky – po dlouhé
 /// pauze appky by starý stín ukazoval jinam, to je horší než chvíli nic.
-function kresliStarouMaskuTerenu(ctx, r, W, H) {
+/// engine 334: vrací položku kresby { maska, dx, dy, dw, dh } (px plátna
+/// plné velikosti), null = nic; kreslí StinyKresba (worker / hlavní vlákno).
+function staraMaskaTerenu(r, W, H) {
   const m = terenMaska;
-  if (!m || !m.rozsah || !m.veStinu || !stinyTerenPlatno) return false;
+  if (!m || !m.rozsah || !m.veStinu) return null;
   const dAz = Math.abs((((m.az - stinSvetlo.az) % 360) + 540) % 360 - 180);
-  if (dAz > 6 || Math.abs(m.el - stinSvetlo.el) > 4) return false;
+  if (dAz > 6 || Math.abs(m.el - stinSvetlo.el) > 4) return null;
   const q = m.rozsah;
   const kx = W / (r.x1 - r.x0), ky = H / (r.y1 - r.y0);
   const dx0 = (q.x0 - r.x0) * kx, dy0 = (q.y0 - r.y0) * ky;
   const dw = (q.x1 - q.x0) * kx, dh = (q.y1 - q.y0) * ky;
-  if (!(dw > 0 && dh > 0) || dx0 >= W || dy0 >= H || dx0 + dw <= 0 || dy0 + dh <= 0) return false;
-  try {
-    const tctx = stinyTerenPlatno.getContext('2d');
-    tctx.putImageData(m.img, 0, 0);
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(stinyTerenPlatno, dx0, dy0, dw, dh);
-  } catch (e) { return false; }
-  return true;
+  if (!(dw > 0 && dh > 0) || dx0 >= W || dy0 >= H || dx0 + dw <= 0 || dy0 + dh <= 0) return null;
+  return { maska: m, dx: dx0, dy: dy0, dw, dh };
 }
-/// Stíny terénu do ctx (pomocné plátno W×H, rozsah r). Vrací true, když se
-/// kreslilo (nebo nebylo co), false, když chybí dlaždice DEM (přijde přepočet).
-function kresliStinyTerenu(ctx, r, W, H, mpu, stredLat, ex) {
-  if (!window.__okolnikDem || stinSvetlo.el > 55 || stinSvetlo.el < 2) return true;
+/// Plátno G×G s maskou kopců – jen pro kresbu na hlavním vlákně.
+function platnoMaskyTerenu(maska) {
+  const G = maska.G;
+  if (!stinyTerenPlatno || stinyTerenPlatno.width !== G) {
+    stinyTerenPlatno = document.createElement('canvas');
+    stinyTerenPlatno.width = G; stinyTerenPlatno.height = G;
+  }
+  try { stinyTerenPlatno.getContext('2d').putImageData(maska.img, 0, 0); } catch (e) { return null; }
+  return stinyTerenPlatno;
+}
+/// Stíny terénu pro plátno W×H s rozsahem r → položka kresby
+/// { maska: { id, G, img }, dx, dy, dw, dh } nebo null (není co kreslit, nebo
+/// se maska teprve počítá – po dojití přijde přepočet).
+let terenSyncId = 0;
+function terenStinu(r, W, H, mpu, stredLat, ex) {
+  if (!window.__okolnikDem || stinSvetlo.el > 55 || stinSvetlo.el < 2) return null;
   const tg = Math.tan(stinSvetlo.el * Math.PI / 180);
   const G = STINY_TERENU_MRIZKA;
   const bunkaM = Math.max((r.x1 - r.x0) / mpu / G, (r.y1 - r.y0) / mpu / G);
@@ -3021,15 +3157,13 @@ function kresliStinyTerenu(ctx, r, W, H, mpu, stredLat, ex) {
   const n = Math.pow(2, zD);
   const x0 = Math.floor((r.x0 - okrajMerc) * n), x1 = Math.floor((r.x1 + okrajMerc) * n);
   const y0 = Math.floor((r.y0 - okrajMerc) * n), y1 = Math.floor((r.y1 + okrajMerc) * n);
-  if ((x1 - x0 + 1) * (y1 - y0 + 1) > 36) return true;     // moc dlaždic – přeskočit
+  if ((x1 - x0 + 1) * (y1 - y0 + 1) > 36) return null;     // moc dlaždic – přeskočit
   const t0 = performance.now();
   const kPx = n * 256;                             // Mercator → pixel mozaiky
   const oX = x0 * 256, oY = y0 * 256;
   const az = stinSvetlo.az * Math.PI / 180;
   const dpx = Math.sin(az) * krokM * mpu * kPx, dpy = -Math.cos(az) * krokM * mpu * kPx;   // ke slunci (Mercator y roste k jihu)
   const stoupani = krokM * tg;                     // výška paprsku na krok (m)
-  if (!stinyTerenPlatno) { stinyTerenPlatno = document.createElement('canvas'); stinyTerenPlatno.width = G; stinyTerenPlatno.height = G; }
-  const tctx = stinyTerenPlatno.getContext('2d');
   const cx0 = r.x0 * kPx - oX, cy0 = r.y0 * kPx - oY;
   const cdx = (r.x1 - r.x0) * kPx / G, cdy = (r.y1 - r.y0) * kPx / G;
   // --- engine 234: přes worker (maska kešovaná podle podpisu)
@@ -3038,12 +3172,7 @@ function kresliStinyTerenu(ctx, r, W, H, mpu, stredLat, ex) {
     const podpis = [zD, x0, y0, x1, y1, G, cx0.toFixed(1), cy0.toFixed(1), cdx.toFixed(4), cdy.toFixed(4),
                     dpx.toFixed(4), dpy.toFixed(4), stoupani.toFixed(3), ex, KROKU_BLIZKO, KROKU_DALEKO, HRUBOST].join('|');
     if (terenMaska && terenMaska.podpis === podpis) {
-      if (terenMaska.veStinu) {
-        tctx.putImageData(terenMaska.img, 0, 0);
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(stinyTerenPlatno, 0, 0, W, H);
-      }
-      return true;
+      return terenMaska.veStinu ? { maska: terenMaska, dx: 0, dy: 0, dw: W, dh: H } : null;
     }
     if (terenCekaPodpis !== podpis) {
       terenCekaPodpis = podpis;
@@ -3069,14 +3198,13 @@ function kresliStinyTerenu(ctx, r, W, H, mpu, stredLat, ex) {
     // vteřiny ZMIZELY a zase naskočily („sem tam problikávají všechny
     // stíny"), při každé změně světla (časovač 5 min) i po každém posunu.
     // Po dojití přesné masky přijde přepočet a přesná ji nahradí.
-    kresliStarouMaskuTerenu(ctx, r, W, H);
-    return true;                                   // po dojití masky přepočet
+    return staraMaskaTerenu(r, W, H);
   }
   // --- záloha bez workeru: synchronně
   const moz = demMozaikaPro(zD, x0, y0, x1, y1);
-  if (!moz) return false;
+  if (!moz) return null;
   const data = moz.data, S = moz.S, V = moz.V;
-  const img = tctx.createImageData(G, G);
+  const img = new ImageData(G, G);
   const px = img.data;
   let veStinu = 0;
   for (let gy = 0; gy < G; gy++) {
@@ -3105,28 +3233,24 @@ function kresliStinyTerenu(ctx, r, W, H, mpu, stredLat, ex) {
       }
     }
   }
-  tctx.putImageData(img, 0, 0);
-  if (veStinu) {
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(stinyTerenPlatno, 0, 0, W, H);
-  }
   try {
     window.__casy = window.__casy || {};
     window.__casy.stinyTerenBunek = veStinu; window.__casy.stinyTerenMs = Math.round(performance.now() - t0);
     window.__casy.stinyTerenDlazdic = moz.nx * moz.ny; window.__casy.stinyTerenZ = zD; window.__casy.stinyTerenKrokM = Math.round(krokM);
   } catch (e) { /* nic */ }
-  return true;
+  if (!veStinu) return null;
+  return { maska: { id: 'sync:' + (++terenSyncId), G, img, veStinu }, dx: 0, dy: 0, dw: W, dh: H };
 }
 function prepoctiStinyDomu() {
   if (!mapa || !zajistiVrstvuStinu()) return;
-  if (!NASTAVENI_MAPY.stiny) { stinyPodpis = ''; return; }   // engine 268: stíny vypnuté v nastavení mapy
+  if (!NASTAVENI_MAPY.stiny) { zneplatniStiny(); return; }   // engine 268: stíny vypnuté v nastavení mapy
   // během gesta nepřepočítávat (50 ms v hustém městě = trhnutí) – až po něm
   if (mapa.isMoving && mapa.isMoving()) { naplanujStinyDomu(400); return; }
   // engine 333: prst na mapě = za chvíli další tah → nepřepočítávat (až 200 ms
   // dlouhá úloha by zasekla začátek gesta)
   if (typeof prstNaMape === 'function' && prstNaMape()) { naplanujStinyDomu(500); return; }
   const z = mapa.getZoom();
-  if (z < STINY_OD_Z - 0.1 - dohledDz() || stinSvetlo.sila <= 0) { stinyPodpis = ''; return; }
+  if (z < STINY_OD_Z - 0.1 - dohledDz() || stinSvetlo.sila <= 0) { zneplatniStiny(); return; }
   const t0 = performance.now();
   // --- rozsah plátna: pohled v Mercatoru, strop 3× rozměr pohledu, okraj 30 %
   const stred = mapa.getCenter();
@@ -3216,7 +3340,12 @@ function prepoctiStinyDomu() {
   const odZStromy = STINY_OD_Z - dohledDz();
   if (z >= odZStromy) {
     let dek = [];
-    try { dek = mapa.querySourceFeatures('dekorace'); } catch (e) { dek = []; }
+    // engine 334: rovnou zapsané prvky z dekorace.js (dotaz do dlaždic stál
+    // 38 ms hlavního vlákna na přepočet); A/B: __okolnikStinyStromyZDekoraci = false
+    try {
+      dek = (typeof Dekorace !== 'undefined' && Dekorace.zapsane && window.__okolnikStinyStromyZDekoraci !== false)
+        ? Dekorace.zapsane() : mapa.querySourceFeatures('dekorace');
+    } catch (e) { dek = []; }
     const RAMPA_DEK = [13.2, 13.55, 13.9, 14.25, 14.6, 14.95, 15.3, 15.65];   // = dekorace.js
     const dzD = dohledDz();
     let ikLod = 0;
@@ -3275,143 +3404,104 @@ function prepoctiStinyDomu() {
   // rozlišení tam stálo 70–170 ms na přepočet (log sady gest TT 22. 9.).
   const blurPxPred = Math.min(10, 1.2 * mpu * kx);
   const F = blurPxPred >= 4 ? 4 : ((blurPxPred >= 1.4 || Math.max(W, H) > 600) ? 2 : 1);
-  const S = 1 / F;
   const w2 = Math.max(1, Math.ceil(W / F)), h2 = Math.max(1, Math.ceil(H / F));
-  if (!stinyPlatnoTmp) stinyPlatnoTmp = document.createElement('canvas');
-  if (stinyPlatnoTmp.width !== w2 || stinyPlatnoTmp.height !== h2) {
-    stinyPlatnoTmp.width = w2; stinyPlatnoTmp.height = h2;
-  }
-  const ctx = stinyPlatnoTmp.getContext('2d');
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.filter = 'none';
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.clearRect(0, 0, w2, h2);
-  ctx.imageSmoothingEnabled = true;
-  ctx.setTransform(S, 0, 0, S, 0, 0);          // kreslí se v px plné velikosti
+  if (typeof StinyKresba === 'undefined') { console.warn('[stíny] chybí stiny-kresba.js'); return; }
+  const wk = stinyKresbaWorker();
+  if (wk && kresbaBezi) { kresbaZnovu = true; return; }   // po dokončení kresby znovu
   // engine 226: stíny kopců pod vším (chybí-li DEM, přijde přepočet po dojití)
+  let teren = null;
   try {
     const exT = (mapa.getTerrain && mapa.getTerrain() && +mapa.getTerrain().exaggeration) || 1;
-    kresliStinyTerenu(ctx, r, W, H, mpu, stred.lat, exT);
+    teren = terenStinu(r, W, H, mpu, stred.lat, exT);
   } catch (eT) { console.warn('[stíny] terén', eT); }
-  ctx.fillStyle = '#2A1D10';
-  const pudorysy = [];
-  for (const q of prstence) {
-    const pts = q.pts;
-    const n = pts.length;
-    let plocha = 0;
-    for (let i = 0; i < n; i++) {
-      const a = pts[i], b = pts[(i + 1) % n];
-      plocha += a[0] * b[1] - b[0] * a[1];
-    }
-    if (Math.abs(plocha) < 0.05) continue;
-    if (plocha < 0) pts.reverse();
-    const sx = q.L * sxM, sy = q.L * syM;
-    const cesta = new Path2D();
-    const pudorys = new Path2D();
-    cesta.moveTo(pts[0][0], pts[0][1]);
-    pudorys.moveTo(pts[0][0], pts[0][1]);
-    for (let i = 1; i < n; i++) {
-      cesta.lineTo(pts[i][0], pts[i][1]);
-      pudorys.lineTo(pts[i][0], pts[i][1]);
-    }
-    cesta.closePath(); pudorys.closePath();
-    cesta.moveTo(pts[0][0] + sx, pts[0][1] + sy);
-    for (let i = 1; i < n; i++) cesta.lineTo(pts[i][0] + sx, pts[i][1] + sy);
-    cesta.closePath();
-    for (let i = 0; i < n; i++) {
-      const a = pts[i], b = pts[(i + 1) % n];
-      const kriz = (b[0] - a[0]) * sy - (b[1] - a[1]) * sx;   // orientace jako půdorys
-      if (Math.abs(kriz) < 0.05) continue;
-      if (kriz > 0) {
-        cesta.moveTo(a[0], a[1]); cesta.lineTo(b[0], b[1]);
-        cesta.lineTo(b[0] + sx, b[1] + sy); cesta.lineTo(a[0] + sx, a[1] + sy);
-      } else {
-        cesta.moveTo(a[0], a[1]); cesta.lineTo(a[0] + sx, a[1] + sy);
-        cesta.lineTo(b[0] + sx, b[1] + sy); cesta.lineTo(b[0], b[1]);
-      }
-      cesta.closePath();
-    }
-    ctx.fill(cesta, 'nonzero');
-    pudorysy.push(pudorys);
-  }
-  if (stromy.length) {
-    const uhel = Math.atan2(syM, sxM);                      // směr stínu v px plátna
-    const protazeni = Math.sqrt(1 + tg * tg);               // r / sin(el)
-    // engine 220: silueta spritu položená na zem – vodorovná osa spritu
-    // kolmo na slunce (p), výška spritu ve směru stínu (d) × 1/tan(el).
-    // Sprite: šířka w, výška h (px atlasu), pata = spodek obrázku; výška
-    // stromu v metrech Hm odpovídá celé výšce spritu.
-    const dX = Math.sin(smer), dY = -Math.cos(smer);        // směr stínu (y dolů)
-    const pX = Math.cos(smer), pY = Math.sin(smer);         // kolmo na něj
-    const pxNaMetr = mpu * kx;
-    ctx.fillStyle = 'rgba(42,29,16,0.8)';
-    ctx.strokeStyle = 'rgba(42,29,16,0.8)';
-    ctx.lineCap = 'round';
+  // ⭐ engine 334: ZADÁNÍ KRESBY v typových polích (kreslí StinyKresba –
+  // ve workeru, záloha na hlavním vlákně; vzhled stejný jako engine 333)
+  const zad = zabalZadaniStinu(prstence, stromy, {
+    W, H, F, w2, h2, kryti, sxM, syM, tg, smer, pxNaMetr: mpu * kx,
     // engine 333: při oddálení (pod z15,5) má strom na plátně pár pixelů –
-    // místo siluety spritu (drawImage s transformací, na procesoru drahé)
-    // stačí elipsa koruny + kmen
-    const siluety = z >= 15.5;
-    for (const t of stromy) {
-      const sil = (t.ik && siluety) ? siluetaSpritu(t.ik) : null;
-      if (sil) {
-        const A = (t.Hm / sil.h) * pxNaMetr;               // px plátna na px spritu (do stran)
-        const B = A * tg;                                   // … na px výšky (po směru stínu)
-        ctx.setTransform(S * A * pX, S * A * pY, -S * B * dX, -S * B * dY,
-                         S * (t.bx - (sil.w / 2) * A * pX + sil.h * B * dX),
-                         S * (t.by - (sil.w / 2) * A * pY + sil.h * B * dY));
-        ctx.drawImage(sil.platno, 0, 0);
-        ctx.setTransform(S, 0, 0, S, 0, 0);    // engine 333: zpět na základní škálu
-        continue;
+    // místo siluety spritu (drawImage s transformací) stačí elipsa + kmen
+    siluety: z >= 15.5,
+    teren: teren ? { id: teren.maska.id, dx: teren.dx, dy: teren.dy, dw: teren.dw, dh: teren.dh } : null,
+  });
+  if (wk) {
+    try {
+      // siluety a maska kopců, které worker ještě nemá (zprávy jdou po pořadí)
+      if (zad.siluety) {
+        for (const ik of zad.stromy.ikony) {
+          if (kresbaSiluety.has(ik)) continue;
+          const sl = siluetaSpritu(ik);
+          if (!sl || !sl.px) continue;
+          const px = sl.px.slice().buffer;
+          wk.postMessage({ typ: 'silueta', ik, w: sl.w, h: sl.h, px }, [px]);
+          kresbaSiluety.add(ik);
+        }
       }
-      // záloha (sprite ještě není v atlasu): elipsa koruny + kmen
-      const hc = 0.5 * t.Hm * tg;
-      const cx2 = t.bx + hc * sxM, cy2 = t.by + hc * syM;
-      ctx.beginPath();
-      ctx.ellipse(cx2, cy2, t.rp * protazeni, t.rp, uhel, 0, Math.PI * 2);
-      ctx.fill();
-      const konec = hc - 0.36 * t.Hm * protazeni;
-      if (konec > 0.3) {
-        ctx.lineWidth = Math.max(1.5, 0.06 * t.Hm * mpu * kx);
-        ctx.beginPath();
-        ctx.moveTo(t.bx, t.by);
-        ctx.lineTo(t.bx + konec * sxM, t.by + konec * syM);
-        ctx.stroke();
+      if (teren && kresbaTerenId !== teren.maska.id) {
+        const px = teren.maska.img.data.slice().buffer;
+        wk.postMessage({ typ: 'teren', id: teren.maska.id, G: teren.maska.G, px }, [px]);
+        kresbaTerenId = teren.maska.id;
       }
-    }
-    ctx.fillStyle = '#2A1D10';
+      const id = ++kresbaId;
+      kresbaBezi = { id, podpis, r, gen: stinyGen, t0, casovac: setTimeout(() => kresbaVyprsela(id), 5000) };
+      const P = zad.prstence, T = zad.stromy;
+      wk.postMessage({ typ: 'kresli', id, zad, rozsah: { x0: r.x0, x1: r.x1, y0: r.y0, y1: r.y1, z: r.z } },
+                     [P.xy.buffer, P.zac.buffer, P.L.buffer, T.d.buffer, T.ik.buffer]);
+    } catch (e) { kresbaSelhala('postMessage ' + (e && e.message ? e.message : e)); return; }
+    zapisCasyStinu(t0, prstence.length, stromy.length, W, H);
+    return;
   }
-  ctx.globalCompositeOperation = 'destination-out';
-  for (const pd of pudorysy) ctx.fill(pd, 'nonzero');
-  ctx.globalCompositeOperation = 'source-over';
-  // engine 218: měkký okraj – jeden průchod blur (Chrome/WebView GPU; kde
-  // filter chybí, zůstane ostré)
-  const metrNaPx = 1 / (mpu * kx);
-  const blurPx = Math.max(1, Math.min(10, 1.2 / metrNaPx));   // (u budov asi ok: 1,2 m)
-  // engine 333: pomocné plátno už je zmenšené (viz F výš) → výsledek = kopie
-  // se zapečeným krytím, bez filtru a bez škálování
-  if (stinyPlatno.width !== w2 || stinyPlatno.height !== h2) {
-    stinyPlatno.width = w2; stinyPlatno.height = h2;
-  }
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  const vctx = stinyPlatno.getContext('2d');
-  vctx.setTransform(1, 0, 0, 1, 0, 0);
-  vctx.globalCompositeOperation = 'source-over';
-  vctx.clearRect(0, 0, w2, h2);
-  vctx.globalAlpha = kryti;                       // engine 222: krytí v plátně, ne ve vrstvě
-  vctx.drawImage(stinyPlatnoTmp, 0, 0);
-  vctx.globalAlpha = 1;
+  // --- záloha: kresba na hlavním vlákně (týž kód, plátna v DOM)
+  if (!stinyPlatnoTmp) stinyPlatnoTmp = document.createElement('canvas');
+  StinyKresba.kresli(stinyPlatnoTmp, stinyPlatno, zad, {
+    silueta: siluetaSpritu,
+    teren: (t) => (teren && teren.maska.id === t.id) ? platnoMaskyTerenu(teren.maska) : null,
+  });
   stinyPodpis = podpis;
   stinyRozsah = r;
+  stinyObsahVeWorkeru = false;
   // engine 221: nová verze v URL → dlaždice se přenačtou z plátna (staré drží
   // do příchodu nových); událost zdroje zároveň uvolní terénní RTT keš.
   // engine 262: přes publikujStiny – nikdy dvě výměny naráz.
   srovnejPoradiStinu(true);
   publikujStiny();
+  zapisCasyStinu(t0, prstence.length, stromy.length, W, H);
+  try { window.__casy.stinyWorker = false; } catch (e) { /* nic */ }
+}
+/// engine 334: prstence (domy) a stromy do typových polí pro StinyKresba.
+function zabalZadaniStinu(prstence, stromy, p) {
+  let nb = 0;
+  for (const q of prstence) nb += q.pts.length;
+  const xy = new Float32Array(nb * 2);
+  const zac = new Uint32Array(prstence.length + 1);
+  const L = new Float32Array(prstence.length);
+  let o = 0;
+  for (let i = 0; i < prstence.length; i++) {
+    const q = prstence[i];
+    zac[i] = o;
+    for (const b of q.pts) { xy[2 * o] = b[0]; xy[2 * o + 1] = b[1]; o++; }
+    L[i] = q.L;
+  }
+  zac[prstence.length] = o;
+  const d = new Float32Array(stromy.length * 4);
+  const ik = new Int32Array(stromy.length);
+  const ikony = [], poradi = new Map();
+  for (let i = 0; i < stromy.length; i++) {
+    const t = stromy[i];
+    d[4 * i] = t.bx; d[4 * i + 1] = t.by; d[4 * i + 2] = t.Hm; d[4 * i + 3] = t.rp;
+    if (t.ik) {
+      let j = poradi.get(t.ik);
+      if (j === undefined) { j = ikony.length; ikony.push(t.ik); poradi.set(t.ik, j); }
+      ik[i] = j;
+    } else ik[i] = -1;
+  }
+  return Object.assign({ prstence: { xy, zac, L }, stromy: { d, ik, ikony } }, p);
+}
+function zapisCasyStinu(t0, nDomu, nStromu, W, H) {
   try {
     window.__casy = window.__casy || {};
-    window.__casy.stinyMs = Math.round(performance.now() - t0);
-    window.__casy.stinyN = prstence.length;
-    window.__casy.stinyStromu = stromy.length;
+    window.__casy.stinyMs = Math.round(performance.now() - t0);   // hlavní vlákno
+    window.__casy.stinyN = nDomu;
+    window.__casy.stinyStromu = nStromu;
     window.__casy.stinyPlatno = W + 'x' + H;
   } catch (e) { /* nic */ }
 }
@@ -8332,7 +8422,7 @@ window.OkolnikMost = {
       }
       aplikujNastaveniMapy(false);
       if (NASTAVENI_MAPY.tempo30) TempoGesta.nasad();
-      if (NASTAVENI_MAPY.stiny) { stinyPodpis = ''; naplanujStinyDomu(50); }
+      if (NASTAVENI_MAPY.stiny) { zneplatniStiny(); naplanujStinyDomu(50); }
       if (NASTAVENI_MAPY.objekty3d) { pohledPodpisOkna = ''; naplanujOkna3d(50); }
       return Object.assign({}, NASTAVENI_MAPY);
     } catch (e) { console.warn('[most] nastaveniMapy', e); return null; }
