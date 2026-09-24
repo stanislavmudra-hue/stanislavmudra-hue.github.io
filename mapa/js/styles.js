@@ -838,11 +838,8 @@ function stylHerni(ctx) {
                    15, ['match', ['get', 't'], 'zed', 0.8, 'protihluk', 1.0, 'plot', 0.9, 0.5],
                    22, ['match', ['get', 't'], 'zed', DTM_W22(0.6), 'protihluk', DTM_W22(0.9), 'plot', DTM_W22(0.55),
                         'vjezd', DTM_W22(0.8), 'svodidlo', DTM_W22(0.4), DTM_W22(0.25)]] } },
-      { id: 'dtm-plot-sloupky', type: 'line', source: 'dtm', 'source-layer': 'cary', minzoom: 16.5,
-        filter: ['==', ['get', 't'], 'plot'], layout: { 'line-cap': 'round' },
-        paint: { 'line-color': '#453421',
-                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 16.5, 0, 17, 0.85],
-                 'line-width': sirkaMetry(1.7, 1.2, 16.5), 'line-dasharray': [0, 2.6] } },
+      // engine 358: ploché sloupky plotů (`dtm-plot-sloupky`) PRYČ – ploty stojí ve 3D i se sloupky (ploty3d.js);
+      // čára výše zůstává jako stopa plotu na zemi (a jediný plot pod z15,4, kde 3D ještě nenastoupí)
       { id: 'hrbitov', type: 'fill', source: 'omt', 'source-layer': 'landuse',
         minzoom: 12, filter: ['==', ['get', 'class'], 'cemetery'],
         paint: { 'fill-color': '#B7C4A6', 'fill-opacity': 0.55 } },

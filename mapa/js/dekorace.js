@@ -3365,6 +3365,7 @@ const Dekorace = (() => {
       zdroje, sirkyCar: SIRKY_CAR, rampa: RAMPA_ZAKLAD, sirkaNastupu: SIRKA_NASTUPU,
       rampaVys: RAMPA_VYS_ZAKLAD, drobnosti: drobnostiProWorker(),   // engine 349
       vedeni: VEDENI_CFG,                                            // engine 357
+      ploty: true,                                                   // engine 358: 3D ploty z čar DTM
     };
   }
   function wPripravit() {
@@ -3660,8 +3661,26 @@ const Dekorace = (() => {
     while (wEvidence.size > 140) wEvidence.delete(wEvidence.keys().next().value);
     wKotvyVerze++;
     if (ev.draty || ev.vrtule) wVedeniVerze++;
+    // ⭐ engine 358: 3D ploty jen z dlaždic z15 (úseky ve zlomcích dlaždice, ploty3d.js); null = dlaždice bez plotů
+    if (z === 15 && 'ploty' in ev) {
+      const bylo = wPloty.has(k);
+      wPloty.delete(k);
+      if (ev.ploty && ev.ploty.length) wPloty.set(k, { x, y, d: ev.ploty });
+      while (wPloty.size > 64) wPloty.delete(wPloty.keys().next().value);
+      if (bylo || wPloty.has(k)) wPlotyVerze++;
+    }
+    // ⭐ engine 358: místa odlesků na vodě (animace.js) – [fx, fy, e]… z dlaždic z15
+    if (z === 15 && 'voda' in ev) {
+      const bylo = wVoda.has(k);
+      wVoda.delete(k);
+      if (ev.voda && ev.voda.length) wVoda.set(k, { x, y, d: ev.voda });
+      while (wVoda.size > 64) wVoda.delete(wVoda.keys().next().value);
+      if (bylo || wVoda.has(k)) wVodaVerze++;
+    }
     wNaplanujSvetla();
   }
+  const wPloty = new Map(), wVoda = new Map();
+  let wPlotyVerze = 0, wVodaVerze = 0;
   /// ⭐ engine 357: rozpětí vodičů a vrtule větrníků ze všech dlaždic evidence (bez dvojníků): { verze, draty:
   /// Float64Array [a,b,c,d,ha,hb,t]…, vrtule: [lon,lat,h]… }. Kreslí vedeni3d.js (dráty) a animace.js (listy).
   let wVedeniVerze = 0, wVedeniKes = null;
@@ -3944,6 +3963,8 @@ const Dekorace = (() => {
   return { pripoj, nastavStin, nastavDohled, zapsane,
     nastavStiny: wNastavStiny, stinDlazdice: wStinDlazdice,                    // engine 357
     vedeni: () => (wStav === 1 ? wVedeni() : null),
+    ploty: () => (wStav === 1 ? { verze: wPlotyVerze, dlazdice: [...wPloty.values()] } : null),   // engine 358
+    odleskyVoda: () => (wStav === 1 ? { verze: wVodaVerze, dlazdice: [...wVoda.values()] } : null),
     stinyStav: () => wPozadej({ typ: 'stiny-stav' }),
     kotvyAnimaci: () => wKotvyAnimaci(), kotvyVerze: () => wKotvyVerze,
     pripravOblast: (w, s, e, n) => wPripravOblast(w, s, e, n),

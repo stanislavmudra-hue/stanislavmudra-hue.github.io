@@ -201,6 +201,7 @@ void main() {
       const noc = typeof krokNoci === 'number' ? krokNoci : 0;
       const b = noc >= 2 ? [0.09, 0.1, 0.14] : (noc === 1 ? [0.16, 0.16, 0.18] : [0.19, 0.19, 0.2]);
       g.useProgram(prog);
+      g.disable(g.CULL_FACE);                      // stav po fill-extrusion bývá backCCW
       g.uniformMatrix4fv(loc.u_matrix, false, Mt);
       g.uniform2f(loc.u_vyrez, W, H);
       g.uniform2f(loc.u_prava, Math.cos(br) * DELTA, Math.sin(br) * DELTA);   // „vpravo“ obrazovky v Mercatoru (x v., y j.)

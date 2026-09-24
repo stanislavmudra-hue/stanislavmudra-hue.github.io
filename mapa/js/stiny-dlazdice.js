@@ -34,6 +34,9 @@
   const VEDENI_STIN = { 'deko-sloup-nn': 128, 'deko-stozar-vn': 160, 'deko-stozar-vvn': 256, 'deko-stozar-zvn': 256,
                         'deko-stozar-lan': 160, 'deko-vetrnik': 512 };
   const MAX_STIN_M = 160;
+  // engine 358: výšky plotů se stínem podle kódu úseku (ploty3d.js); 0 = bez stínu (pletivo, pruty, zábradlí, svodidlo)
+  const PLOT_STIN_H = [0, 1.3, 0, 1.8, 1.6, 1.8, 0, 0, 3.5];
+  const MAX_PLOT_STINU = 5000;
   const PRED_MAX = 64;                // předkreslených dlaždic v keši
   let SV = null;                      // světlo z hlavního vlákna
   let mlhaVerze = 0;                  // odkrytí → znovu se ptát na domy
@@ -338,6 +341,36 @@
             const L = Math.min(zb.Lmax, q.H * tg);
             prstence.push({ q, L });
             if (prstence.length >= MAX_PRSTENCU) break;
+          }
+        }
+      }
+    }
+    // --- ⭐ engine 358: plné ploty a zdi (dřevěné, zděné, živé, zdi, protihlukové stěny) vrhají stín jako úzká stěna;
+    // úseky z výstupu dekorací z15 (ploty3d.js kreslí tytéž, jen odkryté buňky mlhy). Pletivo, pruty, zábradlí
+    // a svodidla stín skoro nevrhají – vynechány. Prstenec [A, B, A] = stín obou stran úsečky, bez půdorysu.
+    if (z >= 15) {
+      const nL = 32768;
+      const tx0 = Math.floor(OB.x0 * nL), tx1 = Math.floor(OB.x1 * nL);
+      const ty0 = Math.floor(OB.y0 * nL), ty1 = Math.floor(OB.y1 * nL);
+      let nP = 0;
+      for (let ty = ty0; ty <= ty1 && nP < MAX_PLOT_STINU; ty++) {
+        for (let tx = tx0; tx <= tx1 && nP < MAX_PLOT_STINU; tx++) {
+          let v;
+          try { v = await ziskejVystup(15, tx, ty); } catch (e) { v = null; }
+          const P = v && v.ploty;
+          if (!P || !P.obj) continue;
+          const S = P.seg;
+          for (let i = 0; i < P.n && nP < MAX_PLOT_STINU; i++) {
+            if (!P.obj[P.bunka[i]]) continue;
+            const Hp = PLOT_STIN_H[S[i * 8 + 7]];
+            if (!Hp) continue;
+            const X0 = (tx + S[i * 8]) / nL, Y0 = (ty + S[i * 8 + 1]) / nL;
+            const X1 = (tx + S[i * 8 + 3]) / nL, Y1 = (ty + S[i * 8 + 4]) / nL;
+            const bb = [Math.min(X0, X1), Math.min(Y0, Y1), Math.max(X0, X1), Math.max(Y0, Y1)];
+            if (bb[2] < OB.x0 || bb[0] > OB.x1 || bb[3] < OB.y0 || bb[1] > OB.y1) continue;
+            prstence.push({ q: { id: null, H: Hp, X: Float64Array.of(X0, X1, X0), Y: Float64Array.of(Y0, Y1, Y0), bb },
+                            L: Math.min(40, Hp * tg) });
+            nP++;
           }
         }
       }

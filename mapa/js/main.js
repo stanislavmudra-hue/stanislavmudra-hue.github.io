@@ -394,7 +394,8 @@ function prahyVrstevnic(interval) {
 }
 const VRSTVY_3D = ['okolnik-budovy-herni-zdi', 'okolnik-budovy-herni-strecha', 'okolnik-stavby-3d',
   'okolnik-vertikaly-3d', 'okolnik-okna-3d', 'okolnik-okna-zare', 'okolnik-mosty-3d', 'modely3d',
-  'dekorace-kominy'];   // engine 354: komíny na domech
+  'dekorace-kominy',    // engine 354: komíny na domech
+  'okolnik-ploty'];      // engine 358: 3D ploty
 // engine 269 („když vypnu kresby míst, tak je stále vidím"): kresby míst jsou
 // i MALOVANÉ IKONY míst z appky (`okolnik-mista-ikona`, shluky), ne jen velké
 // kresby Kroniky; stuhy se jmény zůstávají
@@ -2213,6 +2214,8 @@ function aplikujDoplnky() {
     try { if (window.AnimaceNadMapou) AnimaceNadMapou.pripoj(mapa); } catch (e) { console.warn('[animace]', e); }
     // ⭐ engine 357: dráty elektrického vedení mezi kresbičkami stožárů (vedeni3d.js)
     try { if (window.Vedeni3D) Vedeni3D.pripoj(mapa); } catch (e) { console.warn('[vedení]', e); }
+    // ⭐ engine 358: ploty, zdi, zábradlí, svodidla a protihlukové stěny DTM ve 3D (ploty3d.js)
+    try { if (window.Ploty3D) Ploty3D.pripoj(mapa); } catch (e) { console.warn('[ploty]', e); }
     try { nasadDomalovani(); } catch (e) { console.warn('[domalovani]', e); }
   } else {
     Pocasi.zavri();

@@ -698,6 +698,7 @@ async function generuj(z, x, y) {
   if (z >= 14 && N.zdroje.drobnosti && N.drobnosti) potreba.set('drobnosti', new Set(['body']));
   if (z >= 14 && N.zdroje.lampymesta && N.drobnosti) potreba.set('lampymesta', new Set(['body']));
   if (z >= 14 && N.zdroje.dtmbody && N.drobnosti) potreba.set('dtmbody', new Set(['body']));   // engine 356
+  if (z === 15 && N.zdroje.dtmbody && N.ploty) potreba.set('dtmbody', new Set(['body', 'cary']));   // engine 358
   // engine 357: elektrické vedení – ZABAGED od z12 (větrníky; stožáry a rozpětí v archivu od z13), OSM od z14
   if (z >= 12 && N.zdroje.vedenizab && N.vedeni) potreba.set('vedenizab', new Set(['s', 'r', 'w']));
   if (z >= 14 && N.zdroje.vedeniosm && N.vedeni) potreba.set('vedeniosm', new Set(['s', 'r']));
@@ -1162,6 +1163,19 @@ async function generuj(z, x, y) {
       }
     }
   }
+  // ⭐ engine 358 (T 24. 9.: „Ty ploty jsem myslel, že budou ve 3D.“): PLOTY A ZDI DTM ve 3D – úseky s výškou terénu
+  let ploty = null, voda = null;
+  if (z === 15 && N.ploty) {
+    let dem13 = null;
+    try { dem13 = await demDlazdice(13, x >> 2, y >> 2); } catch (e) { dem13 = null; }
+    if (zdrojove.dtmbody && zdrojove.dtmbody.vrstvy && zdrojove.dtmbody.vrstvy.cary) ploty = plotyZDlazdice(zdrojove.dtmbody, x, y, dem13);
+    voda = vodaZDlazdice(idx, x, y, dem13);          // engine 358: místa odlesků na hladinách
+    if (ploty || voda) {                              // jedna mřížka mlhy pro obojí
+      const obj = new Uint8Array(PLOT_BUNEK * PLOT_BUNEK);
+      if (ploty) ploty.obj = obj;
+      if (voda) voda.obj = obj;
+    }
+  }
   const pocetK = K.lon.length;
   const tKand = performance.now();
   const vysl = {
@@ -1173,6 +1187,8 @@ async function generuj(z, x, y) {
     ev: new Float32Array(pocetK), maska: null,
     uh: Float32Array.from(K.uh), mpx: mNaPx,           // engine 354: komíny (natočení, m na jednotku)
     draty: K.draty || null, vrtule: K.vrtule || null,  // engine 357: rozpětí vodičů a vrtule větrníků
+    ploty,                                             // engine 358: 3D ploty (úseky + buňky mlhy)
+    voda,                                              // engine 358: místa odlesků na vodě
   };
   // výška terénu → velikost (vyskovyFaktor: 1 ve 400 m, ±1 % na 30 m)
   await doplnVysku(vysl, demP);
@@ -1181,6 +1197,135 @@ async function generuj(z, x, y) {
   casy.rozpad.push([z, Math.round(tZdroj - t0), Math.round(tIdx - tZdroj), Math.round(tKand - tIdx), Math.round(tKon - tKand), pocetK]);
   if (casy.rozpad.length > 16) casy.rozpad.shift();
   return vysl;
+}
+
+// ---------------------------------------------------------------------------
+// ⭐ engine 358: 3D PLOTY Z ČAR DTM ČR
+// ---------------------------------------------------------------------------
+// T 24. 9. 2026: „Ty ploty jsem myslel, že budou ve 3D.“ Čáry DTM (vrstva `cary`: plot s druhem `d`, zeď, zábradlí,
+// svodidlo, protihluková stěna) se v dlaždici z15 ořežou na dlaždici, rozdělí po ≤ 8 m (sledují terén) a každý vrchol
+// dostane výšku z DEM z13 – TÉHOŽ, ze kterého MapLibre staví terén (maxzoom 13, bilineárně jako shader terénu:
+// pixel i = poloha i/256). Kreslí je ploty3d.js (vlastní 3D vrstva). Kód: 0 drátěný (i neurčený/jiný), 1 dřevěný,
+// 2 kovový, 3 zděný, 4 živý plot, 5 zeď, 6 zábradlí, 7 svodidlo, 8 protihluková stěna (DruhPlotu DTM: 1 dřevěný,
+// 2 drátěný, 3 kovový, 4 zděný, 5 živý, 98 jiný, 99 nezjištěno). Úsek: [fx0, fy0, e0, fx1, fy1, e1, s0, kod] ve
+// zlomcích dlaždice (Float32 stačí) a metrech; s0 = poloha začátku na přímce úseku v GLOBÁLNÍCH metrech mod 20 m –
+// sloupky na sebe navazují i přes hranu dlaždice (všechny rozestupy vzoru dělí 20 m). Mlha po buňkách 24 × 24 (~33 m).
+const PLOT_DRUH = { 1: 1, 2: 0, 3: 2, 4: 3, 5: 4 };
+const PLOT_TYP = { zed: 5, zabradli: 6, svodidlo: 7, protihluk: 8 };
+const PLOT_BUNEK = 24, PLOT_KROK_M = 8, PLOT_MAX = 40000;
+const PLOT_C_REF = 40075016.686 * Math.cos(50 * Math.PI / 180);   // globální metry vzoru (±2 % v ČR nevadí)
+/// výška terénu (m, bez převýšení) ve zlomku (fx, fy) dlaždice z15 x/y z DEM z13 – bilineárně jako shader terénu
+function vyskaDem13(dem, x, y, fx, fy) {
+  if (!dem) return NaN;
+  const u = ((x + fx) / 4 - (x >> 2)) * 256, w = ((y + fy) / 4 - (y >> 2)) * 256;
+  const i0 = Math.max(0, Math.min(255, Math.floor(u))), j0 = Math.max(0, Math.min(255, Math.floor(w)));
+  const i1 = Math.min(255, i0 + 1), j1 = Math.min(255, j0 + 1);
+  const a = Math.max(0, Math.min(1, u - i0)), b = Math.max(0, Math.min(1, w - j0));
+  const e00 = dem[j0 * 256 + i0], e10 = dem[j0 * 256 + i1], e01 = dem[j1 * 256 + i0], e11 = dem[j1 * 256 + i1];
+  if (!(e00 > -500 && e10 > -500 && e01 > -500 && e11 > -500)) return NaN;
+  return (e00 * (1 - a) + e10 * a) * (1 - b) + (e01 * (1 - a) + e11 * a) * b;
+}
+// ⭐ engine 358 (T 24. 9.: „šly by dodělat na různé kovové části a na vodu efekt 2D Additive Blending (Aditivní míchání
+// a záře)? Odlesky.“ → „Ty odlesky taky uděláš jako stíny? Aby se nemusely dopočítávat.“): MÍSTA ODLESKŮ NA VODĚ se
+// spočítají JEDNOU S DLAŽDICÍ z15 (jako stíny): mřížka ~7 m s rozptylem, jen uvnitř ploch `voda` indexu dlaždice,
+// výška z DEM z13. Animace (animace.js) z nich jen vybírá, kde se podle slunce a kamery zablýskne. [fx, fy, e]…
+const ODL_KROK_M = 7, ODL_MAX = 6000;
+function vodaZDlazdice(idx, x, y, dem) {
+  const pol = new Set();
+  for (const b of idx.mrizka) if (b) for (const p of b) if (p.id === 'voda') pol.add(p);
+  for (const p of idx.velke) if (p.id === 'voda') pol.add(p);
+  if (!pol.size || !dem) return null;
+  const nZ = 32768;
+  const latS = latZ((y + 0.5) / nZ);
+  const mNaPxT = 40075016.686 * Math.cos(latS * Math.PI / 180) / (nZ * EXT);
+  const krok = ODL_KROK_M / mNaPxT;
+  const G = Math.ceil(EXT / krok);
+  const vzate = new Uint8Array(G * G);
+  const bod = [], bunka = [];
+  for (const p of pol) {
+    const gx0 = Math.max(0, Math.floor(p.x0 / krok)), gx1 = Math.min(G - 1, Math.floor(p.x1 / krok));
+    const gy0 = Math.max(0, Math.floor(p.y0 / krok)), gy1 = Math.min(G - 1, Math.floor(p.y1 / krok));
+    for (let gy = gy0; gy <= gy1 && bod.length < ODL_MAX * 3; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        const i = gy * G + gx;
+        if (vzate[i]) continue;
+        const px = (gx + 0.5 + (hash(gx, gy, 71) - 0.5) * 0.8) * krok, py = (gy + 0.5 + (hash(gx, gy, 72) - 0.5) * 0.8) * krok;
+        if (px < 0 || px >= EXT || py < 0 || py >= EXT || !vBodu(p, px, py)) continue;
+        vzate[i] = 1;
+        const fx = px / EXT, fy = py / EXT, e = vyskaDem13(dem, x, y, fx, fy);
+        if (!isFinite(e)) continue;
+        bod.push(fx, fy, e);
+        bunka.push(Math.min(PLOT_BUNEK - 1, Math.floor(fy * PLOT_BUNEK)) * PLOT_BUNEK + Math.min(PLOT_BUNEK - 1, Math.floor(fx * PLOT_BUNEK)));
+      }
+    }
+  }
+  if (!bod.length) return null;
+  return { bod: Float32Array.from(bod), bunka: Uint16Array.from(bunka), n: bunka.length, obj: null, x, y };
+}
+function plotyZDlazdice(zd, x, y, dem) {
+  const v = zd.vrstvy.cary;
+  if (!v || !v.prvky.length) return null;
+  const kS = EXT / v.extent;
+  const nZ = 32768;
+  const latS = latZ((y + 0.5) / nZ);
+  const mNaFr = 40075016.686 * Math.cos(latS * Math.PI / 180) / nZ;       // metrů na zlomek dlaždice
+  const vyska = (fx, fy) => vyskaDem13(dem, x, y, fx, fy);
+  const orez = (x0, y0, x1, y1) => {                // Liang–Barsky na [0,1]²
+    let t0 = 0, t1 = 1;
+    const dx = x1 - x0, dy = y1 - y0;
+    const p = [-dx, dx, -dy, dy], q = [x0, 1 - x0, y0, 1 - y0];
+    for (let i = 0; i < 4; i++) {
+      if (p[i] === 0) { if (q[i] < 0) return null; continue; }
+      const r = q[i] / p[i];
+      if (p[i] < 0) { if (r > t1) return null; if (r > t0) t0 = r; }
+      else { if (r < t0) return null; if (r < t1) t1 = r; }
+    }
+    return t1 > t0 ? [t0, t1] : null;
+  };
+  const seg = new Float32Array(PLOT_MAX * 8), bunka = new Uint16Array(PLOT_MAX);
+  let n = 0;
+  for (const f of v.prvky) {
+    if (f.typ !== 2) continue;
+    const t = f.vl.t;
+    let kod;
+    if (t === 'plot') { const d = PLOT_DRUH[+f.vl.d]; kod = d === undefined ? 0 : d; }
+    else { kod = PLOT_TYP[t]; if (kod === undefined) continue; }        // vjezd a spol. zůstávají ploché
+    for (const r of geomPrvku(v, f)) {
+      const m = r.length >> 1;
+      for (let i = 0; i + 1 < m; i++) {
+        const ax = (r[2 * i] * kS * zd.m + zd.ox) / EXT, ay = (r[2 * i + 1] * kS * zd.m + zd.oy) / EXT;
+        const bx = (r[2 * i + 2] * kS * zd.m + zd.ox) / EXT, by = (r[2 * i + 3] * kS * zd.m + zd.oy) / EXT;
+        const o = orez(ax, ay, bx, by);
+        if (!o) continue;
+        const Lcel = Math.hypot(bx - ax, by - ay) * mNaFr;
+        if (Lcel < 0.05) continue;
+        // globální přímka úseku: s = (P · směr) v metrech, mod 20 (návaznost vzoru přes hrany dlaždic)
+        const ux = (bx - ax) / (Math.hypot(bx - ax, by - ay) || 1), uy = (by - ay) / (Math.hypot(bx - ax, by - ay) || 1);
+        const sA = (((x + ax) * ux + (y + ay) * uy) / nZ) * PLOT_C_REF;
+        const L = Lcel * (o[1] - o[0]);
+        const kroku = Math.max(1, Math.ceil(L / PLOT_KROK_M));
+        let px = ax + (bx - ax) * o[0], py = ay + (by - ay) * o[0], pe = vyska(px, py);
+        let ps = sA + Lcel * o[0] * (PLOT_C_REF / (mNaFr * nZ));
+        for (let k = 1; k <= kroku; k++) {
+          const tt = o[0] + (o[1] - o[0]) * k / kroku;
+          const qx = ax + (bx - ax) * tt, qy = ay + (by - ay) * tt, qe = vyska(qx, qy);
+          if (isFinite(pe) && isFinite(qe) && n < PLOT_MAX) {
+            const j = n * 8;
+            seg[j] = px; seg[j + 1] = py; seg[j + 2] = pe; seg[j + 3] = qx; seg[j + 4] = qy; seg[j + 5] = qe;
+            seg[j + 6] = ((ps % 20) + 20) % 20; seg[j + 7] = kod;
+            const mx = Math.min(PLOT_BUNEK - 1, Math.max(0, Math.floor((px + qx) * 0.5 * PLOT_BUNEK)));
+            const my = Math.min(PLOT_BUNEK - 1, Math.max(0, Math.floor((py + qy) * 0.5 * PLOT_BUNEK)));
+            bunka[n] = my * PLOT_BUNEK + mx;
+            n++;
+          }
+          ps += (L / kroku) * (PLOT_C_REF / (mNaFr * nZ));
+          px = qx; py = qy; pe = qe;
+        }
+      }
+    }
+  }
+  if (!n) return null;
+  return { seg: seg.slice(0, n * 8), bunka: bunka.slice(0, n), n, obj: null, x, y };
 }
 
 // ---------------------------------------------------------------------------
@@ -1222,7 +1367,44 @@ async function doplnVysku(v, demP) {
 }
 /// maska mlhy pro body, které ji ještě nemají jistou (1 = objeveno, navěky)
 const objevenoKes = new Set();      // 'lon,lat' objevených bodů (mlha jen roste)
+async function doplnMlhuPlotu(v) {
+  const P = v.ploty || v.voda;                        // obojí sdílí mřížku mlhy (obj, x, y)
+  if (!P || !P.obj) return false;
+  const G = PLOT_BUNEK, nZ = 32768;
+  const pouzite = new Set();
+  for (const Q of [v.ploty, v.voda]) {
+    if (!Q) continue;
+    for (let i = 0; i < Q.n; i++) if (!P.obj[Q.bunka[i]]) pouzite.add(Q.bunka[i]);
+  }
+  if (!pouzite.size) return false;
+  const bunky = [...pouzite];
+  const lon = new Float64Array(bunky.length), lat = new Float64Array(bunky.length);
+  const kde = [];
+  for (let j = 0; j < bunky.length; j++) {
+    const b = bunky[j], bx = b % G, by = (b / G) | 0;
+    lon[j] = lonZ((P.x + (bx + 0.5) / G) / nZ); lat[j] = latZ((P.y + (by + 0.5) / G) / nZ);
+    if (objevenoKes.has(lon[j] + ',' + lat[j])) { P.obj[b] = 1; continue; }
+    kde.push(j);
+  }
+  let zmena = false;
+  for (let a = 0; a < kde.length; a += 400) {
+    const cast = kde.slice(a, a + 400);
+    const body = new Float64Array(cast.length * 2);
+    for (let j = 0; j < cast.length; j++) { body[2 * j] = lon[cast[j]]; body[2 * j + 1] = lat[cast[j]]; }
+    const m = await dotaz({ typ: 'mlha', body }, [body.buffer]);
+    const maska = m && m.maska ? new Uint8Array(m.maska) : null;
+    if (!maska) continue;
+    for (let j = 0; j < cast.length; j++) {
+      if (!maska[j]) continue;
+      const jj = cast[j];
+      P.obj[bunky[jj]] = 1; zmena = true;
+      objevenoKes.add(lon[jj] + ',' + lat[jj]);
+    }
+  }
+  return zmena;
+}
 async function doplnMlhu(v) {
+  if (v.ploty || v.voda) await doplnMlhuPlotu(v);   // engine 358
   if (!v.n) { v.maska = new Uint8Array(0); return false; }
   if (!v.maska) v.maska = new Uint8Array(v.n);
   const kde = [];
@@ -1352,7 +1534,30 @@ function vystupDlazdice(v) {
     for (const q of v.vrtule) if (v.maska[q.i]) o.push(q.lon, q.lat, q.h);
     if (o.length) vrtule = Float64Array.from(o);
   }
-  return { data: zakodujMVT(body, kominy), ev: { sv, stromy: S, prvku: body.length, draty, vrtule } };
+  // engine 358: 3D ploty – úseky v odkrytých buňkách (null = dlaždice bez plotů; z15)
+  let ploty = null;
+  if (v.ploty) {
+    const P = v.ploty;
+    let k = 0;
+    for (let i = 0; i < P.n; i++) if (P.obj[P.bunka[i]]) k++;
+    if (k) {
+      ploty = new Float32Array(k * 8);
+      let o = 0;
+      for (let i = 0; i < P.n; i++) {
+        if (!P.obj[P.bunka[i]]) continue;
+        ploty.set(P.seg.subarray(i * 8, i * 8 + 8), o);
+        o += 8;
+      }
+    }
+  }
+  // engine 358: místa odlesků na vodě v odkrytých buňkách [fx, fy, e]… (null = bez vody; z15)
+  let voda = null;
+  if (v.voda && v.voda.obj) {
+    const Q = v.voda, o = [];
+    for (let i = 0; i < Q.n; i++) if (Q.obj[Q.bunka[i]]) o.push(Q.bod[3 * i], Q.bod[3 * i + 1], Q.bod[3 * i + 2]);
+    if (o.length) voda = Float32Array.from(o);
+  }
+  return { data: zakodujMVT(body, kominy), ev: { sv, stromy: S, prvku: body.length, draty, vrtule, ploty, voda } };
 }
 
 /// engine 357: vygenerovaná dlaždice dekorací (keš, jinak vyrobit + maska mlhy) – pro stíny stromů
@@ -1541,7 +1746,7 @@ self.onmessage = (ev) => {
       vrstvyZdroju.get('krajina').add('vertikaly');
       vrstvyZdroju.set('drobnosti', new Set(['body']));       // engine 349
       vrstvyZdroju.set('lampymesta', new Set(['body']));      // engine 350
-      vrstvyZdroju.set('dtmbody', new Set(['body']));         // engine 356
+      vrstvyZdroju.set('dtmbody', new Set(['body', 'cary'])); // engine 356, 358: čáry = 3D ploty
       vrstvyZdroju.set('vedenizab', new Set(['s', 'r', 'w'])); // engine 357
       vrstvyZdroju.set('vedeniosm', new Set(['s', 'r']));
       zdrojDl.clear();
