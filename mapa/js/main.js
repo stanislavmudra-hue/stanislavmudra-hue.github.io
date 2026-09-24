@@ -393,7 +393,8 @@ function prahyVrstevnic(interval) {
   return out;
 }
 const VRSTVY_3D = ['okolnik-budovy-herni-zdi', 'okolnik-budovy-herni-strecha', 'okolnik-stavby-3d',
-  'okolnik-vertikaly-3d', 'okolnik-okna-3d', 'okolnik-okna-zare', 'okolnik-mosty-3d', 'modely3d'];
+  'okolnik-vertikaly-3d', 'okolnik-okna-3d', 'okolnik-okna-zare', 'okolnik-mosty-3d', 'modely3d',
+  'dekorace-kominy'];   // engine 354: komíny na domech
 // engine 269 („když vypnu kresby míst, tak je stále vidím"): kresby míst jsou
 // i MALOVANÉ IKONY míst z appky (`okolnik-mista-ikona`, shluky), ne jen velké
 // kresby Kroniky; stuhy se jmény zůstávají
@@ -11007,7 +11008,9 @@ function registrujKlikMista() {
     posledniKlep = { t: ted, x: pt.x, y: pt.y };
     if (dvojity && cekajiciShluk) { clearTimeout(cekajiciShluk); cekajiciShluk = null; }
     if (ted < shlukAnimaceDo) spolknuto = true;
-    const muj = { ev, ids: [], sliby: [], nahradni: null, spolknuto, dvojity };
+    // engine 354: `kresba` = zpráva kresby místa (ilustrace.js, má přednost), `obslouzeno` = zprávu už
+    // poslala jiná obsluha sama (erb, odznak návštěvy) → žádná náhradní akce
+    const muj = { ev, ids: [], sliby: [], nahradni: null, spolknuto, dvojity, kresba: null, obslouzeno: false };
     sber = muj;
     setTimeout(() => {
       if (sber === muj) sber = null;
@@ -11015,7 +11018,14 @@ function registrujKlikMista() {
       if (muj.spolknuto || muj.dvojity) return;
       Promise.allSettled(muj.sliby).then(() => {
         const vsechna = [...new Set(muj.ids.filter((id) => id))];
-        if (vsechna.length === 1) mostHlas('onBod', vsechna[0]);
+        // ⭐ engine 354 (T 24. 9.: klepnutí na kresbu Radobýlu otevřelo detail a přes něj mini-detail
+        // chráněného území „Přírodní památka · Navigovat“): kresba posílala zprávu SAMA, sběrač nic
+        // nenasbíral a spustil náhradní akci. Teď kresba jde sem a má přednost – jedna zpráva.
+        // Pořadí: odznak návštěvy / erb (leží NAD kresbou či značkou a zprávu poslal sám) > kresba >
+        // značky míst > náhradní akce (chráněné území, přiblížení shluku).
+        if (muj.obslouzeno) return;
+        if (muj.kresba) mostHlas(muj.kresba[0], muj.kresba[1]);
+        else if (vsechna.length === 1) mostHlas('onBod', vsechna[0]);
         else if (vsechna.length > 1) mostHlas('onShluk', vsechna);
         else if (muj.nahradni) {
           if (cekajiciShluk) clearTimeout(cekajiciShluk);
@@ -11030,6 +11040,10 @@ function registrujKlikMista() {
     return muj;
   };
   posbirejKlik = posbirej;
+  // engine 354: obsluha, která zprávu appce pošle sama, klepnutí označí – sběrač pak nespustí náhradní akci
+  window.oznacKlikObslouzeny = (e) => {
+    try { posbirej(e).obslouzeno = true; } catch (err) { /* nic */ }
+  };
   for (const vrstva of ['okolnik-mista-kruh', 'okolnik-mista-ikona']) {
     mapa.on('click', vrstva, (e) => {
       // ⭐ engine 201: pod prstem bývá víc obrázků (boží muka UVNITŘ obrázku
@@ -11384,6 +11398,7 @@ function nasadOdznakNavstevy() {
         const id = f && f.properties && f.properties.id;
         if (!id) return;
         if (e.originalEvent) e.originalEvent.stopPropagation();
+        if (window.oznacKlikObslouzeny) window.oznacKlikObslouzeny(e);   // engine 354
         mostHlas('onPotvrdit', { id: String(id) });
       } catch (err) { console.warn('[most] odznak návštěvy', err); }
     });
@@ -11451,6 +11466,7 @@ function nasadOdznakIlustrace() {
         const sl = f && f.properties && f.properties.s;
         if (!sl) return;
         if (e.originalEvent) e.originalEvent.stopPropagation();
+        if (window.oznacKlikObslouzeny) window.oznacKlikObslouzeny(e);   // engine 354
         mostHlas('onPotvrdit', { id: 'illus:' + sl });
       } catch (err) { console.warn('[most] odznak kresby', err); }
     });

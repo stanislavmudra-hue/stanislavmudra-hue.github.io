@@ -196,9 +196,107 @@ class Zapis {
   }
 }
 function zzZ(n) { return ((n << 1) ^ (n >> 31)) >>> 0; }
-/// body → MVT (vrstva 'd', body v souřadnicích 0..4095)
-function zakodujMVT(body) {
-  if (!body.length) return new ArrayBuffer(0);
+/// engine 354: bod komínu UVNITŘ půdorysu (V = [x0,y0,x1,y1,…] v souřadnicích dlaždice) s odstupem
+/// `min` od všech hran: těžiště, jinak středy hran (od nejdelší) posunuté o 2–4 m dovnitř; nic → null
+function bodNaStrese(V, cx, cy, min) {
+  const n = V.length / 2;
+  const uvnitr = (px, py) => {
+    let u = false;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const xi = V[2 * i], yi = V[2 * i + 1], xj = V[2 * j], yj = V[2 * j + 1];
+      if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) u = !u;
+    }
+    return u;
+  };
+  const odstup = (px, py) => {
+    let d = Infinity;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const ax = V[2 * i], ay = V[2 * i + 1], bx = V[2 * j], by = V[2 * j + 1];
+      const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+      const t = l2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
+      d = Math.min(d, Math.hypot(px - (ax + t * dx), py - (ay + t * dy)));
+    }
+    return d;
+  };
+  if (uvnitr(cx, cy) && odstup(cx, cy) >= min) return [cx, cy];
+  const hrany = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    hrany.push([Math.hypot(V[2 * j] - V[2 * i], V[2 * j + 1] - V[2 * i + 1]), i, j]);
+  }
+  hrany.sort((p, q) => q[0] - p[0]);
+  for (const [l, i, j] of hrany) {
+    if (!l) continue;
+    const mx = (V[2 * i] + V[2 * j]) / 2, my = (V[2 * i + 1] + V[2 * j + 1]) / 2;
+    const nx = -(V[2 * j + 1] - V[2 * i + 1]) / l, ny = (V[2 * j] - V[2 * i]) / l;
+    for (const k of [2.5, 4]) {
+      for (const s of [1, -1]) {
+        const qx = mx + s * nx * k * min, qy = my + s * ny * k * min;
+        if (uvnitr(qx, qy) && odstup(qx, qy) >= min) return [qx, qy];
+      }
+    }
+  }
+  return null;
+}
+/// ⭐ engine 354: komíny → vrstva 'k' (mnohoúhelníky pro fill-extrusion): tělo (b..h) a širší hlava
+/// (c = 1). Čtverec natočený podle domu (uh), MVT v2: vnější prstenec po směru hodinových ručiček
+/// v souřadnicích dlaždice (y dolů) = kladná plocha. Rozsah vrstvy 8192 (MapLibre si každou vrstvu
+/// přepočítá na svých 8192) – při 4096 na z15 (~0,19 m) zaokrouhlení deformovalo komín i hlavu.
+const KOMIN_S = 0.45, KOMIN_HLAVA_S = 0.56, KOMIN_NAD = 1.5, KOMIN_HLAVA = 0.22, KOMIN_EXT = 8192;
+function vrstvaKominu(kominy) {
+  const vr = new Zapis(kominy.length * 96 + 64);
+  vr.tVarint(15, 2);
+  vr.tText(1, 'k');
+  const hodn = [], hIdx = new Map();
+  const hi = (v) => {
+    const k = 'n' + v;
+    let i = hIdx.get(k);
+    if (i === undefined) { i = hodn.length; hodn.push(v); hIdx.set(k, i); }
+    return i;
+  };
+  const fz = new Zapis(64);
+  const kx = KOMIN_EXT / EXT;
+  const prvek = (cx0, cy0, s0, uh, tagy) => {
+    const cx = cx0 * kx, cy = cy0 * kx, s = s0 * kx;
+    const c = Math.cos(uh), sn = Math.sin(uh);
+    const r = [[-s, -s], [s, -s], [s, s], [-s, s]]
+      .map(([u, w]) => [Math.round(cx + u * c - w * sn), Math.round(cy + u * sn + w * c)]);
+    const g = [9, zzZ(r[0][0]), zzZ(r[0][1]), 26];                     // MoveTo(1), LineTo(3)
+    for (let j = 1; j < 4; j++) g.push(zzZ(r[j][0] - r[j - 1][0]), zzZ(r[j][1] - r[j - 1][1]));
+    g.push(15);                                                         // ClosePath
+    fz.p = 0;
+    fz.tPacked(2, tagy);
+    fz.tVarint(3, 3);                                                   // POLYGON
+    fz.tPacked(4, g);
+    vr.tZprava(2, fz);
+  };
+  for (const km of kominy) {
+    const vrch = +(km.H + KOMIN_NAD).toFixed(2);
+    prvek(km.px, km.py, KOMIN_S / km.mpx, km.uh, [0, hi(vrch), 1, hi(+(km.H - 1).toFixed(2))]);
+    prvek(km.px, km.py, KOMIN_HLAVA_S / km.mpx, km.uh,
+          [0, hi(+(vrch + 0.05).toFixed(2)), 1, hi(+(vrch - KOMIN_HLAVA).toFixed(2)), 2, hi(1)]);
+  }
+  for (const k of ['h', 'b', 'c']) vr.tText(3, k);
+  const hz = new Zapis(32);
+  for (const v of hodn) {
+    hz.p = 0;
+    if (Number.isInteger(v) && v >= 0) hz.tVarint(5, v);
+    else hz.tDouble(3, v);
+    vr.tZprava(4, hz);
+  }
+  vr.tVarint(5, KOMIN_EXT);
+  return vr;
+}
+/// body → MVT (vrstva 'd', body v souřadnicích 0..4095) + engine 354: komíny (vrstva 'k')
+function zakodujMVT(body, kominy) {
+  if (!body.length && !(kominy && kominy.length)) return new ArrayBuffer(0);
+  const dl = new Zapis(64);
+  if (body.length) dl.tZprava(3, vrstvaBodu(body));
+  if (kominy && kominy.length) dl.tZprava(3, vrstvaKominu(kominy));
+  return dl.b.slice(0, dl.p).buffer;
+}
+function vrstvaBodu(body) {
   const klice = [], kIdx = new Map(), hodn = [], hIdx = new Map();
   const vr = new Zapis(body.length * 24 + 64);
   vr.tVarint(15, 2);
@@ -233,9 +331,7 @@ function zakodujMVT(body) {
     vr.tZprava(4, hz);
   }
   vr.tVarint(5, EXT);
-  const dl = new Zapis(vr.p + 16);
-  dl.tZprava(3, vr);
-  return dl.b.slice(0, dl.p).buffer;
+  return vr;
 }
 
 // ---------------------------------------------------------------------------
@@ -612,11 +708,12 @@ async function generuj(z, x, y) {
   const idx = postavIndex(z, zdrojove, defs, 1 / mNaPx);
   const tIdx = performance.now();
   // kandidáti
-  const K = { lon: [], lat: [], px: [], py: [], ik: [], k: [], z0: [], sv: [], id: [], lic: [] };
+  const K = { lon: [], lat: [], px: [], py: [], ik: [], k: [], z0: [], sv: [], id: [], lic: [], uh: [] };
   // engine 342/343: `lic` = lichá buňka jemné mřížky v dlaždici z14 – v dlaždicích z13 chybí
-  const pridej = (lon, lat, px, py, ik, k, z0, sv, id, lic) => {
+  // engine 354: `uh` = natočení komínu podle domu (rad, souřadnice dlaždice)
+  const pridej = (lon, lat, px, py, ik, k, z0, sv, id, lic, uh) => {
     K.lon.push(lon); K.lat.push(lat); K.px.push(px); K.py.push(py); K.ik.push(idxRetezce(ik));
-    K.k.push(k); K.z0.push(z0); K.sv.push(sv); K.id.push(id); K.lic.push(lic ? 1 : 0);
+    K.k.push(k); K.z0.push(z0); K.sv.push(sv); K.id.push(id); K.lic.push(lic ? 1 : 0); K.uh.push(uh || 0);
   };
   const vPx = (lon, lat) => [(mercX(lon) * n - x) * EXT, (mercY(lat) * n - y) * EXT];
   for (const [druh, cfg] of druhy) {
@@ -678,6 +775,10 @@ async function generuj(z, x, y) {
   // rodinného domu (40–450 m², celý obrys v dlaždici), ~35 % podle hashe
   // polohy (stejný výběr na všech úrovních). Nekreslí se: sv:3 jde přes mlhu do
   // evidence, kouř kreslí animace.js.
+  // ⭐ engine 354 (T 24. 9.: „ten kouř nad domy působí zvláštně, když nemají komíny“): kotva u KAŽDÉHO
+  // rodinného domu = komín na střeše (vrstva 'k' dlaždice, viz vrstvaKominu); `k` = výška domu
+  // (render_height, jinak 6 m) se znaménkem: kladná = z komínu se kouří (~35 % jako dřív), záporná
+  // = komín bez kouře; `uh` = směr nejdelší hrany domu.
   if (z === Z_MAX) {
     const dB = defs.find((d) => d.id === 'budovy-vypln');
     const zdB = dB && zdrojove[dB.zdroj];
@@ -689,27 +790,37 @@ async function generuj(z, x, y) {
       // ⛔ budovy jsou v dlaždicích SLOUČENÉ do pár multipolygonů (5 prvků =
       // stovky domů) → každý VNĚJŠÍ prstenec (kladná plocha, MVT v2) je dům
       for (const f of vBud.prvky) {
-        if (komnu >= 400) break;
+        if (komnu >= 1500) break;
         if (f.typ !== 3 || !dB.fn(f.vl, f.typ)) continue;
+        const vyskaDomu = Math.max(3, Math.min(15, +(f.vl && f.vl.render_height) || 6));
         for (const r of geomPrvku(vBud, f)) {
-          if (komnu >= 400) break;
-          let a = 0, cx = 0, cy = 0, venku = false;
+          if (komnu >= 1500) break;
+          let a = 0, cx = 0, cy = 0, venku = false, hrana = 0, uh = 0;
+          const V = [];                              // engine 354: vrcholy (bod komínu uvnitř půdorysu)
           for (let i = 0; i < r.length; i += 2) {
             const x0 = r[i] * kB * zdB.m + zdB.ox, y0 = r[i + 1] * kB * zdB.m + zdB.oy;
             if (x0 < 0 || x0 > EXT || y0 < 0 || y0 > EXT) { venku = true; break; }
+            V.push(x0, y0);
             const j = (i + 2) % r.length;
             const x1 = r[j] * kB * zdB.m + zdB.ox, y1 = r[j + 1] * kB * zdB.m + zdB.oy;
             const c = x0 * y1 - x1 * y0;
             a += c; cx += (x0 + x1) * c; cy += (y0 + y1) * c;
+            const d2 = (x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0);
+            if (d2 > hrana) { hrana = d2; uh = Math.atan2(y1 - y0, x1 - x0); }
           }
           if (venku || a <= 1e-6) continue;          // díra (záporná) nebo mimo dlaždici
           const plocha = (a / 2) * m2NaPx2;
           if (plocha < 40 || plocha > 450) continue;
-          const px = cx / (3 * a), py = cy / (3 * a);
+          // ⛔ engine 354: těžiště domu do L / U leží mimo střechu (komín visel nad dvorkem) → bod
+          // uvnitř půdorysu aspoň 1 m od okraje, jinak dům bez komínu
+          const bod = bodNaStrese(V, cx / (3 * a), cy / (3 * a), 1.0 / mNaPx);
+          if (!bod) continue;
+          const px = bod[0], py = bod[1];
           const lon = lonZ((x + px / EXT) / n), lat = latZ((y + py / EXT) / n);
           const ha = Math.round(lon * 1e5), hb = Math.round(lat * 1e5);
-          if (hash(ha, hb, 11) > 0.35) continue;
-          pridej(lon, lat, px, py, 'svetluska-zare', 0, 15.2, 3, ((ha * 92821 + hb * 31397 + 3 * 7451) >>> 0));
+          const kouri = hash(ha, hb, 11) <= 0.35;
+          pridej(lon, lat, px, py, 'svetluska-zare', kouri ? vyskaDomu : -vyskaDomu, 15.2, 3,
+                 ((ha * 92821 + hb * 31397 + 3 * 7451) >>> 0), false, uh);
           komnu++;
         }
       }
@@ -858,6 +969,7 @@ async function generuj(z, x, y) {
     ik: Uint16Array.from(K.ik), k: Float32Array.from(K.k), z0: Float32Array.from(K.z0),
     sv: Uint8Array.from(K.sv), id: Uint32Array.from(K.id), lic: Uint8Array.from(K.lic),
     ev: new Float32Array(pocetK), maska: null,
+    uh: Float32Array.from(K.uh), mpx: mNaPx,           // engine 354: komíny (natočení, m na jednotku)
   };
   // výška terénu → velikost (vyskovyFaktor: 1 ve 400 m, ±1 % na 30 m)
   await doplnVysku(vysl, demP);
@@ -984,12 +1096,17 @@ function nastupX(z0) {
 function vystupDlazdice(v) {
   const body = [];
   const sv = [], stromy = [];
+  const kominy = [];                  // engine 354
   for (let i = 0; i < v.n; i++) {
     if (!v.maska[i]) continue;
     const ik = retezce[v.ik[i]];
     if (v.sv[i]) {
       // engine 341: `r` = u ryb dosah vody (m), jinak velikost druhu
       sv.push({ id: v.id[i], sv: v.sv[i], ik, lon: v.lon[i], lat: v.lat[i], r: v.k[i] });
+      // engine 354: komín na střeše (jen odkryté – maska mlhy platí i tady)
+      if (v.sv[i] === 3 && v.mpx) {
+        kominy.push({ px: v.px[i], py: v.py[i], uh: v.uh ? v.uh[i] : 0, H: Math.abs(v.k[i]), mpx: v.mpx });
+      }
       continue;
     }
     const o = nastup(v.z0[i]);
@@ -1019,7 +1136,7 @@ function vystupDlazdice(v) {
     S.lon[j] = v.lon[i]; S.lat[j] = v.lat[i]; S.ik.push(retezce[v.ik[i]]);
     S.k[j] = v.k[i]; S.ev[j] = v.ev[i]; S.z0[j] = v.z0[i]; S.lic[j] = v.lic ? v.lic[i] : 0;
   }
-  return { data: zakodujMVT(body), ev: { sv, stromy: S, prvku: body.length } };
+  return { data: zakodujMVT(body, kominy), ev: { sv, stromy: S, prvku: body.length } };
 }
 
 async function vyridDlazdici(m) {

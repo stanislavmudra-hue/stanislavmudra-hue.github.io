@@ -1754,16 +1754,22 @@ const Ilustrace = (() => {
         // by se sousedé schovaní pod kresbou nedali otevřít vůbec. Appka
         // na to má tentýž seznam jako 2D (home_screen._onIllusClusterTap).
         const cleni = posledniShluky.get(slug);
+        const zprava = (cleni && cleni.length > 1)
+          ? ['onShlukMist', cleni.map((m) => m.s)] : ['onMisto', slug];
+        // ⭐ engine 354: přes SBĚRAČ KLEPNUTÍ (main.js `posbirejKlik`, engine 304) – jedna zpráva za
+        // klepnutí a kresba má přednost. Dřív šla zpráva rovnou a sběrač k tomu spustil náhradní
+        // akci: klepnutí na Radobýl = detail + přes něj mini-detail chráněného území (T 24. 9.)
+        if (typeof posbirejKlik === 'function') {
+          const muj = posbirejKlik(e);
+          if (!muj.kresba) muj.kresba = zprava;
+          return;
+        }
         try {
-          if (cleni && cleni.length > 1) {
-            window.flutter_inappwebview.callHandler(
-                'onShlukMist', cleni.map((m) => m.s));
-          } else {
-            window.flutter_inappwebview.callHandler('onMisto', slug);
-          }
+          window.flutter_inappwebview.callHandler(zprava[0], zprava[1]);
         } catch (err) { console.warn('[most] onMisto', err); }
         return;
       }
+      if (window.oznacKlikObslouzeny) window.oznacKlikObslouzeny(e);   // engine 354 (web)
       const clen = posledniShluky.get(slug);
       if (clen && clen.length > 1) ukazShluk(clen);
       else ukazDetail(slug);

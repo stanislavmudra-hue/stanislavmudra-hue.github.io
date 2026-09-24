@@ -113,6 +113,7 @@ const Erby = (() => {
       if (!f) return;
       const p = f.properties;
       console.log('[Erby] klik', p.url);
+      if (window.oznacKlikObslouzeny) window.oznacKlikObslouzeny(e);   // engine 354: bez náhradní akce
       try {
         if (window.__okolnikApp && window.flutter_inappwebview) {
           window.flutter_inappwebview.callHandler('onErb',

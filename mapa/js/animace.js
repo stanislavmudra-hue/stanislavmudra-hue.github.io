@@ -197,9 +197,11 @@ const AnimaceNadMapou = (() => {
     const cosL = Math.cos(c.lat * Math.PI / 180);
     const d2 = (f) => ((f.lon - c.lng) * cosL) ** 2 + (f.lat - c.lat) ** 2;
     const stare = new Map(kominy.map((x) => [x.id, x]));
+    // engine 354: kotvy nesou výšku domu (r > 0 = kouří, r < 0 = komín bez kouře); kouř z vrcholu komínu
     kominy = z >= KOUR_OD_Z
-      ? k.komin.filter(vIn).sort((a, b2) => d2(a) - d2(b2)).slice(0, UROVNE[uroven].kominu)
-          .map((f) => stare.get(f.id) || { id: f.id, sv: 3, lon: f.lon, lat: f.lat, h: null, dalsi: 0, faze: (f.id % 997) / 997 })
+      ? k.komin.filter((f) => f.r > 0 && vIn(f)).sort((a, b2) => d2(a) - d2(b2)).slice(0, UROVNE[uroven].kominu)
+          .map((f) => stare.get(f.id) || { id: f.id, sv: 3, lon: f.lon, lat: f.lat, h: null, dalsi: 0, faze: (f.id % 997) / 997,
+                                           vrch: f.r + 1.55 })
       : [];
     vodni = z >= VODA_OD_Z
       ? k.voda.filter(vIn).slice(0, MAX_VODNICH).map((f) => ({ id: f.id, sv: 4, lon: f.lon, lat: f.lat, h: null, r: +f.r || 3 }))
@@ -246,13 +248,14 @@ const AnimaceNadMapou = (() => {
     const zakl = tma ? 0.3 : (st && /dest|snih/.test(String(st.druh)) ? 0.4 : 0.58);
     for (const o of oblacky) {
       const a = (t - o.t0) / 1000, k = o.k;
-      const zdvih = 7 + 3.2 * a - 0.1 * a * a;
+      // engine 354: z vrcholu komínu (výška domu + 1,55 m, viz dekorace-worker `vrstvaKominu`)
+      const zdvih = (k.vrch || 7) + 3.2 * a - 0.1 * a * a;
       const d = rychl * a * (0.35 + 0.65 * Math.min(1, a / 2));
       const bok = 0.7 * Math.sin(o.turb + a * 1.3);
       const dx = d * ex - bok * ey, dy = d * ey + bok * ex;
       const p = bod(k.lon + dx / (111320 * Math.cos(k.lat * Math.PI / 180)), k.lat + dy / 111320, k.h + zdvih);
       // stylizace ×1,7 (malba, ne měřítko – jako stromy), strop 42 px
-      const r = Math.min(42, (1.5 + 1.9 * a) * 1.7 * (k.pxNaM || 1));
+      const r = Math.min(42, (0.8 + 1.9 * a) * 1.7 * (k.pxNaM || 1));   // engine 354: vychází z komínu
       if (r < 0.6) continue;
       const nabeh = Math.min(1, a / 0.45);
       ctx.globalAlpha = zakl * nabeh * Math.pow(Math.max(0, 1 - a / o.zivot), 1.3);

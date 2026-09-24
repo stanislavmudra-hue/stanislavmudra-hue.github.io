@@ -654,6 +654,24 @@ const Dekorace = (() => {
         'icon-opacity': vyrazRampy(1),
       },
     }, kotva ? kotva.id : undefined);
+    // ⭐ engine 354 (T 24. 9.: „ten kouř nad domy působí zvláštně, když nemají komíny“): KOMÍNY
+    // rodinných domů z vrstvy `k` dlaždic workeru – cihlové tělo 0,9 m natočené podle domu, 1,5 m nad
+    // střechou, tmavší hlava; kouř (animace.js) stoupá z jejich vrcholu. Jen odkryté (maska mlhy).
+    if (vektor && !mapa.getLayer('dekorace-kominy')) {
+      try {
+        mapa.addLayer({
+          id: 'dekorace-kominy', type: 'fill-extrusion', source: 'dekorace', 'source-layer': 'k',
+          minzoom: 15,
+          paint: {
+            'fill-extrusion-color': ['case', ['has', 'c'], '#5A4B44', '#94553F'],
+            'fill-extrusion-height': ['get', 'h'],
+            'fill-extrusion-base': ['get', 'b'],
+            'fill-extrusion-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 15.4, 1],
+            'fill-extrusion-vertical-gradient': false,
+          },
+        }, 'akvarel-dekorace');
+      } catch (e) { console.warn('[deko] komíny', e); }
+    }
     // ⭐ v1.425: NOČNÍ ZTLUMENÍ DEKORACÍ („bijí do očí“) — rampu
     // rození nesmíme přepsat konstantou, násobí se celý výraz.
     // Volá aplikujNoc() při změně kroku; tady se aplikuje stav
@@ -3072,8 +3090,8 @@ const Dekorace = (() => {
     // engine 350: drobnosti2 = + stromy z OSM; lampy_mesta1 = Brno (CC BY 4.0), Plzeň, Děčín
     // engine 352: drobnosti3 = + výstražníky, semafory, závory (a zebry pro styl); lampy_mesta2 = + ruční lampy
     try { out.drobnosti = r2('drobnosti3.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez drobností */ }
-    // engine 353: lampy_mesta3 = ruční lampa Sezemice 52 posunutá k autobusové zastávce (T 24. 9.)
-    try { out.lampymesta = r2('lampy_mesta3.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez lamp měst */ }
+    // engine 354: lampy_mesta4 = ruční lampa Sezemice 52 u začátku horního vjezdu na točnu (T 24. 9.)
+    try { out.lampymesta = r2('lampy_mesta4.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez lamp měst */ }
     return out;
   }
   function wNastaveni() {
@@ -3325,7 +3343,7 @@ const Dekorace = (() => {
         const k = f.sv + ':' + f.id;
         if (vid.has(k)) continue;
         vid.add(k);
-        if (f.sv === 3) out.komin++;
+        if (f.sv === 3) { if (f.r > 0) out.komin++; }     // engine 354: jen kouřící (dřív ~35 % domů)
         else if (f.sv === 4) out.voda++;
         else if (f.sv === 1) out.svetla++;
       }
