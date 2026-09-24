@@ -3218,21 +3218,29 @@ function siluetaSpritu(ik) {
       const src = data.data, dst = out.data;
       const up = SILUETA_UPRAVA[ik] || null;
       const nas = up ? up.alfa : 0.85;
+      // ⭐⭐ engine 367 (T 24. 9. večer: „Některé stíny stále vypadají, jako by originální objekt levitoval“ – borovice
+      // s holým kmenem): BOD KRESBY leží na řádku h − 16 obrázku v atlasu (icon-anchor bottom + icon-offset [0, 8] CSS px
+      // při pixelRatio 2 = 16 px obrázku; obrázek má i průhledný okraj 4 px z `sOkrajem`), NE na spodním neprůhledném
+      // řádku – pod bodem kreslí malby trávu a kořeny „před patou“. Stín kotvený spodním řádkem (engine 359) tak ujel
+      // o ~12 řádků × 1/tan(výška slunce) od paty (20m strom při slunci 10° ≈ 7 m) a strom visel nad svým stínem.
+      // Teď pata stínu = min(dno, kotva) a řádky POD kotvou stín nevrhají (jinak by padaly proti slunci).
+      const kotva = h - 16;
       let dno = 0;
       for (let i = 0; i < src.length; i += 4) {
         const a = src[i + 3];
         if (a <= 24) continue;
         const p = i >> 2, xx = p % w;
         if (up && up.osa !== undefined && Math.abs(xx + 0.5 - up.osa) > up.pul) continue;
-        dst[i] = 42; dst[i + 1] = 29; dst[i + 2] = 16; dst[i + 3] = Math.min(255, a * nas);
         const yy = (p / w) | 0;
+        if (yy >= kotva) continue;
+        dst[i] = 42; dst[i + 1] = 29; dst[i + 2] = 16; dst[i + 3] = Math.min(255, a * nas);
         if (yy + 1 > dno) dno = yy + 1;
       }
       cx.putImageData(out, 0, 0);
       // ⭐ engine 359 (T 24. 9.: „Občas to působí jako když objekty levitují“): `dno` = spodní neprůhledný řádek
       // siluety – stín se kotví JÍM (ne spodkem plátna s průhledným okrajem): dřív se stín kreslil posunutý o okraj ×
       // 1/tan(výška slunce) a v protisvětle se od paty keře či stromu odtrhl
-      vysl = { platno: c, w, h, px: dst, dno: dno || h };   // engine 334: px → worker kresby
+      vysl = { platno: c, w, h, px: dst, dno: dno || kotva };   // engine 334: px → worker kresby; 367: ≤ kotva
     }
   } catch (e) { vysl = null; }
   if (vysl) stinySiluety.set(ik, vysl);   // bez spritu zkusit příště znovu
