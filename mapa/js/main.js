@@ -6939,8 +6939,8 @@ function kotviZoom(tr, teren, tol = 0.05) {
 /// Konec gesta / animace / malý rozdíl v klidu. true = vyřízeno, MapLibre nepřepočítává (jeho přesný přepočet
 /// z plátna souřadnic je o ~1 m jinde než DEM a `_render` by to dorovnal posunem kamery – změřeno TT: kamera +1 m,
 /// hrany domů u spodního okraje o pixel); false = ať to udělá MapLibre po svém (DEM nenačtený apod.).
-/// ⛔ Do 0,5 m NESAHAT: i přeparametrování při stojící kameře přepočítá matice dlaždic ve float32 a hrany 3D domů
-/// se o zlomek pixelu přerasterizují (TT: 0,24 % pixelů, kamera na mikrometr stejná); 0,5 m = zoom ±0,001.
+/// Do 0,5 m se nesahá (= zoom ±0,001): po puštění prstu se parametrizace nemá čím měnit. (Podezření, že i přeparametrování
+/// při stojící kameře mění hrany 3D domů, se nepotvrdilo – těch 0,24 % pixelů bylo doostření dynamického rozlišení.)
 function kotviDoKonce(tr, teren) {
   const s0 = kotviZoom(tr, teren, 0.5);
   if (s0 !== 'zmena') return s0 !== false;
@@ -7178,10 +7178,9 @@ function nasadPametPokryti() {
 // =============================================================================
 const TexturaGesta = (() => {
   const RTT_GESTO = 512, RTT_KLID = 1024;
-  // ⛔ engine 356: VYPNUTO ve výchozím stavu (T 24. 9.: „chci, aby nebyl žádný přechod“) – po `idle` se dlaždice
-  // 512 přestavovaly po jedné na 1024 = povrch (silnice, pole, vrstevnice) se po puštění prstu doostřoval po kusech.
-  // Cena (TT, k91 A,B,B,A): snímky nad 33 ms při tahu přes nové území 5,7 → 9,3 %, průměr 18,2 → 19,2 ms.
-  let aktivni = false, prstDole = false, obnovaRaf = 0, nasazeno = false;
+  // engine 356: krátce vypnuto a na přání T VRÁCENO („šlo mi pouze o ty změny ve velikostech“) – doostření povrchu
+  // po puštění prstu je v pořádku. Vypnutí stálo (TT, k91 A,B,B,A) snímky nad 33 ms 5,7 → 9,3 %.
+  let aktivni = true, prstDole = false, obnovaRaf = 0, nasazeno = false;
   const stat = { gest: 0, obnoveno: 0 };
   function rtt() { try { return mapa && mapa.painter && mapa.painter.renderToTexture; } catch (e) { return null; } }
   function zacni() {
@@ -7676,11 +7675,10 @@ let dynRozliseniT = null;
 // v1.601.7: ZAPNUTO NATRVALO (přání „dej to z nastavení pryč, ať je
 // stále dynamické rozlišení"). `OkolnikMost.dynRozliseni(bool)` zůstává
 // jen pro ladění přes CDP.
-// ⛔ engine 356: VYPNUTO ve výchozím stavu. T 24. 9.: „ty skoky jsou ve chvíli, kdy pustím prst… je to úmyslné
-// kvůli výkonu, ale nelíbí se mi to“ → „chci, aby nebyl žádný přechod“. Po puštění prstu se celá mapa za 250 ms
-// doostřila (1,5 → 2) – na TT to po opravě kamery byla jediná změna obrazu (0,28 % pixelů, s vypnutým 0,00 %).
-// Cena dnes malá: s vypnutým i texturou 1024 při gestu snímky nad 33 ms 5,4 → 9,6 % (k92, většina z textury).
-let dynRozliseniAktivni = false;
+// engine 356: krátce vypnuto (po puštění prstu se mapa za 250 ms doostří, 0,28 % pixelů) a na přání T VRÁCENO
+// („to doostření kvůli výkonu vrať, šlo mi pouze o ty změny ve velikostech“). Vypnutí stálo snímky nad 33 ms
+// 5,4 → 9,6 % (k92, spolu s texturou 512).
+let dynRozliseniAktivni = true;
 let dynRozliseniModul = null;   // {zapni(), vypni()} po registraci
 
 function zapniDynamickeRozliseni() {
