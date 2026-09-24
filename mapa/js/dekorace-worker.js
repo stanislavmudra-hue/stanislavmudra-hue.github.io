@@ -839,7 +839,9 @@ async function generuj(z, x, y) {
           }
           const kk = cfg.k * (0.92 + hash(a, b, 14) * 0.16);
           if (cfg.ikony.length) pridej(lon, lat, px, py, cfg.ikony[Math.floor(hash(a, b, 13) * cfg.ikony.length)], kk, cfg.z0, 0, 0);
-          if (cfg.sv) pridej(lon, lat, px, py, cfg.zare, kk, cfg.z0, cfg.sv, ((a * 92821 + b * 31397 + cfg.sv * 7451) >>> 0));
+          // engine 352: `zare` smí být seznam (semafor: červená / zelená podle hashe polohy)
+          const zare = Array.isArray(cfg.zare) ? cfg.zare[Math.floor(hash(a, b, 15) * cfg.zare.length)] : cfg.zare;
+          if (cfg.sv) pridej(lon, lat, px, py, zare, kk, cfg.z0, cfg.sv, ((a * 92821 + b * 31397 + cfg.sv * 7451) >>> 0));
           pocetD++;
         }
       }

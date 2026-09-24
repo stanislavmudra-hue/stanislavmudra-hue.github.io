@@ -680,6 +680,8 @@ function stylHerni(ctx) {
       // engine 351: DTM ČR – veřejná ZPS (otevřená data, jen geometrie a typ)
       dtm: { type: 'vector', url: r2('dtm1.pmtiles'),
              attribution: 'Digitální technická mapa krajů ČR (IS DMVS – ČÚZK)' },
+      // engine 352: drobnosti z OSM – ve stylu jen čáry zeber (body kreslí worker dekorací)
+      drobnosti: { type: 'vector', url: r2('drobnosti3.pmtiles'), attribution: '© OpenStreetMap' },
     }),
     layers: [
       // ===== BAREVNÉ PATRO (pod mlhou — odkrývá se objevováním) =====
@@ -1065,6 +1067,17 @@ function stylHerni(ctx) {
         paint: { 'line-color': '#F3EFE4', 'line-opacity': 0.7,
                  'line-width': sirkaMetry(0.4, 0.35, 13.5),
                  'line-gap-width': sirkaSilnic((w, z) => +Math.max(0.2, w - (z >= 18 ? w * 0.18 : 1.2)).toFixed(2)) } },
+      // ⭐ engine 352 (T 24. 9.: „přejezdy, přechody / zebry, závory, semafory“): ZEBRY vyznačených přechodů
+      // z OSM (drobnosti3, vrstva `cary`: čára PŘES silnici – z cesty přechodu, jinak kolmo na silnici v délce
+      // její šířky). Šířka čáry = délka pruhů podél silnice (3 m), přerušování = pruhy a mezery po 0,5 m
+      // (dasharray je v násobcích šířky). Nad asfaltem, pod domy a pod mlhou.
+      { id: 'drob-zebry', type: 'line', source: 'drobnosti', 'source-layer': 'cary', minzoom: 16,
+        filter: ['==', ['get', 't'], 'zebra'],
+        layout: { 'line-cap': 'butt' },
+        paint: { 'line-color': '#F4F2EA',
+                 'line-opacity': ['interpolate', ['linear'], ['zoom'], 16, 0, 16.5, 0.92],
+                 'line-width': ['interpolate', ['exponential', 2], ['zoom'], 16, 1.2, 22, DTM_W22(3.0)],
+                 'line-dasharray': [0.17, 0.17] } },
       { id: 'budovy-vypln', type: 'fill', source: 'omt',
         'source-layer': 'building', minzoom: 14,
         paint: { 'fill-color': '#DCC9A5', 'fill-opacity': 0.8 } },

@@ -360,6 +360,12 @@ const Dekorace = (() => {
     svit:     { ikony: [],                H: 192, vyskaM: 8,   z0: 14.9, sv: 5, zare: 'lampa-zare' },
     // engine 350: stromy z OSM (ikony stromů ZABAGED podle `j`, k 0,81–1,09)
     strom:    { strom: true, k: 0.95, z0: 13.9 },
+    // engine 352 (T 24. 9.: „přejezdy, přechody / zebry, závory, semafory“): polohy spočítané při exportu
+    // (výstražník vpravo u silnice ±5 m od trati, semafory na protilehlých rozích); zebry kreslí styl
+    vystraznik:   { ikony: ['deko-vystraznik'],   H: 160, vyskaM: 4.5, z0: 15.4 },
+    vystraznik_z: { ikony: ['deko-vystraznik-z'], H: 160, vyskaM: 4.5, z0: 15.4 },
+    semafor:  { ikony: ['deko-semafor'],  H: 176, vyskaM: 5,   z0: 15.3, sv: 5, zare: ['semafor-zare-r', 'semafor-zare-z'] },
+    zavora:   { ikony: ['deko-zavora'],   H: 72,  vyskaM: 2,   z0: 15.8 },
   };
   const drobnostiProWorker = () => {
     const out = {};
@@ -1014,10 +1020,78 @@ const Dekorace = (() => {
     g.fillStyle = r; g.beginPath(); g.arc(sx, sy, 30, 0, Math.PI * 2); g.fill();
     return g.getImageData(0, 0, W, H);
   }
+  /// engine 352: výstražník železničního přejezdu – sloupek, výstražný kříž (bílé ramena s červeným lemem)
+  /// a skříňka se dvěma červenými světly; `zavora` = navíc červenobílé břevno závory (64×160 / 192×160)
+  function vystraznikSprite(zavora) {
+    const W = zavora ? 192 : 64, H = 160, yb = H - 10, x = zavora ? 40 : 32;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, x, yb, 10);
+    trs(g, x - 2.5, 30, 5, yb - 30, '#d4d3cc');                        // sloupek
+    trs(g, x - 5, yb - 10, 10, 10, '#6d6c66');                          // patka
+    // výstražný kříž
+    for (const uhel of [0.62, -0.62]) {
+      g.save(); g.translate(x, 24); g.rotate(uhel);
+      g.fillStyle = '#ffffff'; g.fillRect(-19, -4, 38, 8);
+      g.strokeStyle = '#c62a2e'; g.lineWidth = 2.2; g.strokeRect(-19, -4, 38, 8);
+      g.restore();
+    }
+    g.strokeStyle = OBRYS_D; g.lineWidth = 0.8;
+    // skříňka se světly
+    g.beginPath(); g.moveTo(x - 15, 44); g.lineTo(x + 15, 44); g.lineTo(x + 15, 58); g.lineTo(x - 15, 58); g.closePath();
+    g.fillStyle = '#1c1c1c'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.4; g.stroke();
+    for (const dx of [-8, 8]) { g.beginPath(); g.arc(x + dx, 51, 4.6, 0, Math.PI * 2); g.fillStyle = '#8c2422'; g.fill(); }
+    if (zavora) {
+      const y = yb - 40;                                                 // břevno závory
+      g.fillStyle = OBRYS_D; g.fillRect(x - 4, y - 5, W - x - 4, 10);
+      for (let i = 0, px = x; px < W - 10; px += 12, i++) { g.fillStyle = i % 2 ? '#ffffff' : '#d23a2f'; g.fillRect(px, y - 3.5, 12, 7); }
+      trs(g, x - 8, y - 7, 10, 14, '#4a4a46');                           // protizávaží
+    }
+    return g.getImageData(0, 0, W, H);
+  }
+  /// engine 352: semafor – šedý stožár, černá hlava se třemi světly (ve dne svítí zelená) (64×176)
+  function semaforSprite() {
+    const W = 64, H = 176, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 32, yb, 9);
+    trs(g, 30, 60, 4, yb - 60, '#7b7f82');
+    trs(g, 27, yb - 8, 10, 8, '#5d6063');
+    g.beginPath(); g.moveTo(19, 12); g.lineTo(45, 12); g.lineTo(45, 64); g.lineTo(19, 64); g.closePath();
+    g.fillStyle = '#f2f2ee'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.4; g.stroke();   // bílý rámeček
+    g.fillStyle = '#1d1f20'; g.fillRect(23, 15, 18, 46);
+    const svetla = [['#5b1d1b', 24], ['#5b4a1a', 38], ['#46e27a', 52]];
+    for (const [b, y] of svetla) { g.beginPath(); g.arc(32, y, 5.6, 0, Math.PI * 2); g.fillStyle = b; g.fill(); }
+    return g.getImageData(0, 0, W, H);
+  }
+  /// engine 352: noční světlo semaforu (stejná pata a k jako semafor): červené nahoře, zelené dole
+  function semaforZareSprite(rgb, y) {
+    const W = 64, H = 176;
+    const [c, g] = platnoDrobnosti(W, H);
+    const r = g.createRadialGradient(32, y, 0, 32, y, 18);
+    r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.25, 'rgba(' + rgb + ',0.95)'); r.addColorStop(1, 'rgba(' + rgb + ',0)');
+    g.fillStyle = r; g.beginPath(); g.arc(32, y, 18, 0, Math.PI * 2); g.fill();
+    return g.getImageData(0, 0, W, H);
+  }
+  /// engine 352: závora na cestě – sloupek s protizávažím a červenobílé břevno (192×72)
+  function zavoraSprite() {
+    const W = 192, H = 72, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 22, yb - 1, 14);                                       // stín sloupku (břevno ho nemá)
+    trs(g, 14, yb - 30, 12, 30, '#6e6e68');
+    const y = yb - 26;
+    g.fillStyle = OBRYS_D; g.fillRect(20, y - 5, 168, 10);
+    for (let i = 0, px = 22; px < 186; px += 12, i++) { g.fillStyle = i % 2 ? '#ffffff' : '#d23a2f'; g.fillRect(px, y - 3.5, Math.min(12, 186 - px), 7); }
+    trs(g, 8, y - 7, 10, 14, '#4a4a46');
+    trs(g, 180, y, 3, yb - y, '#6e6e68', false);                        // podpěra konce břevna
+    return g.getImageData(0, 0, W, H);
+  }
   const SPRITY_DROBNOSTI = { 'deko-lampa': lampaSprite, 'deko-posed': posedSprite, 'deko-krmelec': krmelecSprite,
                              'deko-lavicka': lavickaSprite, 'deko-studna': studnaSprite, 'deko-schranka': schrankaSprite,
                              'lampa-zare': lampaZareSprite,
-                             'deko-lampa-park': lampaParkSprite, 'lampa-park-zare': lampaParkZareSprite };
+                             'deko-lampa-park': lampaParkSprite, 'lampa-park-zare': lampaParkZareSprite,
+                             'deko-vystraznik': () => vystraznikSprite(false), 'deko-vystraznik-z': () => vystraznikSprite(true),
+                             'deko-semafor': semaforSprite, 'deko-zavora': zavoraSprite,
+                             'semafor-zare-r': () => semaforZareSprite('255,70,55', 24),
+                             'semafor-zare-z': () => semaforZareSprite('70,235,120', 52) };
 
   /// ⭐ Sněhulák pečený štětcem (v1.593): tři koule se studeným
   /// stínem, uhlíky, mrkev, klacíkové ruce, hrnec a šála. Kreslí se
@@ -2996,8 +3070,9 @@ const Dekorace = (() => {
     }
     // engine 349: drobnosti z OSM – samostatný archiv (není ve stylu, čte ho jen worker)
     // engine 350: drobnosti2 = + stromy z OSM; lampy_mesta1 = Brno (CC BY 4.0), Plzeň, Děčín
-    try { out.drobnosti = r2('drobnosti2.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez drobností */ }
-    try { out.lampymesta = r2('lampy_mesta1.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez lamp měst */ }
+    // engine 352: drobnosti3 = + výstražníky, semafory, závory (a zebry pro styl); lampy_mesta2 = + ruční lampy
+    try { out.drobnosti = r2('drobnosti3.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez drobností */ }
+    try { out.lampymesta = r2('lampy_mesta2.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez lamp měst */ }
     return out;
   }
   function wNastaveni() {
