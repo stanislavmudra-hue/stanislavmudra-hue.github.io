@@ -269,6 +269,32 @@
       }
     }
     if (!veStinu) return null;
+    // engine 360: rozostření alfy [1 4 6 4 1]/16 v obou směrech (σ ≈ 1 buňka = 12 m) – obrys po bilineárním zvětšení
+    // jinak kopíroval mřížku buněk (zaoblené mnohoúhelníky na z18); polostín vzdáleného hřebene je stejně 5–20 m
+    {
+      const A = new Float32Array(Gm * Gm), B = new Float32Array(Gm * Gm);
+      for (let i = 0; i < Gm * Gm; i++) A[i] = px[i * 4 + 3];
+      const K5 = [1 / 16, 4 / 16, 6 / 16, 4 / 16, 1 / 16];
+      for (let y = 0; y < Gm; y++) {
+        const r = y * Gm;
+        for (let x = 0; x < Gm; x++) {
+          let v = 0;
+          for (let k = -2; k <= 2; k++) { const xx = x + k < 0 ? 0 : (x + k >= Gm ? Gm - 1 : x + k); v += A[r + xx] * K5[k + 2]; }
+          B[r + x] = v;
+        }
+      }
+      veStinu = 0;
+      for (let y = 0; y < Gm; y++) {
+        for (let x = 0; x < Gm; x++) {
+          let v = 0;
+          for (let k = -2; k <= 2; k++) { const yy = y + k < 0 ? 0 : (y + k >= Gm ? Gm - 1 : y + k); v += B[yy * Gm + x] * K5[k + 2]; }
+          const i = (y * Gm + x) * 4, a = Math.round(v);
+          px[i] = 42; px[i + 1] = 29; px[i + 2] = 16; px[i + 3] = a;
+          if (a >= 3) veStinu++;
+        }
+      }
+      if (!veStinu) return null;
+    }
     return { id: 'blok' + (++terenId), G: Gm, px, r, platno: null };
   }
   function platnoTerenu(t) {
