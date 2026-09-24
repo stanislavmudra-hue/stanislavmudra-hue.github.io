@@ -6891,6 +6891,70 @@ function nasadLovce() {
   setTimeout(tik, 50);
 }
 
+/// ⭐⭐ engine 356 (T 24. 9. 2026: „ty skoky jsou ve chvíli, kdy pustím prst“ → „nechci ani plynulý přechod. chci, aby
+/// nebyl žádný přechod. aby ty obrázky stromů atd. byly jako reálné objekty“): MapLibre po gestu s terénem přepočítá
+/// střed a zoom na výšku terénu pod křížkem – KAMERA STOJÍ (změřeno TT: poloha i výška 748 m stejné, body ±0,3 px),
+/// mění se jen ČÍSLO ZOOMU (pod Radobýlem 16,00 → 15,83). Skákalo to, co se velikostí řídilo číslem zoomu: stromy
+/// a drobnosti (MapLibre u vrstvy s `icon-offset` vypínal perspektivu) – oprava je v záplatě shaderu
+/// (OKOLNIK_PERSPEKTIVA: perspektiva vždy, velikost = metry × skutečná vzdálenost; ověřeno stojící kamerou se změnou
+/// zoomu o 0,12: stromy beze změny). Čáry (cesty, voda) a 3D domy jsou na čísle zoomu nezávislé už teď.
+/// ⛔ Zkoušeno a VYHOZENO (355, 24. 9.): plynulý dojezd přepočtu po krocích (hák na konci gesta + obal
+/// `_finalizeElevation`) – fungoval (kamera stála, zoom po snímcích), ale T nechce ANI plynulý přechod: správně je,
+/// aby se po puštění prstu nezměnilo NIC → průběžné překotvení níž (hák konce gesta je teď `__okolnikKonecGesta`).
+/// ⛔ easeTo do cíle přepočtu nepoužívat: v MapLibre 6.1 výšku během animace nepřevezme a na konci zase
+/// `_finalizeElevation` → nový rozdíl → zoom ujížděl.
+///
+/// ⭐⭐ engine 356 – PRŮBĚŽNÉ PŘEKOTVENÍ ZOOMU (aby se po puštění prstu nezměnilo NIC, ani kresby, popisky, prahy
+/// vrstev a úrovně dlaždic, které se řídí číslem zoomu): MapLibre během gesta i setrvačnosti drží výšku středu
+/// zmrazenou (rovina ve výšce terénu ze začátku gesta) a teprve na konci přepočítá střed a zoom na terén pod
+/// křížkem. Háky ve vendoru (`_updateMapTransform` gesta, snímky easeTo/flyTo se `freezeElevation`) teď totéž dělají
+/// v KAŽDÉM snímku: kamera stojí, mění se jen parametrizace (střed na zemi pod křížkem, výška, číslo zoomu) → číslo
+/// zoomu se mění plynule za pohybu podle skutečné vzdálenosti země, a když prst pustíš, přepočet na konci nenajde nic.
+/// Výška z DEM na CPU (`getElevationForLngLatZoom`, bez readPixels), až 3 kroky pevného bodu na snímek (ve svahu
+/// konverguje: sklon × cotg úhlu paprsku < 1); nenačtený DEM (0), skok > 250 m nebo rozcházení = nic.
+/// Setrvačnost: animace si drží vlastní stav na zmrazené rovině (interpolace středu/zoomu), do mapy jde překotvená
+/// KOPIE. Konec gesta a animace (`__okolnikKonecGesta`, `__okolnikKonecAnimace` ve vendoru) i malé rozdíly v klidu
+/// (`__okolnikKotviKlid` v `_render`, ≤ 2 m, např. zjemnění DEM) se dotáhnou TÝMŽ překotvením – bez posunu kamery.
+/// Překotvuje se jen při skutečné změně z prstů (`ep(e)` ve vendoru) – dotek `touchend` (aktualizace bez posunu) už ne.
+/// Změřeno TT (k81/k85, Radobýl z16, tah + puštění): číslo zoomu po puštění −0,16/−0,17 → 0; kamera beze změny.
+/// Vypnout pro A/B: `globalThis.__okolnikKotviVyp = true` (pak vše jako původní MapLibre).
+/// Výsledek: 'zmena' (překotveno), 'stabilni' (střed už leží na zemi, pod `tol` m) nebo false (nejde: DEM
+/// nenačtený, skok > 250 m, rozcházení hned v 1. kroku).
+function kotviZoom(tr, teren, tol = 0.05) {
+  const h = tr && tr._helper;
+  if (!h || typeof h.recalculateZoomAndCenter !== 'function' || !teren || globalThis.__okolnikKotviVyp) return false;
+  let posl = Infinity, stav = false;
+  for (let i = 0; i < 5; i++) {
+    const nv = teren.getElevationForLngLatZoom(tr.center, tr.tileZoom);
+    if (!Number.isFinite(nv) || nv === 0) break;
+    const d = Math.abs(nv - tr.elevation);
+    if (d < tol) { stav = stav || 'stabilni'; break; }
+    if (d > 250 || d > posl) break;
+    h.recalculateZoomAndCenter(nv);
+    posl = d;
+    stav = 'zmena';
+  }
+  return stav;
+}
+/// Konec gesta / animace / malý rozdíl v klidu. true = vyřízeno, MapLibre nepřepočítává (jeho přesný přepočet
+/// z plátna souřadnic je o ~1 m jinde než DEM a `_render` by to dorovnal posunem kamery – změřeno TT: kamera +1 m,
+/// hrany domů u spodního okraje o pixel); false = ať to udělá MapLibre po svém (DEM nenačtený apod.).
+/// ⛔ Do 0,5 m NESAHAT: i přeparametrování při stojící kameře přepočítá matice dlaždic ve float32 a hrany 3D domů
+/// se o zlomek pixelu přerasterizují (TT: 0,24 % pixelů, kamera na mikrometr stejná); 0,5 m = zoom ±0,001.
+function kotviDoKonce(tr, teren) {
+  const s0 = kotviZoom(tr, teren, 0.5);
+  if (s0 !== 'zmena') return s0 !== false;
+  for (let i = 0; i < 4; i++) if (kotviZoom(tr, teren) !== 'zmena') break;
+  return true;
+}
+globalThis.__okolnikKotvi = (tr, teren) => { try { return kotviZoom(tr, teren) === 'zmena'; } catch (e) { return false; } };
+globalThis.__okolnikKotviKopii = (tr, teren) => {
+  try { const k = tr.clone(); return kotviZoom(k, teren) === 'zmena' ? k : tr; } catch (e) { return tr; }
+};
+globalThis.__okolnikKonecGesta = (tr, map) => { try { return kotviDoKonce(tr, map && map.terrain); } catch (e) { return false; } };
+globalThis.__okolnikKonecAnimace = (tr, teren) => { try { return kotviDoKonce(tr, teren); } catch (e) { return false; } };
+globalThis.__okolnikKotviKlid = (tr, teren) => { try { return kotviDoKonce(tr, teren); } catch (e) { return false; } };
+
 /// ⭐ v1.389: PLYNULÉ PŘEVZETÍ VÝŠKY. Okamžitý přepočet (recalc) držel
 /// obraz, ale skokem měnil ZOOM a STŘED → poskočila procenta, šipka
 /// i velikosti symbolů („odskok čísel", chyceno lovcem 2×). Místo něj
@@ -7114,7 +7178,10 @@ function nasadPametPokryti() {
 // =============================================================================
 const TexturaGesta = (() => {
   const RTT_GESTO = 512, RTT_KLID = 1024;
-  let aktivni = true, prstDole = false, obnovaRaf = 0, nasazeno = false;
+  // ⛔ engine 356: VYPNUTO ve výchozím stavu (T 24. 9.: „chci, aby nebyl žádný přechod“) – po `idle` se dlaždice
+  // 512 přestavovaly po jedné na 1024 = povrch (silnice, pole, vrstevnice) se po puštění prstu doostřoval po kusech.
+  // Cena (TT, k91 A,B,B,A): snímky nad 33 ms při tahu přes nové území 5,7 → 9,3 %, průměr 18,2 → 19,2 ms.
+  let aktivni = false, prstDole = false, obnovaRaf = 0, nasazeno = false;
   const stat = { gest: 0, obnoveno: 0 };
   function rtt() { try { return mapa && mapa.painter && mapa.painter.renderToTexture; } catch (e) { return null; } }
   function zacni() {
@@ -7609,7 +7676,11 @@ let dynRozliseniT = null;
 // v1.601.7: ZAPNUTO NATRVALO (přání „dej to z nastavení pryč, ať je
 // stále dynamické rozlišení"). `OkolnikMost.dynRozliseni(bool)` zůstává
 // jen pro ladění přes CDP.
-let dynRozliseniAktivni = true;
+// ⛔ engine 356: VYPNUTO ve výchozím stavu. T 24. 9.: „ty skoky jsou ve chvíli, kdy pustím prst… je to úmyslné
+// kvůli výkonu, ale nelíbí se mi to“ → „chci, aby nebyl žádný přechod“. Po puštění prstu se celá mapa za 250 ms
+// doostřila (1,5 → 2) – na TT to po opravě kamery byla jediná změna obrazu (0,28 % pixelů, s vypnutým 0,00 %).
+// Cena dnes malá: s vypnutým i texturou 1024 při gestu snímky nad 33 ms 5,4 → 9,6 % (k92, většina z textury).
+let dynRozliseniAktivni = false;
 let dynRozliseniModul = null;   // {zapni(), vypni()} po registraci
 
 function zapniDynamickeRozliseni() {

@@ -33,7 +33,7 @@ const Z_MIN = 12, Z_MAX = 15;       // výstupní úrovně (z15 = vše, jemná m
 // zmizely 3/4 stromů a u hranice je při posunu kolébal zoom terénu). Ztenčení na sudé
 // buňky až v z13 (strom má tam ~8 px) s plynulým přechodem z14,45 → z14,0.
 const Z_PLNE = 14;
-const KES_VYSTUP = 120;             // vygenerovaných dlaždic v paměti (~100 kB kus)
+const KES_VYSTUP = 200;             // vygenerovaných dlaždic v paměti (~100 kB kus); engine 355: 120 → 200 (předgenerování)
 const KES_ZDROJ = 24;               // dekódovaných zdrojových dlaždic (výřez ≈ 6 × 3 zdroje)
 const MRIZKA_IDX = 16;              // index ploch: 16×16 buněk na dlaždici
 
@@ -696,6 +696,7 @@ async function generuj(z, x, y) {
   // engine 350: + lampy z dat měst (archiv `lampymesta`)
   if (z >= 14 && N.zdroje.drobnosti && N.drobnosti) potreba.set('drobnosti', new Set(['body']));
   if (z >= 14 && N.zdroje.lampymesta && N.drobnosti) potreba.set('lampymesta', new Set(['body']));
+  if (z >= 14 && N.zdroje.dtmbody && N.drobnosti) potreba.set('dtmbody', new Set(['body']));   // engine 356
   // výška terénu se začne shánět hned (hlavní vlákno bývá při startu mapy
   // vytížené – na TT čekání až 0,5 s), souběžně se zdrojovými dlaždicemi
   const zD = Math.min(12, z), dD = z - zD;
@@ -921,8 +922,11 @@ async function generuj(z, x, y) {
   // ⭐ engine 350: + LAMPY Z OTEVŘENÝCH DAT MĚST (Brno, Plzeň, Děčín – archiv `lampymesta`, zvlášť od
   // ODbL); OSM lampa do 15 m od městské se vynechá (táž lampa). + STROMY z OSM (natural=tree, `j` =
   // jehličnatý) – dvojník stromu ZABAGED do 6 m se vynechá; ikony jako u stromů ZABAGED.
-  if (z >= 14 && N.drobnosti && (zdrojove.drobnosti || zdrojove.lampymesta)) {
+  if (z >= 14 && N.drobnosti && (zdrojove.drobnosti || zdrojove.lampymesta || zdrojove.dtmbody)) {
     const mestske = new Set();          // buňky 15 m s lampou z dat města
+    // engine 356: buňky 20 m s OSM studnou / křížem / pomníkem – dvojník z DTM se nekreslí
+    const osmBunky = { studna: new Set(), kriz: new Set(), pomnik: new Set() };
+    const KONTROLA_OSM = { studna: 'studna', x_studna: 'studna', x_kriz: 'kriz', x_pomnik: 'pomnik' };
     let pocetD = 0;
     const zpracuj = (zd, osm) => {
       const vD = zd && zd.vrstvy.body;
@@ -930,6 +934,13 @@ async function generuj(z, x, y) {
       const kD = EXT / vD.extent;
       for (const f of vD.prvky) {
         if (pocetD >= 4000) break;
+        const kontrola = osm && KONTROLA_OSM[f.vl.t];
+        if (kontrola) {
+          for (const c of geomPrvku(vD, f)) {
+            const qx = c[0] * kD * zd.m + zd.ox, qy = c[1] * kD * zd.m + zd.oy;
+            osmBunky[kontrola].add(bunkaM(lonZ((x + qx / EXT) / n), latZ((y + qy / EXT) / n), 20));
+          }
+        }
         const cfg = N.drobnosti[f.vl.t];
         if (!cfg) continue;
         for (const c of geomPrvku(vD, f)) {
@@ -959,6 +970,33 @@ async function generuj(z, x, y) {
     };
     zpracuj(zdrojove.lampymesta, false);
     zpracuj(zdrojove.drobnosti, true);
+    // ⭐ engine 356: BODY DTM ČR (veřejná ZPS) – studny, kříže a boží muka, pomníky; jen kde je OSM nemá (buňky 20 m
+    // se sousedy). Velikost ±8 % podle hashe polohy jako ostatní drobnosti.
+    const zdD = zdrojove.dtmbody;
+    const vDt = zdD && zdD.vrstvy.body;
+    if (vDt) {
+      // typ DTM → [druh kresby, sada OSM pro vyřazení dvojníka]
+      const DRUH_DTM = { studna: ['studna_dtm', 'studna'], sakralni: ['kriz', 'kriz'], kulturni: ['pomnik', 'pomnik'] };
+      const kDt = EXT / vDt.extent;
+      for (const f of vDt.prvky) {
+        if (pocetD >= 4000) break;
+        const dr = DRUH_DTM[f.vl.t];
+        const cfg = dr && N.drobnosti[dr[0]];
+        if (!cfg || !cfg.ikony || !cfg.ikony.length) continue;
+        for (const c of geomPrvku(vDt, f)) {
+          const px = c[0] * kDt * zdD.m + zdD.ox, py = c[1] * kDt * zdD.m + zdD.oy;
+          if (px < 0 || px >= EXT || py < 0 || py >= EXT) continue;
+          const lon = lonZ((x + px / EXT) / n), lat = latZ((y + py / EXT) / n);
+          if (blizkoBunky(osmBunky[dr[1]], lon, lat, 20)) continue;
+          // uvnitř půdorysu budovy = kaplička / studna v domku – stavbu už kreslí 3D budova (TT Rtyně: kříž v kapli)
+          if (plochyPod(idx, px, py).indexOf('budovy-vypln') >= 0) continue;
+          const a = Math.round(lon * 1e6), b = Math.round(lat * 1e6);
+          const kk = cfg.k * (0.92 + hash(a, b, 14) * 0.16);
+          pridej(lon, lat, px, py, cfg.ikony[Math.floor(hash(a, b, 13) * cfg.ikony.length)], kk, cfg.z0, 0, 0);
+          pocetD++;
+        }
+      }
+    }
   }
   const pocetK = K.lon.length;
   const tKand = performance.now();
@@ -1142,6 +1180,7 @@ function vystupDlazdice(v) {
 async function vyridDlazdici(m) {
   const klic = m.z + '/' + m.x + '/' + m.y;
   posledniPozadavek.set(klic, performance.now());
+  posledniSkutecny = performance.now();          // engine 355: předgenerování počká
   if (!N || !N.herni || m.z < Z_MIN || m.z > Z_MAX) {
     self.postMessage({ typ: 'dlazdice', id: m.id, data: new ArrayBuffer(0), ev: null });
     return;
@@ -1166,6 +1205,44 @@ async function vyridDlazdici(m) {
   }
   const o = vystupDlazdice(v);
   self.postMessage({ typ: 'dlazdice', id: m.id, data: o.data, ev: o.ev }, [o.data]);
+}
+
+/// ⭐ engine 355 (T 24. 9. 2026: „chtěl bych, aby to už všechno bylo načtené a já jen létal nad hotovou krajinou“):
+/// PŘEDGENEROVÁNÍ. Hlavní vlákno po zklidnění mapy pošle dlaždice kolem výřezu a sousedních úrovní zoomu; worker
+/// je vyrobí do keše (i s maskou mlhy), nic neposílá. Až je MapLibre při posunu/zoomu vyžádá, jdou z keše (jen
+/// kódování) – objekty na okrajích a po přechodu úrovně nenaskakují. Skutečné požadavky mají přednost: pumpa počká,
+/// dokud 150 ms žádný nepřišel; prázdný seznam (začátek pohybu) frontu zastaví.
+let predFronta = [];
+let predBezi = false;
+let posledniSkutecny = 0;
+const predSpanek = (ms) => new Promise((res) => setTimeout(res, ms));
+async function pumpujPredgen() {
+  if (predBezi) return;
+  predBezi = true;
+  let hotovo = 0;
+  try {
+    while (predFronta.length) {
+      if (performance.now() - posledniSkutecny < 150) { await predSpanek(120); continue; }
+      const t = predFronta.shift();
+      if (!N || !N.herni || t.z < Z_MIN || t.z > Z_MAX) continue;
+      const klic = t.z + '/' + t.x + '/' + t.y;
+      const kfg = cfgKlic;
+      const v0 = vystup.get(klic);
+      if (v0 && v0.cfg === kfg) continue;
+      const v = await generuj(t.z, t.x, t.y);
+      v.cfg = kfg;
+      if (kfg !== cfgKlic || !predFronta) continue;
+      if (vystup.has(klic)) continue;              // mezitím ji vyrobil skutečný požadavek
+      await doplnMlhu(v);
+      vystup.set(klic, v);
+      while (vystup.size > KES_VYSTUP) vystup.delete(vystup.keys().next().value);
+      hotovo++;
+    }
+  } catch (e) { /* předgenerování je jen pohodlí navíc */ }
+  finally {
+    predBezi = false;
+    casy.predgen = (casy.predgen || 0) + hotovo;
+  }
 }
 
 /// Odkrytí mlhy: dlaždice žádané v poslední době se neobjevenými body se
@@ -1222,6 +1299,11 @@ self.onmessage = (ev) => {
     if (res) { dotazy.delete(m.id); res(m); }
     return;
   }
+  if (m.typ === 'predgeneruj') {                // engine 355
+    predFronta = Array.isArray(m.dlazdice) ? m.dlazdice.slice(0, 64) : [];
+    if (predFronta.length) pumpujPredgen();
+    return;
+  }
   if (m.typ === 'dlazdice') {
     vyridDlazdici(m).catch((e) => {
       self.postMessage({ typ: 'dlazdice', id: m.id, data: null, chyba: String((e && e.message) || e) });
@@ -1243,6 +1325,7 @@ self.onmessage = (ev) => {
       vrstvyZdroju.get('krajina').add('cary');
       vrstvyZdroju.set('drobnosti', new Set(['body']));       // engine 349
       vrstvyZdroju.set('lampymesta', new Set(['body']));      // engine 350
+      vrstvyZdroju.set('dtmbody', new Set(['body']));         // engine 356
       zdrojDl.clear();
       oKesV.clear();
       cfgKlic = JSON.stringify([m.verze, m.sezona, m.dz, m.ex, m.herni, m.zdroje, m.plochy, Object.keys(m.druhy)]);

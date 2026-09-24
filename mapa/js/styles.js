@@ -678,10 +678,10 @@ function stylHerni(ctx) {
       krajina: { type: 'vector', url: r2('krajina11.pmtiles'), promoteId: 'fid',
                  attribution: '© ČÚZK ZABAGED® · veřejné osvětlení © Statutární město Brno (CC BY 4.0), Plzeň, Děčín' },
       // engine 351: DTM ČR – veřejná ZPS (otevřená data, jen geometrie a typ)
-      dtm: { type: 'vector', url: r2('dtm1.pmtiles'),
+      dtm: { type: 'vector', url: r2('dtm2.pmtiles'),   // engine 356: dtm2 = + hřiště, plošné zdi, pomníky, kříže
              attribution: 'Digitální technická mapa krajů ČR (IS DMVS – ČÚZK)' },
       // engine 352: drobnosti z OSM – ve stylu jen čáry zeber (body kreslí worker dekorací)
-      drobnosti: { type: 'vector', url: r2('drobnosti3.pmtiles'), attribution: '© OpenStreetMap' },
+      drobnosti: { type: 'vector', url: r2('drobnosti4.pmtiles'), attribution: '© OpenStreetMap' },   // engine 356
     }),
     layers: [
       // ===== BAREVNÉ PATRO (pod mlhou — odkrývá se objevováním) =====
@@ -821,9 +821,9 @@ function stylHerni(ctx) {
                  'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 15.6,
                    ['match', ['get', 't'], 'bazen', 0.95, 'kulna', 0.9, 'sklenik', 0.85, 'zed', 0.85, 'schodiste', 0.8, 0.5]] } },
       { id: 'dtm-plochy-obrys', type: 'line', source: 'dtm', 'source-layer': 'plochy', minzoom: 16,
-        filter: ['in', ['get', 't'], ['literal', ['bazen', 'kulna', 'sklenik', 'schodiste']]],
+        filter: ['in', ['get', 't'], ['literal', ['bazen', 'kulna', 'sklenik', 'schodiste', 'hriste']]],
         layout: { 'line-join': 'round' },
-        paint: { 'line-color': ['match', ['get', 't'], 'bazen', '#EEF7FA', 'sklenik', '#7E9C8C', '#6E5A3E'],
+        paint: { 'line-color': ['match', ['get', 't'], 'bazen', '#EEF7FA', 'sklenik', '#7E9C8C', 'hriste', '#F6F2E6', '#6E5A3E'],
                  'line-opacity': ['interpolate', ['linear'], ['zoom'], 16, 0, 16.5, 0.85],
                  'line-width': ['interpolate', ['exponential', 2], ['zoom'], 16, 0.4,
                    22, ['match', ['get', 't'], 'bazen', DTM_W22(0.45), DTM_W22(0.2)]] } },

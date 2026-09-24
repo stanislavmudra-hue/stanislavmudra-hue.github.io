@@ -366,6 +366,13 @@ const Dekorace = (() => {
     vystraznik_z: { ikony: ['deko-vystraznik-z'], H: 160, vyskaM: 4.5, z0: 15.4 },
     semafor:  { ikony: ['deko-semafor'],  H: 176, vyskaM: 5,   z0: 15.3, sv: 5, zare: ['semafor-zare-r', 'semafor-zare-z'] },
     zavora:   { ikony: ['deko-zavora'],   H: 72,  vyskaM: 2,   z0: 15.8 },
+    // engine 356 (T 24. 9.: „využij ty data pro obohacení mapy“): body DTM ČR – drobné sakrální stavby (kříže, boží
+    // muka), drobné kulturní stavby (pomníky) a studny (zahradní: skruž s víkem, třetina s litinovou pumpou – TT
+    // Sezemice: 73 z 80 nejbližších bodů DTM mimo OSM jsou studny v zahradách). Worker je vynechá do ~20 m od OSM
+    // a uvnitř půdorysu budovy (kaplička = 3D budova).
+    kriz:     { ikony: ['deko-kriz'],     H: 160, vyskaM: 3.5, z0: 15.6 },
+    pomnik:   { ikony: ['deko-pomnik'],   H: 128, vyskaM: 3,   z0: 15.8 },
+    studna_dtm: { ikony: ['deko-skruz', 'deko-skruz', 'deko-pumpa'], H: 96, vyskaM: 2.4, z0: 16.3 },
   };
   const drobnostiProWorker = () => {
     const out = {};
@@ -1102,12 +1109,84 @@ const Dekorace = (() => {
     trs(g, 180, y, 3, yb - y, '#6e6e68', false);                        // podpěra konce břevna
     return g.getImageData(0, 0, W, H);
   }
+  /// engine 356: kříž / boží muka z DTM (drobná sakrální stavba) – stupňovitý kamenný podstavec, sloupek,
+  /// hlavice a kovaný kříž se světlým náznakem těla (64×160)
+  function krizSprite() {
+    const W = 64, H = 160, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 32, yb, 16);
+    trs(g, 14, yb - 12, 36, 12, '#a99b82');
+    trs(g, 19, yb - 26, 26, 14, '#b8aa90');
+    trs(g, 26, 58, 12, yb - 26 - 58, '#c2b59a');
+    g.fillStyle = 'rgba(80,70,55,0.35)'; g.fillRect(34, 58, 4, yb - 26 - 58);
+    trs(g, 23, 52, 18, 7, '#b2a48a');
+    trs(g, 30, 12, 4, 42, '#3b3833');
+    trs(g, 21, 23, 22, 4, '#3b3833');
+    g.fillStyle = '#d9d0bd'; g.fillRect(31, 27, 2, 11); g.fillRect(28, 28, 8, 1.6);
+    return g.getImageData(0, 0, W, H);
+  }
+  /// engine 356: pomník z DTM (drobná kulturní stavba) – podstavec, kamenný kvádr s tmavou deskou nápisu, jehlan (80×128)
+  function pomnikSprite() {
+    const W = 80, H = 128, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 40, yb, 26);
+    trs(g, 14, yb - 12, 52, 12, '#9d978b');
+    trs(g, 22, 40, 36, yb - 12 - 40, '#b7b1a4');
+    g.fillStyle = 'rgba(70,66,58,0.3)'; g.fillRect(48, 40, 10, yb - 52);
+    trs(g, 28, 56, 24, 22, '#5b5448');
+    g.fillStyle = '#d8cfb6';
+    for (let i = 0; i < 4; i++) g.fillRect(31, 60 + i * 4.5, 18 - (i % 2) * 5, 1.4);
+    g.beginPath(); g.moveTo(20, 40); g.lineTo(40, 22); g.lineTo(60, 40); g.closePath();
+    g.fillStyle = '#a8a194'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.4; g.stroke();
+    return g.getImageData(0, 0, W, H);
+  }
+  /// engine 356: studna z DTM – betonová skruž s víkem a poklopem (zahradní studna), 64×96; kreslená dole v plátně,
+  /// aby měřítko sedělo s pumpou (obě 2,4 m na výšku plátna)
+  function skruzSprite() {
+    const W = 64, H = 96, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 32, yb, 22);
+    g.fillStyle = '#a7a39b'; g.fillRect(12, yb - 26, 40, 22);
+    g.beginPath(); g.ellipse(32, yb - 4, 20, 5, 0, 0, Math.PI); g.fill();
+    g.fillStyle = 'rgba(60,58,54,0.22)'; g.fillRect(40, yb - 26, 12, 22);
+    g.beginPath(); g.ellipse(46, yb - 4, 6, 3.4, 0, 0, Math.PI); g.fill();
+    g.strokeStyle = OBRYS_D; g.lineWidth = 1.4;
+    g.beginPath(); g.moveTo(12, yb - 26); g.lineTo(12, yb - 4); g.ellipse(32, yb - 4, 20, 5, 0, Math.PI, 0, true);
+    g.lineTo(52, yb - 26); g.stroke();
+    g.beginPath(); g.ellipse(32, yb - 27, 23, 6, 0, 0, Math.PI * 2); g.fillStyle = '#bfbab0'; g.fill(); g.stroke();
+    g.beginPath(); g.ellipse(32, yb - 28, 8, 2.4, 0, 0, Math.PI * 2); g.fillStyle = '#8e8a82'; g.fill(); g.stroke();
+    return g.getImageData(0, 0, W, H);
+  }
+  /// engine 356: studna z DTM s litinovou pumpou (tmavě zelené tělo, hubice, zahnutá páka) na nízké skruži, 64×96
+  function pumpaSprite() {
+    const W = 64, H = 96, yb = H - 10;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, 30, yb, 20);
+    g.fillStyle = '#a7a39b'; g.fillRect(12, yb - 16, 36, 12);
+    g.beginPath(); g.ellipse(30, yb - 4, 18, 4.5, 0, 0, Math.PI); g.fill();
+    g.strokeStyle = OBRYS_D; g.lineWidth = 1.4;
+    g.beginPath(); g.moveTo(12, yb - 16); g.lineTo(12, yb - 4); g.ellipse(30, yb - 4, 18, 4.5, 0, Math.PI, 0, true);
+    g.lineTo(48, yb - 16); g.stroke();
+    g.beginPath(); g.ellipse(30, yb - 17, 20, 5, 0, 0, Math.PI * 2); g.fillStyle = '#bfbab0'; g.fill(); g.stroke();
+    trs(g, 26, yb - 60, 8, 42, '#2f4a3a');
+    trs(g, 24, yb - 65, 12, 6, '#263d30');
+    g.lineCap = 'round';
+    g.strokeStyle = OBRYS_D; g.lineWidth = 5;
+    g.beginPath(); g.moveTo(26, yb - 44); g.lineTo(16, yb - 40); g.stroke();
+    g.beginPath(); g.moveTo(34, yb - 62); g.quadraticCurveTo(47, yb - 73, 56, yb - 60); g.stroke();
+    g.strokeStyle = '#2f4a3a'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(26, yb - 44); g.lineTo(16, yb - 40); g.stroke();
+    g.beginPath(); g.moveTo(34, yb - 62); g.quadraticCurveTo(47, yb - 73, 56, yb - 60); g.stroke();
+    return g.getImageData(0, 0, W, H);
+  }
   const SPRITY_DROBNOSTI = { 'deko-lampa': lampaSprite, 'deko-posed': posedSprite, 'deko-krmelec': krmelecSprite,
                              'deko-lavicka': lavickaSprite, 'deko-studna': studnaSprite, 'deko-schranka': schrankaSprite,
                              'lampa-zare': lampaZareSprite,
                              'deko-lampa-park': lampaParkSprite, 'lampa-park-zare': lampaParkZareSprite,
                              'deko-vystraznik': () => vystraznikSprite(false), 'deko-vystraznik-z': () => vystraznikSprite(true),
                              'deko-semafor': semaforSprite, 'deko-zavora': zavoraSprite,
+                             'deko-kriz': krizSprite, 'deko-pomnik': pomnikSprite,
+                             'deko-skruz': skruzSprite, 'deko-pumpa': pumpaSprite,
                              'semafor-zare-r': () => semaforZareSprite('255,70,55', 24),
                              'semafor-zare-z': () => semaforZareSprite('70,235,120', 52) };
 
@@ -3089,7 +3168,10 @@ const Dekorace = (() => {
     // engine 349: drobnosti z OSM – samostatný archiv (není ve stylu, čte ho jen worker)
     // engine 350: drobnosti2 = + stromy z OSM; lampy_mesta1 = Brno (CC BY 4.0), Plzeň, Děčín
     // engine 352: drobnosti3 = + výstražníky, semafory, závory (a zebry pro styl); lampy_mesta2 = + ruční lampy
-    try { out.drobnosti = r2('drobnosti3.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez drobností */ }
+    // engine 356: drobnosti4 = + kontrolní body OSM (kříže, pomníky, pítka) pro vyřazení dvojníků z DTM
+    try { out.drobnosti = r2('drobnosti4.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez drobností */ }
+    // engine 356: body DTM ČR (studny, kříže a boží muka, pomníky) – archiv dtm2, vrstva `body`
+    try { out.dtmbody = r2('dtm2.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez DTM bodů */ }
     // engine 354: lampy_mesta4 = ruční lampa Sezemice 52 u začátku horního vjezdu na točnu (T 24. 9.)
     try { out.lampymesta = r2('lampy_mesta4.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez lamp měst */ }
     return out;
@@ -3131,7 +3213,64 @@ const Dekorace = (() => {
       wProtokol();
       wDek.postMessage(Object.assign({ typ: 'nastav' }, cfg));
       wStav = 1;
+      wPredgenZapoj();                   // engine 355
     } catch (e) { wStav = -1; console.warn('[dekorace] worker nejde:', e); }
+  }
+  // ⭐ engine 355 (T 24. 9.: „chtěl bych, aby to už všechno bylo načtené a já jen létal nad hotovou krajinou“):
+  // PŘEDGENEROVÁNÍ – 0,5 s po zklidnění pošle workeru dlaždice, které přijdou na řadu při dalším gestu: prstenec
+  // kolem výřezu na aktuální úrovni (posun), úroveň níž na dvojnásobném okně (oddálení) a úroveň výš uprostřed
+  // (přiblížení). Seřazené od středu, nejvýš 64. Začátek pohybu frontu zastaví (skutečné dlaždice mají přednost).
+  let predgenCas = null;
+  function wPredgenPlan() {
+    clearTimeout(predgenCas);
+    predgenCas = setTimeout(wPredgenPosli, 500);
+  }
+  function wPredgenStop() {
+    clearTimeout(predgenCas);
+    try { if (wDek && wStav === 1) wDek.postMessage({ typ: 'predgeneruj', dlazdice: [] }); } catch (e) { /* nic */ }
+  }
+  function wPredgenPosli() {
+    try {
+      if (!wDek || wStav !== 1 || !mapa || !mapa.getSource('dekorace') || mapa.isMoving()) return;
+      if (document.visibilityState !== 'visible') return;
+      const z = mapa.getZoom();
+      if (z < 12.8) return;
+      const b = mapa.getBounds(), c = mapa.getCenter();
+      const L = Math.max(13, Math.min(15, Math.floor(z)));
+      const tx = (lon, n) => Math.floor((lon + 180) / 360 * n);
+      const ty = (lat, n) => {
+        const r = Math.max(-85, Math.min(85, lat)) * Math.PI / 180;
+        return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n);
+      };
+      const seznam = [], vid = new Set();
+      const okno = (zz, w, s, e, nn, max) => {
+        const n = Math.pow(2, zz);
+        const x0 = tx(w, n), x1 = tx(e, n), y0 = ty(nn, n), y1 = ty(s, n);
+        const cx = tx(c.lng, n), cy = ty(c.lat, n);
+        const k = [];
+        for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) k.push([Math.hypot(x - cx, y - cy), x, y]);
+        k.sort((p, q) => p[0] - q[0]);
+        let pocet = 0;
+        for (const [, x, y] of k) {
+          if (pocet >= max) break;
+          const kl = zz + '/' + x + '/' + y;
+          if (vid.has(kl)) continue;
+          vid.add(kl); seznam.push({ z: zz, x, y }); pocet++;
+        }
+      };
+      const dLon = b.getEast() - b.getWest(), dLat = b.getNorth() - b.getSouth();
+      okno(L, b.getWest() - dLon * 0.5, b.getSouth() - dLat * 0.5, b.getEast() + dLon * 0.5, b.getNorth() + dLat * 0.5, 32);
+      if (L - 1 >= 13) okno(L - 1, b.getWest() - dLon, b.getSouth() - dLat, b.getEast() + dLon, b.getNorth() + dLat, 18);
+      if (L + 1 <= 15) okno(L + 1, c.lng - dLon * 0.3, c.lat - dLat * 0.3, c.lng + dLon * 0.3, c.lat + dLat * 0.3, 14);
+      wDek.postMessage({ typ: 'predgeneruj', dlazdice: seznam });
+    } catch (e) { /* předgenerování je jen pohodlí navíc */ }
+  }
+  let predgenHook = null;
+  function wPredgenZapoj() {
+    if (!mapa || predgenHook === mapa) return;
+    predgenHook = mapa;
+    mapa.on('idle', wPredgenPlan);
+    mapa.on('movestart', wPredgenStop);
   }
   function wPridejVrstvu() {
     if (wStav !== 1 || !mapa || mapa.getSource('dekorace')) return;
