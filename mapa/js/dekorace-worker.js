@@ -659,6 +659,7 @@ function druhyProUroven(z) {
   const out = [];
   for (const [druh, cfg] of Object.entries(N.druhy)) {
     if (cfg.sezony && cfg.sezony.indexOf(N.sezona) < 0) continue;
+    if (cfg.mesice && N.mesic && cfg.mesice.indexOf(N.mesic) < 0) continue;     // engine 363: sezónní drobnosti
     if (z < Z_MAX && cfg.z0 - N.dz >= z + 1) continue;
     out.push([druh, cfg]);
   }
@@ -745,6 +746,22 @@ async function generuj(z, x, y) {
         for (let vi = 0; vi < cfg.vrstvy.length; vi++) { if (q.indexOf(cfg.vrstvy[vi]) >= 0) { uvnitr = true; break; } }
         if (!uvnitr) continue;
         let ikony = cfg.ikony;
+        if (cfg.ikonyMesic && cfg.ikonyMesic[N.mesic]) ikony = cfg.ikonyMesic[N.mesic];   // engine 363 (lekníny v květnu jen listy)
+        // ⭐ engine 363: lekníny jen U BŘEHU – voda do všech 8 směrů aspoň 1,5 m, ale ne dál než ~9 m od souše
+        if (cfg.uBrehu) {
+          const pxNaM = 1 / mNaPx;
+          let dosah = 0;
+          for (const d of [1.5, 2.5, 4, 6, 9]) {
+            let vse = true;
+            for (let a = 0; a < 8 && vse; a++) {
+              const q2 = plochyPod(idx, px + Math.cos(a * 0.7854) * d * pxNaM, py + Math.sin(a * 0.7854) * d * pxNaM);
+              if (q2.indexOf('voda') < 0) vse = false;
+            }
+            if (!vse) break;
+            dosah = d;
+          }
+          if (dosah < 1.5 || dosah >= 9) continue;
+        }
         if (druh === 'strom') {
           if (q.indexOf('les-jehlicnaty') >= 0) ikony = N.jehlicnate;
           else if (q.indexOf('les-listnaty') >= 0 || q.indexOf('sad') >= 0) ikony = N.listnate;

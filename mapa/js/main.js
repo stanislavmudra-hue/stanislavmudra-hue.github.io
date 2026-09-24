@@ -2730,13 +2730,14 @@ function stinyDParametry() {
   try { ex = (mapa.getTerrain && mapa.getTerrain() && +mapa.getTerrain().exaggeration) || 1; } catch (e) { ex = 1; }
   const jen3D = !!(budovyHerniZap && mapa && mapa.getLayer('okolnik-budovy-herni-zdi'));
   const stavby = !!(mapa && mapa.getLayer('okolnik-stavby-3d'));
-  return { az, el, kryti, ex: +ex.toFixed(2), jen3D, stavby };
+  // engine 362: A/B délky stínů po terénu – `window.__stinyBezTerenu = true` = jako na rovině (ladění)
+  return { az, el, kryti, ex: +ex.toFixed(2), jen3D, stavby, bezTerenu: !!window.__stinyBezTerenu };
 }
 /// Nová verze dlaždic stínů, když se změnilo světlo / odkrytí / volby (`vynutit` = vždy)
 function aktualizujStinyDlazdice(vynutit) {
   if (!STINY_DLAZDICE || !mapa) return;
   const p = stinyDParametry();
-  const klic = [p.az, p.el, p.kryti, p.ex, p.jen3D ? 1 : 0, p.stavby ? 1 : 0, stinyDObjeveni].join('|');
+  const klic = [p.az, p.el, p.kryti, p.ex, p.jen3D ? 1 : 0, p.stavby ? 1 : 0, stinyDObjeveni, p.bezTerenu ? 1 : 0].join('|');
   if (!vynutit && klic === stinyDKlic && mapa.getSource('stiny-domu')) return;
   const zmena = klic !== stinyDKlic || vynutit;
   stinyDKlic = klic;

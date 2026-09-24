@@ -86,9 +86,11 @@ const Dekorace = (() => {
       vrstvy: ['sad', 'zahrada'],
       z0: 15.4,                   // engine 202: 14,6 → 15,4 (kandidátů 40 m bylo moc)
       // engine 218: + jabloň 18, třešeň 21 (na jaře kvete), hloh 23, túje 24
+      // engine 363 (list T 24. 9.): + ovocný strom 26 – na jaře kvete bíle, v létě nese červené plody, na podzim
+      // oranžový, v zimě holý se sněhem
       ikony: ['deko-strom-1', 'deko-strom-2', 'deko-strom-3',
               'deko-strom-4', 'deko-strom-5', 'deko-strom-18',
-              'deko-strom-21', 'deko-strom-23', 'deko-strom-24'],
+              'deko-strom-21', 'deko-strom-23', 'deko-strom-24', 'deko-strom-26'],
       k: 0.55,                    // ~12 m
       hustota: 0.5,
     },
@@ -165,7 +167,9 @@ const Dekorace = (() => {
       z0: 14.8,                   // 5. 9. večer: keř ~9 m
       // ⚠️ Listy nesou jen DVA keře (borůvčí a kvetoucí keřík); dřívější
       // `ker-3`/`ker-4` byly z pečených ikon a v malbách nejsou.
-      ikony: ['deko-ker-1', 'deko-ker-2'],
+      // ⭐ engine 363 (listy T 24. 9.): ker-3 tavolník (jaro bílý květ, léto zelený, podzim žlutooranžový, zima holý
+      // se sněhem), ker-4 šípková růže (jaro a léto růžový květ, podzim šípky, zima pod sněhem), ker-5 jalovec (stálezelený)
+      ikony: ['deko-ker-1', 'deko-ker-2', 'deko-ker-3', 'deko-ker-4', 'deko-ker-5'],
       k: 0.4,                     // ~9 m
       hustota: 0.33,              // 29. 8.: −20 % (louky)
     },
@@ -177,6 +181,160 @@ const Dekorace = (() => {
       ikony: ['deko-kamen-1', 'deko-kamen-2', 'deko-kamen-3'],
       k: 0.25,                    // ~5 m
       hustota: 0.42,
+    },
+    // ⭐⭐ engine 363 (T 24. 9. večer: „Dokážeš z toho použít nějaké věci, které by se objevovaly v různých ročních
+    // obdobích a dávaly smysl? Houby, lekníny, keře, stromy?“): SEZÓNNÍ DROBNOSTI z listů uživatele (ChatGPT, řez
+    // `tools/dekorace_list_rez.py`). `mesice` = kdy to v české přírodě opravdu je (1–12, `mesicDekoraci()`; worker
+    // bere `N.mesic`), obrázky leží jen v sezónách těch měsíců. Leží-li sníh, je sezóna `zima` a nic z toho neroste
+    // (kromě sněženek). Malby zveličené jako květiny (houba ~3 m), řídce a až zblízka – každý kus je symbol s kolizí.
+    houba: {                      // hřib, muchomůrka červená, lišky, václavky, dva hřiby – srpen až listopad
+      mesice: [8, 9, 10, 11],
+      sezony: ['leto', 'podzim'],
+      rozestup: 70,
+      zjemnit: true,
+      vrstvy: ['les'],
+      z0: 15.9,
+      ikony: ['deko-houba-1', 'deko-houba-2', 'deko-houba-3', 'deko-houba-4', 'deko-houba-5'],
+      k: 0.2,                     // ~4,5 m (zveličeně jako květiny, jinak na z17 jen tečka)
+      hustota: 0.45,
+    },
+    houba_jaro: {                 // smrže a ohnivec šarlatový – březen až květen, listnaté lesy
+      mesice: [3, 4, 5],
+      sezony: ['jaro'],
+      rozestup: 150,
+      zjemnit: true,
+      vrstvy: ['les-listnaty'],
+      z0: 16.3,
+      ikony: ['deko-houba-6', 'deko-houba-7'],
+      k: 0.19,
+      hustota: 0.35,
+    },
+    // lekníny: jen STOJATÁ voda (`rybnicek` = voda bez řek, odvozená plocha v `definicePloch`) a u břehu (1,5–9 m,
+    // `uBrehu` ve workeru); v květnu a říjnu jen listy, červen–září i květ (`ikonyMesic`)
+    leknin: {
+      mesice: [5, 6, 7, 8, 9, 10],
+      sezony: ['jaro', 'leto', 'podzim'],
+      rozestup: 12,                // trsy u břehu
+      zjemnit: true,
+      vrstvy: ['rybnicek'],
+      naVode: true,
+      uBrehu: true,
+      z0: 15.8,
+      ikony: ['deko-leknin-1', 'deko-leknin-2'],
+      ikonyMesic: { 5: ['deko-leknin-2'], 10: ['deko-leknin-2'] },
+      k: 0.18,                    // ~4 m vysoko, ~8 m široko
+      hustota: 0.55,
+    },
+    bobule: {                     // borůvky, maliny, ostružiny, brusinky – červenec až září
+      mesice: [7, 8, 9],
+      sezony: ['leto', 'podzim'],
+      rozestup: 110,
+      zjemnit: true,
+      vrstvy: ['les'],
+      z0: 16.1,
+      ikony: ['deko-bobule-1', 'deko-bobule-2', 'deko-bobule-3', 'deko-bobule-4'],
+      k: 0.16,
+      hustota: 0.35,
+    },
+    snezenky: {                   // únor–březen (i ze sněhu), listnaté lesy, parky, zahrady
+      mesice: [2, 3],
+      sezony: ['zima', 'jaro'],
+      rozestup: 110,
+      zjemnit: true,
+      vrstvy: ['les-listnaty', 'park', 'zahrada'],
+      z0: 16.2,
+      ikony: ['deko-jaro-1'],
+      k: 0.2,
+      hustota: 0.4,
+    },
+    konvalinky: {                 // květen, lesy
+      mesice: [5],
+      sezony: ['jaro'],
+      rozestup: 110,
+      zjemnit: true,
+      vrstvy: ['les'],
+      z0: 16.2,
+      ikony: ['deko-jaro-2'],
+      k: 0.2,
+      hustota: 0.4,
+    },
+    pampelisky: {                 // duben–květen, louky a trávníky
+      mesice: [4, 5],
+      sezony: ['jaro'],
+      rozestup: 60,
+      zjemnit: true,
+      vrstvy: ['louka', 'park', 'zelen'],
+      z0: 15.8,
+      ikony: ['deko-jaro-3'],
+      k: 0.2,
+      hustota: 0.55,
+    },
+    mak: {                        // vlčí mák (červen–červenec) a chrpy (do srpna) na polích
+      mesice: [6, 7, 8],
+      sezony: ['leto'],
+      rozestup: 90,
+      zjemnit: true,
+      vrstvy: ['pole'],
+      z0: 15.8,
+      ikony: ['deko-leto-1', 'deko-leto-2'],
+      ikonyMesic: { 8: ['deko-leto-2'] },
+      k: 0.22,
+      hustota: 0.4,
+    },
+    vres: {                       // vřes – srpen až září v jehličnatých lesích
+      mesice: [8, 9],
+      sezony: ['leto', 'podzim'],
+      rozestup: 100,
+      zjemnit: true,
+      vrstvy: ['les-jehlicnaty'],
+      z0: 16,
+      ikony: ['deko-leto-3'],
+      k: 0.2,
+      hustota: 0.4,
+    },
+    naprstnik: {                  // náprstník – červen až srpen, lesy (paseky)
+      mesice: [6, 7, 8],
+      sezony: ['leto'],
+      rozestup: 160,
+      zjemnit: true,
+      vrstvy: ['les'],
+      z0: 16,
+      ikony: ['deko-leto-4'],
+      k: 0.24,
+      hustota: 0.3,
+    },
+    listi: {                      // spadané listí – říjen a listopad v parcích, zahradách a listnatých lesích
+      mesice: [10, 11],
+      sezony: ['podzim'],
+      rozestup: 55,
+      zjemnit: true,
+      vrstvy: ['park', 'zahrada', 'les-listnaty'],
+      z0: 16.2,
+      ikony: ['deko-listi-1', 'deko-listi-2'],
+      k: 0.16,
+      hustota: 0.45,
+    },
+    sisky: {                      // šišky – září až listopad v jehličnatých lesích
+      mesice: [9, 10, 11],
+      sezony: ['podzim'],
+      rozestup: 120,
+      zjemnit: true,
+      vrstvy: ['les-jehlicnaty'],
+      z0: 16.2,
+      ikony: ['deko-plod-1'],
+      k: 0.14,
+      hustota: 0.4,
+    },
+    zaludy: {                     // žaludy – září a říjen v listnatých lesích
+      mesice: [9, 10],
+      sezony: ['podzim'],
+      rozestup: 120,
+      zjemnit: true,
+      vrstvy: ['les-listnaty'],
+      z0: 16.2,
+      ikony: ['deko-plod-2'],
+      k: 0.14,
+      hustota: 0.4,
     },
     // ⭐ SVĚTLA SÍDEL (v1.384–385, „ať města a vesničky v noci
     // světélkují — záře z oken, lampy… kulatá, každé jinak mihotá").
@@ -469,12 +627,18 @@ const Dekorace = (() => {
   // Malby dle sezóny (assets/dekorace/<sezona>/*.webp). Bitmapy se drží
   // v modulu — výměna stylu maže atlas, ale znovu se jen registrují.
   // Chybějící soubor (zimní květiny) dostane alias dle NAHRADY.
+  /// engine 363: měsíc pro sezónní drobnosti (houby, lekníny…); test `window.__vynutMesic = 1..12` jako u sezóny
+  function mesicDekoraci() {
+    return window.__vynutMesic || (new Date().getMonth() + 1);
+  }
   async function nactiMalby() {
     const sezona = sezonaMalby();
+    const mesic = mesicDekoraci();
     const jmena = [];
     for (const cfg of Object.values(DRUHY)) {
       // v1.424: mimosezónní druhy (zimní pole) nemají soubory — nefetchovat
       if (cfg.sezony && !cfg.sezony.includes(sezona)) continue;
+      if (cfg.mesice && cfg.mesice.indexOf(mesic) < 0) continue;       // engine 363
       for (const ik of cfg.ikony) {
         const j = ik.slice(5);           // bez „deko-"
         if (!jmena.includes(j)) jmena.push(j);
@@ -2382,6 +2546,13 @@ const Dekorace = (() => {
         zdroje.add(v.source);
       }
     }
+    // ⭐ engine 363: STOJATÁ VODA pro lekníny – táž vrstva jako `voda`, bez řek, bazénů a doků (OMT `class`)
+    const dVoda = out.find((d) => d.id === 'voda');
+    if (dVoda && NOSNE.rybnicek) {
+      const bezRek = ['!', ['in', ['get', 'class'], ['literal', ['river', 'swimming_pool', 'dock', 'ocean']]]];
+      out.push(Object.assign({}, dVoda, { id: 'rybnicek', nosna: true, cara: false,
+                                          filtr: dVoda.filtr ? ['all', dVoda.filtr, bezRek] : bezRek }));
+    }
     plochyDef = out;
     return plochyDef;
   }
@@ -3013,6 +3184,8 @@ const Dekorace = (() => {
           && STYLY[aktualniKod] && !STYLY[aktualniKod].mlha) continue;
       // v1.424: sezónní druhy — „pole jsou v zimě prázdná a zoraná“
       if (cfg.sezony && !cfg.sezony.includes(sezonaMalby())) continue;
+      if (cfg.mesice && cfg.mesice.indexOf(mesicDekoraci()) < 0) continue;   // engine 363
+      if (cfg.uBrehu) continue;                                             // lekníny jen ve workeru (břeh)
       // v dálce jen sudé buňky = původní rozestup (viz Z_JEMNE)
       const hrube = cfg.zjemnit && z < Z_JEMNE;
       const dLat = cfg.rozestup / 111320;
@@ -3355,7 +3528,7 @@ const Dekorace = (() => {
     let ex = 1;
     try { ex = (mapa.getTerrain && mapa.getTerrain() && +mapa.getTerrain().exaggeration) || 1; } catch (e) { ex = 1; }
     return {
-      verze: wVerze, herni: true, sezona: sezonaMalby(), dz: DZ, ex,
+      verze: wVerze, herni: true, sezona: sezonaMalby(), mesic: mesicDekoraci(), dz: DZ, ex,   // engine 363: mesic
       druhy: DRUHY, jehlicnate: STROMY_JEHLICNATE, listnate: STROMY_LISTNATE,
       plochy: defs.map((d) => ({ id: d.id, zdroj: d.zdroj, vrstva: d.vrstva,
                                  filtr: d.filtr === undefined ? null : d.filtr,

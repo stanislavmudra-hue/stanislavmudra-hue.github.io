@@ -262,7 +262,7 @@ void main() { o = texture(uTex, vUV) * uK; }`;
           }
         }
       }
-      const T = zad.stromy, d = T.d, ikS = T.ik, ikony = T.ikony, nT = ikS.length;
+      const T = zad.stromy, d = T.d, ikS = T.ik, ikony = T.ikony, nT = ikS.length, kt = T.kt || null;   // engine 362: kt
       if (!nT) return;
       const tg = zad.tg, smer = zad.smer, pxNaMetr = zad.pxNaMetr;
       const uhel = Math.atan2(syM, sxM), cu = Math.cos(uhel), su = Math.sin(uhel);
@@ -278,9 +278,10 @@ void main() { o = texture(uTex, vUV) * uK; }`;
           continue;
         }
         const tbx = d[4 * i], tby = d[4 * i + 1], Hm = d[4 * i + 2], rp = d[4 * i + 3];
-        const hc = 0.5 * Hm * tg;
-        elipsa(stromy, tbx + hc * sxM, tby + hc * syM, rp * protazeni, rp, cu, su, S);
-        const konec = hc - 0.36 * Hm * protazeni;
+        const tgi = kt ? tg * kt[i] : tg, prot = kt ? Math.sqrt(1 + tgi * tgi) : protazeni;   // engine 362: po terénu
+        const hc = 0.5 * Hm * tgi;
+        elipsa(stromy, tbx + hc * sxM, tby + hc * syM, rp * prot, rp, cu, su, S);
+        const konec = hc - 0.36 * Hm * prot;
         if (konec > 0.3) {
           kmen(stromy, tbx, tby, tbx + konec * sxM, tby + konec * syM, Math.max(1.5, 0.06 * Hm * pxNaMetr) / 2, S);
         }
@@ -291,7 +292,7 @@ void main() { o = texture(uTex, vUV) * uK; }`;
         for (const i of idx) {
           const tbx = d[4 * i], tby = d[4 * i + 1], Hm = d[4 * i + 2];
           const A = (Hm / sil.h) * pxNaMetr;                  // jako setTransform ve 2D (bez S)
-          const B = Math.min(A * tg, (zad.maxStinPx || Infinity) / sil.h);   // engine 357: strop délky (dlaždice)
+          const B = Math.min(A * tg * (kt ? kt[i] : 1), (zad.maxStinPx || Infinity) / sil.h);   // 357: strop; 362: po terénu
           // engine 359: pata = spodní neprůhledný řádek siluety (dno), ne spodek plátna – stín začíná u paty
           const ex = tbx - (sil.w / 2) * A * pX + (sil.dno || sil.h) * B * dX;
           const ey = tby - (sil.w / 2) * A * pY + (sil.dno || sil.h) * B * dY;

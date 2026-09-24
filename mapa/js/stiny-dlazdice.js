@@ -342,6 +342,58 @@
     const marg = OKRAJ_M / mNaMerc;
     const OB = { x0: T.x0 - marg, y0: T.y0 - marg, x1: T.x1 + marg, y1: T.y1 + marg };
     const okrPx = OKRAJ_M * pxNaMetr;
+    // --- ⭐ engine 362 (T 24. 9. večer: „Některé stíny jsou nereálné. Lezou za kopec i když jsou stromy níže“): délka
+    // stínu PO TERÉNU. Dřív výška × 1/tan(výška slunce) jako na rovině – při nízkém slunci (15°: 3,7× výšky) stín stromu
+    // pod hřebenem vylezl do svahu a přes hřeben. Teď paprsek od vrcholu (strom, dům, plot) ve směru stínu nad terénem
+    // DEM z13 × převýšení (týž jako terén MapLibre): stín končí, kde paprsek narazí na svah (do kopce kratší, z kopce
+    // delší, nejvýš 2,5× a MAX_STIN_M). Násobek `k` délky na rovině jde do kresby (stromy `kt`, domy a ploty v L).
+    const demy = new Map();
+    {
+      const nD = 8192, mD = MAX_STIN_M / mNaMerc;
+      const tx0 = Math.floor((OB.x0 - mD) * nD), tx1 = Math.floor((OB.x1 + mD) * nD);
+      const ty0 = Math.floor((OB.y0 - mD) * nD), ty1 = Math.floor((OB.y1 + mD) * nD);
+      const cek = [];
+      for (let ty = ty0; ty <= ty1; ty++) {
+        for (let tx = tx0; tx <= tx1; tx++) {
+          cek.push(demDlazdice(13, tx, ty).then((d) => { if (d && d.length >= 65536) demy.set(tx * 100000 + ty, d); })
+            .catch(() => { /* bez výšky = rovina */ }));
+        }
+      }
+      await Promise.all(cek);
+    }
+    const exT = sv.ex || 1;
+    const tanEl = 1 / tg;
+    const dXm = Math.sin(smer) / mNaMerc, dYm = -Math.cos(smer) / mNaMerc;   // směr stínu v Mercatoru na metr
+    let demK = -1, demD = null;
+    const vyskaM = (X, Y) => {                    // m n. m. (bilineárně, pixel i na poloze i/256 jako terén MapLibre)
+      const fx = X * 8192, fy = Y * 8192, tx = Math.floor(fx), ty = Math.floor(fy);
+      const k = tx * 100000 + ty;
+      if (k !== demK) { demK = k; demD = demy.get(k) || null; }
+      if (!demD) return NaN;
+      const u = (fx - tx) * 256, w = (fy - ty) * 256;
+      const i0 = Math.min(255, u | 0), j0 = Math.min(255, w | 0);
+      const i1 = Math.min(255, i0 + 1), j1 = Math.min(255, j0 + 1);
+      const a = Math.min(1, u - i0), b = Math.min(1, w - j0);
+      const e00 = demD[j0 * 256 + i0], e10 = demD[j0 * 256 + i1], e01 = demD[j1 * 256 + i0], e11 = demD[j1 * 256 + i1];
+      if (!(e00 > -500 && e10 > -500 && e01 > -500 && e11 > -500)) return NaN;
+      return (e00 * (1 - a) + e10 * a) * (1 - b) + (e01 * (1 - a) + e11 * a) * b;
+    };
+    const kStinu = (X, Y, Hm) => {                // násobek délky stínu na rovině
+      if (!demy.size || !(Hm > 0) || sv.bezTerenu) return 1;
+      const hb = vyskaM(X, Y);
+      if (!(hb > -500)) return 1;
+      const L0 = Hm * tg, Lmax = Math.min(MAX_STIN_M, 2.5 * L0), krok = Math.max(2, L0 / 8);
+      let sP = 0, dP = Hm;                        // převýšení paprsku nad terénem (m); u paty = výška
+      for (let s = krok; ; s += krok) {
+        if (s > Lmax) s = Lmax;
+        const h = vyskaM(X + dXm * s, Y + dYm * s);
+        if (!(h > -500)) return Math.max(1, sP / L0);    // dál bez výšky: aspoň dosavadní délka, jinak jako rovina
+        const dd = Hm - s * tanEl - (h - hb) * exT;
+        if (dd <= 0) return Math.max(0.1, (sP + (s - sP) * dP / (dP - dd)) / L0);
+        if (s >= Lmax) return Lmax / L0;
+        sP = s; dP = dd;
+      }
+    };
     // --- domy (OMT) a stavby ZABAGED
     const prstence = [];
     const odkryte = [];
@@ -381,7 +433,8 @@
             const o = odk ? !!odk.get(q.id) : true;
             if (zb.jenOdkryte && !o) continue;
             if (zb.hlasit && o && q.id != null && (typeof q.id === 'number')) odkryte.push(q.id);
-            const L = Math.min(zb.Lmax, q.H * tg);
+            const kq = kStinu((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2, q.H);   // engine 362: po terénu (střed domu)
+            const L = Math.min(zb.Lmax, q.H * tg * kq);
             prstence.push({ q, L });
             if (prstence.length >= MAX_PRSTENCU) break;
           }
@@ -412,7 +465,7 @@
             const bb = [Math.min(X0, X1), Math.min(Y0, Y1), Math.max(X0, X1), Math.max(Y0, Y1)];
             if (bb[2] < OB.x0 || bb[0] > OB.x1 || bb[3] < OB.y0 || bb[1] > OB.y1) continue;
             prstence.push({ q: { id: null, H: Hp, X: Float64Array.of(X0, X1, X0), Y: Float64Array.of(Y0, Y1, Y0), bb },
-                            L: Math.min(40, Hp * tg) });
+                            L: Math.min(40, Hp * tg * kStinu((X0 + X1) / 2, (Y0 + Y1) / 2, Hp)) });   // engine 362
             nP++;
           }
         }
@@ -420,6 +473,7 @@
     }
     // --- stromy a keře z generátoru dekorací (tytéž jako na mapě)
     const stromy = [];
+    const stromyK = [];                                    // engine 362: násobek délky stínu po terénu
     const ikony = [], poradi = new Map();
     const zt = z;
     if (zt >= 14) {
@@ -450,6 +504,7 @@
             let j = poradi.get(ik);
             if (j === undefined) { j = ikony.length; ikony.push(ik); poradi.set(ik, j); }
             stromy.push((X - T.x0) * pxNaMerc, (Y - T.y0) * pxNaMerc, Hm, (hPodpery || jeKamen) ? -1 : 0.36 * Hm * pxNaMetr, j);
+            stromyK.push(kStinu(X, Y, Hm));
             if (stromy.length >= MAX_STROMU * 5) break;
           }
         }
@@ -486,7 +541,7 @@
     }
     zac[prstence.length] = o;
     const nT0 = stromy.length / 5;
-    const d0 = new Float32Array(nT0 * 4), ikS0 = new Int32Array(nT0);
+    const d0 = new Float32Array(nT0 * 4), ikS0 = new Int32Array(nT0), kt0 = new Float32Array(nT0);
     let nT = 0;
     for (let i = 0; i < nT0; i++) {
       const ik = ikony[stromy[5 * i + 4]];
@@ -495,14 +550,15 @@
       d0[4 * nT] = stromy[5 * i]; d0[4 * nT + 1] = stromy[5 * i + 1]; d0[4 * nT + 2] = stromy[5 * i + 2];
       d0[4 * nT + 3] = Math.max(0, stromy[5 * i + 3]);
       ikS0[nT] = sil ? stromy[5 * i + 4] : -1;
+      kt0[nT] = stromyK[i];
       nT++;
     }
-    const d = d0.subarray(0, nT * 4), ikS = ikS0.subarray(0, nT);
+    const d = d0.subarray(0, nT * 4), ikS = ikS0.subarray(0, nT), kt = kt0.subarray(0, nT);
     const tz = teren ? { id: teren.id, dx: (teren.r.x0 - T.x0) * pxNaMerc, dy: (teren.r.y0 - T.y0) * pxNaMerc,
                          dw: (teren.r.x1 - teren.r.x0) * pxNaMerc, dh: (teren.r.y1 - teren.r.y0) * pxNaMerc } : null;
     const zad = { W: D, H: D, F: 1, w2: D, h2: D, kryti: sv.kryti, sxM, syM, tg, smer, pxNaMetr,
                   siluety: siluetyZap, teren: tz, bezOkraje: true, maxStinPx: MAX_STIN_M * pxNaMetr,
-                  prstence: { xy, zac, L: Ls }, stromy: { d, ik: ikS, ikony } };
+                  prstence: { xy, zac, L: Ls }, stromy: { d, ik: ikS, ikony, kt } };
     void okrPx;
     let bmp = null;
     const g = zajistiGL();

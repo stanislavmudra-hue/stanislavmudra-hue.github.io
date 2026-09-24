@@ -113,7 +113,7 @@
     }
     // --- stromy a keře: silueta spritu položená na zem (vodorovná osa kolmo
     // na slunce, výška ve směru stínu × 1/tan(el)); bez spritu elipsa + kmen
-    const T = zad.stromy, d = T.d, ikS = T.ik, ikony = T.ikony;
+    const T = zad.stromy, d = T.d, ikS = T.ik, ikony = T.ikony, kt = T.kt || null;   // engine 362: kt = po terénu
     const nT = ikS.length;
     if (nT) {
       const tg = zad.tg, smer = zad.smer, pxNaMetr = zad.pxNaMetr;
@@ -129,7 +129,7 @@
         const sil = (ikS[i] >= 0 && zad.siluety && zdroje.silueta) ? zdroje.silueta(ikony[ikS[i]]) : null;
         if (sil) {
           const A = (Hm / sil.h) * pxNaMetr;                  // px plátna na px spritu (do stran)
-          const B = Math.min(A * tg, (zad.maxStinPx || Infinity) / sil.h);   // … na px výšky (engine 357: strop)
+          const B = Math.min(A * tg * (kt ? kt[i] : 1), (zad.maxStinPx || Infinity) / sil.h);   // 357: strop; 362: terén
           ctx.setTransform(S * A * pX, S * A * pY, -S * B * dX, -S * B * dY,
                            S * (tbx - (sil.w / 2) * A * pX + (sil.dno || sil.h) * B * dX),   // engine 359: pata = dno
                            S * (tby - (sil.w / 2) * A * pY + (sil.dno || sil.h) * B * dY));
@@ -137,12 +137,13 @@
           ctx.setTransform(S, 0, 0, S, 0, 0);
           continue;
         }
-        const hc = 0.5 * Hm * tg;
+        const tgi = kt ? tg * kt[i] : tg, prot = kt ? Math.sqrt(1 + tgi * tgi) : protazeni;   // engine 362
+        const hc = 0.5 * Hm * tgi;
         const cx2 = tbx + hc * sxM, cy2 = tby + hc * syM;
         ctx.beginPath();
-        ctx.ellipse(cx2, cy2, rp * protazeni, rp, uhel, 0, Math.PI * 2);
+        ctx.ellipse(cx2, cy2, rp * prot, rp, uhel, 0, Math.PI * 2);
         ctx.fill();
-        const konec = hc - 0.36 * Hm * protazeni;
+        const konec = hc - 0.36 * Hm * prot;
         if (konec > 0.3) {
           ctx.lineWidth = Math.max(1.5, 0.06 * Hm * pxNaMetr);
           ctx.beginPath();
