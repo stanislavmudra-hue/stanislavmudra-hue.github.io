@@ -1361,7 +1361,9 @@ function aplikujMasku(pole) {
     // vlastní místa (index za maskou) hrají vždy
     var a = (!pole || i >= pole.length || pole[i]) ? 1 : 0;
     body.features[i].properties.akt = a;
-    oblasti.features[i].properties.akt = a;
+    // ⛔ 25. 9.: vlastní místa nemají buňku v `oblasti` (kruhy jsou ve `vlastniFC`) – bez strážce tu padala
+    // výjimka, stavSouteze skončil v catch („soutěž nenalezena“) a nevykreslila se Správa ani přidání se
+    if (oblasti.features[i]) oblasti.features[i].properties.akt = a;
   }
   spocitejPasma(pole);
   if (mapa) {
