@@ -374,6 +374,43 @@ const Dekorace = (() => {
     pomnik:   { ikony: ['deko-pomnik'],   H: 128, vyskaM: 3,   z0: 15.8 },
     studna_dtm: { ikony: ['deko-skruz', 'deko-skruz', 'deko-pumpa'], H: 96, vyskaM: 2.4, z0: 16.3 },
   };
+  // ⭐ engine 357: ELEKTRICKÉ VEDENÍ (worker dekorací + vedeni3d.js). Třídy t: 0 NN, 1 VN, 2 110 kV, 3 220 kV,
+  // 4 400 kV, 5 lanovka/vlek. H = výška plátna kresbičky (px @2), h = výchozí výška podpěry (m), z0 = nástup
+  // (~5 px jako ostatní drobnosti), zMin = nejnižší úroveň dlaždic dekorací s podpěrami.
+  const VEDENI_KONZOLY_VVN = [[48, 26], [72, 38], [96, 30]];            // [y konzoly, polovina délky] (px, 128×256)
+  const VEDENI_UCHYTY_ZVN = [[-80, 116], [-56, 116], [56, 116], [80, 116], [-46, 78], [46, 78]];   // [x, y] (192×256)
+  const VEDENI_VETRNIK_NABOJ_Y = 38;                                    // náboj na plátně 96×512
+  const VEDENI_CFG = {
+    tridy: {
+      0: { ikona: 'deko-sloup-nn', H: 128, h: 8.5, z0: 14.7, zMin: 14 },
+      1: { ikona: 'deko-stozar-vn', H: 160, h: 11, z0: 14.4, zMin: 13 },
+      2: { ikona: 'deko-stozar-vvn', H: 256, h: 28, z0: 13.5, zMin: 13 },
+      3: { ikona: 'deko-stozar-zvn', H: 256, h: 38, z0: 13.3, zMin: 13 },
+      4: { ikona: 'deko-stozar-zvn', H: 256, h: 45, z0: 13.2, zMin: 13 },
+      5: { ikona: 'deko-stozar-lan', H: 160, h: 9, z0: 14.3, zMin: 13 },
+    },
+    vetrnik: { ikona: 'deko-vetrnik', H: 512, z0: 12.0, podilVezeH: (512 - 10 - VEDENI_VETRNIK_NABOJ_Y) / 512 },
+  };
+  /// Úchyty vodičů podle třídy – [výška nad KOTVOU, posun vpravo] v podílech výšky podpěry (= výšky plátna H).
+  /// Kotva kresbičky: icon-anchor bottom + icon-offset [0, 8] (8 CSS px = 16 px @2) → bod plátna (W/2, H − 16);
+  /// pata (H − 10) je tedy 6 px @2 pod kotvou (zapuštěná do terénu). Souřadnice úchytů = místa na kresbičce.
+  const uchyt = (W, H, x, y) => [(H - 16 - y) / H, (x - W / 2) / H];
+  const VEDENI_VODICE = {
+    // NN: sloup v x = 22 (plátno 48×128), čtyři izolátory na konzolce x = 31, y = 16 + 8,5·i
+    0: [0, 1, 2, 3].map((i) => uchyt(48, 128, 31, 16 + 8.5 * i)),
+    // VN: izolátor na vrcholu (y 5) a dva na konzole ±20 (y 14), plátno 64×160
+    1: [uchyt(64, 160, 32, 5), uchyt(64, 160, 12, 14), uchyt(64, 160, 52, 14)],
+    // 110 kV: zemnicí lano na hrotu (y 14) + tři konzoly na stranu, vodič na spodku izolátoru (y + 10)
+    2: [uchyt(128, 256, 64, 14)].concat(VEDENI_KONZOLY_VVN.flatMap(([y, L]) =>
+         [uchyt(128, 256, 64 - (L - 2), y + 10), uchyt(128, 256, 64 + (L - 2), y + 10)])),
+    // 220/400 kV: dvě zemnicí lana na hrotech (±22, y 14) + konce řetězců (VEDENI_UCHYTY_ZVN)
+    3: [uchyt(192, 256, 74, 14), uchyt(192, 256, 118, 14)].concat(VEDENI_UCHYTY_ZVN.map(([x, y]) => uchyt(192, 256, 96 + x, y))),
+    4: [uchyt(192, 256, 74, 14), uchyt(192, 256, 118, 14)].concat(VEDENI_UCHYTY_ZVN.map(([x, y]) => uchyt(192, 256, 96 + x, y))),
+    // lanovka: lano přes kladky (±16, horní hrana kol y 20), plátno 64×160
+    5: [uchyt(64, 160, 16, 20), uchyt(64, 160, 48, 20)],
+  };
+  window.__vedeniVodice = VEDENI_VODICE;
+  window.__vedeniCfg = VEDENI_CFG;                 // vedeni3d.js: náběh zoomu tříd (z0)
   const drobnostiProWorker = () => {
     const out = {};
     for (const [t, c] of Object.entries(DROBNOSTI)) {
@@ -1179,6 +1216,134 @@ const Dekorace = (() => {
     g.beginPath(); g.moveTo(34, yb - 62); g.quadraticCurveTo(47, yb - 73, 56, yb - 60); g.stroke();
     return g.getImageData(0, 0, W, H);
   }
+  // ⭐ engine 357: ELEKTRICKÉ VEDENÍ – kresbičky podpěr ve SKUTEČNÉ výšce (plátno = výška podpěry, pata 10 px
+  // nad spodkem). Úchyty vodičů (VEDENI_VODICE) musí sedět s konzolami na kresbě – dráty kreslí vedeni3d.js.
+  const OCEL = '#8f969c', OCEL_T = '#5c6369', IZOL = '#dcd5c6';
+  /// stožár VVN 110 kV („soudek“): příhradová věž, tři konzoly na každou stranu (prostřední nejdelší), zemnicí hrot
+  function stozarVvnSprite() {
+    const W = 128, H = 256, yb = H - 10, cx = 64, vrch = 34;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, cx, yb, 18);
+    const dole = 13, nahore = 4;
+    g.fillStyle = 'rgba(92,99,105,0.16)';
+    g.beginPath(); g.moveTo(cx - dole, yb); g.lineTo(cx - nahore, vrch); g.lineTo(cx + nahore, vrch); g.lineTo(cx + dole, yb); g.closePath(); g.fill();
+    g.lineCap = 'round';
+    g.strokeStyle = OCEL; g.lineWidth = 1.1;
+    const pater = 9;
+    for (let i = 0; i < pater; i++) {
+      const t0 = i / pater, t1 = (i + 1) / pater;
+      const y0 = yb + (vrch - yb) * t0, y1 = yb + (vrch - yb) * t1;
+      const w0 = dole + (nahore - dole) * t0, w1 = dole + (nahore - dole) * t1;
+      g.beginPath(); g.moveTo(cx - w0, y0); g.lineTo(cx + w1, y1); g.moveTo(cx + w0, y0); g.lineTo(cx - w1, y1);
+      g.moveTo(cx - w1, y1); g.lineTo(cx + w1, y1); g.stroke();
+    }
+    g.strokeStyle = OCEL_T; g.lineWidth = 2.2;
+    g.beginPath(); g.moveTo(cx - dole, yb); g.lineTo(cx - nahore, vrch); g.moveTo(cx + dole, yb); g.lineTo(cx + nahore, vrch); g.stroke();
+    for (const [y, L] of VEDENI_KONZOLY_VVN) {
+      g.strokeStyle = OCEL_T; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(cx - L, y); g.lineTo(cx + L, y);
+      g.moveTo(cx - L, y); g.lineTo(cx - nahore - 3, y + 8); g.moveTo(cx + L, y); g.lineTo(cx + nahore + 3, y + 8); g.stroke();
+      g.strokeStyle = IZOL; g.lineWidth = 2.6;
+      g.beginPath(); g.moveTo(cx - L + 2, y + 1); g.lineTo(cx - L + 2, y + 10); g.moveTo(cx + L - 2, y + 1); g.lineTo(cx + L - 2, y + 10); g.stroke();
+    }
+    g.strokeStyle = OCEL_T; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(cx, vrch); g.lineTo(cx, 14); g.stroke();
+    return g.getImageData(0, 0, W, H);
+  }
+  /// stožár ZVN 220/400 kV („Dunaj“): široké dolní rameno se dvěma vodiči na stranu, horní rameno s jedním,
+  /// dva zemnicí hroty
+  function stozarZvnSprite() {
+    const W = 192, H = 256, yb = H - 10, cx = 96, vrch = 40;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, cx, yb, 24);
+    const dole = 16, nahore = 6;
+    g.fillStyle = 'rgba(92,99,105,0.16)';
+    g.beginPath(); g.moveTo(cx - dole, yb); g.lineTo(cx - nahore, vrch); g.lineTo(cx + nahore, vrch); g.lineTo(cx + dole, yb); g.closePath(); g.fill();
+    g.lineCap = 'round';
+    g.strokeStyle = OCEL; g.lineWidth = 1.1;
+    const pater = 9;
+    for (let i = 0; i < pater; i++) {
+      const t0 = i / pater, t1 = (i + 1) / pater;
+      const y0 = yb + (vrch - yb) * t0, y1 = yb + (vrch - yb) * t1;
+      const w0 = dole + (nahore - dole) * t0, w1 = dole + (nahore - dole) * t1;
+      g.beginPath(); g.moveTo(cx - w0, y0); g.lineTo(cx + w1, y1); g.moveTo(cx + w0, y0); g.lineTo(cx - w1, y1);
+      g.moveTo(cx - w1, y1); g.lineTo(cx + w1, y1); g.stroke();
+    }
+    g.strokeStyle = OCEL_T; g.lineWidth = 2.4;
+    g.beginPath(); g.moveTo(cx - dole, yb); g.lineTo(cx - nahore, vrch); g.moveTo(cx + dole, yb); g.lineTo(cx + nahore, vrch); g.stroke();
+    // ramena (příhradová: horní a dolní pás)
+    for (const [y, L, pas] of [[104, 84, 10], [66, 50, 8]]) {
+      g.strokeStyle = OCEL_T; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(cx - L, y); g.lineTo(cx + L, y); g.moveTo(cx - L, y); g.lineTo(cx - nahore, y - pas);
+      g.lineTo(cx + nahore, y - pas); g.lineTo(cx + L, y); g.stroke();
+      g.strokeStyle = OCEL; g.lineWidth = 1;
+      for (let k = 1; k < 6; k++) {
+        const xa = cx - L + (L - nahore) * k / 6, xb = cx + L - (L - nahore) * k / 6;
+        g.beginPath(); g.moveTo(xa, y); g.lineTo(xa + 6, y - pas * (k / 6)); g.moveTo(xb, y); g.lineTo(xb - 6, y - pas * (k / 6)); g.stroke();
+      }
+    }
+    // izolátorové řetězce (V): dolní rameno 2 na stranu, horní 1 na stranu
+    g.strokeStyle = IZOL; g.lineWidth = 2.8;
+    for (const [x, y] of VEDENI_UCHYTY_ZVN) {
+      g.beginPath(); g.moveTo(cx + x, y - 12); g.lineTo(cx + x, y); g.stroke();
+    }
+    // zemnicí hroty
+    g.strokeStyle = OCEL_T; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(cx - nahore, vrch); g.lineTo(cx - 22, 14); g.moveTo(cx + nahore, vrch); g.lineTo(cx + 22, 14); g.stroke();
+    return g.getImageData(0, 0, W, H);
+  }
+  /// sloup VN 22 kV: betonový sloup, ocelová konzola se dvěma izolátory a jeden izolátor na vrcholu (64×160)
+  function stozarVnSprite() {
+    const W = 64, H = 160, yb = H - 10, cx = 32;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, cx, yb, 8);
+    g.beginPath(); g.moveTo(cx - 3.2, yb); g.lineTo(cx - 1.8, 14); g.lineTo(cx + 1.8, 14); g.lineTo(cx + 3.2, yb); g.closePath();
+    g.fillStyle = '#b9b5ac'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.2; g.stroke();
+    g.fillStyle = 'rgba(80,76,70,0.28)'; g.fillRect(cx + 0.3, 16, 1.6, yb - 18);
+    trs(g, cx - 22, 22, 44, 3, '#5c6369');
+    g.fillStyle = IZOL; g.strokeStyle = OBRYS_D; g.lineWidth = 1;
+    for (const x of [-20, 20]) { g.beginPath(); g.ellipse(cx + x, 18, 2.4, 4, 0, 0, Math.PI * 2); g.fill(); g.stroke(); }
+    g.beginPath(); g.ellipse(cx, 9, 2.4, 4, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+    return g.getImageData(0, 0, W, H);
+  }
+  /// sloup NN (vesnice): dřevěný sloup se čtyřmi izolátory nad sebou na konzolce (48×128)
+  function sloupNnSprite() {
+    const W = 48, H = 128, yb = H - 10, cx = 22;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, cx, yb, 6);
+    g.beginPath(); g.moveTo(cx - 2.6, yb); g.lineTo(cx - 1.8, 8); g.lineTo(cx + 1.8, 8); g.lineTo(cx + 2.6, yb); g.closePath();
+    g.fillStyle = '#7a5a3c'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.1; g.stroke();
+    g.fillStyle = 'rgba(40,28,16,0.3)'; g.fillRect(cx + 0.4, 10, 1.4, yb - 12);
+    trs(g, cx + 2, 12, 5, 34, '#4f555a', false);
+    g.fillStyle = IZOL; g.strokeStyle = OBRYS_D; g.lineWidth = 0.9;
+    for (let i = 0; i < 4; i++) { g.beginPath(); g.ellipse(cx + 9, 16 + i * 8.5, 2.2, 2.8, 0, 0, Math.PI * 2); g.fill(); g.stroke(); }
+    return g.getImageData(0, 0, W, H);
+  }
+  /// podpěra lanovky / vleku: ocelový tubus, příčník a kladky nahoře (64×160)
+  function stozarLanSprite() {
+    const W = 64, H = 160, yb = H - 10, cx = 32;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, cx, yb, 8);
+    trs(g, cx - 3, 22, 6, yb - 22, '#7c8a92');
+    g.fillStyle = 'rgba(60,70,78,0.3)'; g.fillRect(cx, 24, 3, yb - 26);
+    trs(g, cx - 24, 16, 48, 5, '#56616a');
+    g.fillStyle = '#2d3236';
+    for (const x of [-20, -12, 12, 20]) { g.beginPath(); g.ellipse(cx + x, 23, 3.4, 3.4, 0, 0, Math.PI * 2); g.fill(); }
+    return g.getImageData(0, 0, W, H);
+  }
+  /// větrná elektrárna: bílý kuželový tubus, gondola a náboj BEZ listů (listy se točí v animace.js) (96×512)
+  function vetrnikSprite() {
+    const W = 96, H = 512, yb = H - 10, cx = 48, hub = VEDENI_VETRNIK_NABOJ_Y;
+    const [c, g] = platnoDrobnosti(W, H);
+    stinPaty(g, cx, yb, 12);
+    g.beginPath(); g.moveTo(cx - 7, yb); g.lineTo(cx - 3.2, hub + 8); g.lineTo(cx + 3.2, hub + 8); g.lineTo(cx + 7, yb); g.closePath();
+    g.fillStyle = '#eef0f1'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1.2; g.stroke();
+    g.fillStyle = 'rgba(120,128,134,0.25)'; g.beginPath(); g.moveTo(cx + 1, yb); g.lineTo(cx + 0.6, hub + 8); g.lineTo(cx + 3.2, hub + 8); g.lineTo(cx + 7, yb); g.closePath(); g.fill();
+    trs(g, cx - 7, hub - 5, 20, 10, '#e7eaec');                 // gondola
+    g.beginPath(); g.ellipse(cx - 8, hub, 4.5, 4.5, 0, 0, Math.PI * 2);   // náboj
+    g.fillStyle = '#f4f5f6'; g.fill(); g.strokeStyle = OBRYS_D; g.lineWidth = 1; g.stroke();
+    return g.getImageData(0, 0, W, H);
+  }
   const SPRITY_DROBNOSTI = { 'deko-lampa': lampaSprite, 'deko-posed': posedSprite, 'deko-krmelec': krmelecSprite,
                              'deko-lavicka': lavickaSprite, 'deko-studna': studnaSprite, 'deko-schranka': schrankaSprite,
                              'lampa-zare': lampaZareSprite,
@@ -1187,6 +1352,9 @@ const Dekorace = (() => {
                              'deko-semafor': semaforSprite, 'deko-zavora': zavoraSprite,
                              'deko-kriz': krizSprite, 'deko-pomnik': pomnikSprite,
                              'deko-skruz': skruzSprite, 'deko-pumpa': pumpaSprite,
+                             'deko-stozar-vvn': stozarVvnSprite, 'deko-stozar-zvn': stozarZvnSprite,   // engine 357
+                             'deko-stozar-vn': stozarVnSprite, 'deko-sloup-nn': sloupNnSprite,
+                             'deko-stozar-lan': stozarLanSprite, 'deko-vetrnik': vetrnikSprite,
                              'semafor-zare-r': () => semaforZareSprite('255,70,55', 24),
                              'semafor-zare-z': () => semaforZareSprite('70,235,120', 52) };
 
@@ -3172,6 +3340,9 @@ const Dekorace = (() => {
     try { out.drobnosti = r2('drobnosti4.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez drobností */ }
     // engine 356: body DTM ČR (studny, kříže a boží muka, pomníky) – archiv dtm2, vrstva `body`
     try { out.dtmbody = r2('dtm2.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez DTM bodů */ }
+    // engine 357: elektrické vedení – ZABAGED (CC BY 4.0) a OSM (ODbL) ZVLÁŠŤ, dvojníky vyřadí worker
+    try { out.vedenizab = r2('vedeni_zab1.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez vedení */ }
+    try { out.vedeniosm = r2('vedeni_osm1.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez vedení OSM */ }
     // engine 354: lampy_mesta4 = ruční lampa Sezemice 52 u začátku horního vjezdu na točnu (T 24. 9.)
     try { out.lampymesta = r2('lampy_mesta4.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez lamp měst */ }
     return out;
@@ -3193,6 +3364,7 @@ const Dekorace = (() => {
                                  zmax: d.zmax == null ? null : d.zmax })),
       zdroje, sirkyCar: SIRKY_CAR, rampa: RAMPA_ZAKLAD, sirkaNastupu: SIRKA_NASTUPU,
       rampaVys: RAMPA_VYS_ZAKLAD, drobnosti: drobnostiProWorker(),   // engine 349
+      vedeni: VEDENI_CFG,                                            // engine 357
     };
   }
   function wPripravit() {
@@ -3213,6 +3385,7 @@ const Dekorace = (() => {
       wProtokol();
       wDek.postMessage(Object.assign({ typ: 'nastav' }, cfg));
       wStav = 1;
+      if (stinyP) wDek.postMessage(Object.assign({ typ: 'svetlo' }, stinyP));   // engine 357
       wPredgenZapoj();                   // engine 355
     } catch (e) { wStav = -1; console.warn('[dekorace] worker nejde:', e); }
   }
@@ -3228,6 +3401,7 @@ const Dekorace = (() => {
   function wPredgenStop() {
     clearTimeout(predgenCas);
     try { if (wDek && wStav === 1) wDek.postMessage({ typ: 'predgeneruj', dlazdice: [] }); } catch (e) { /* nic */ }
+    try { if (wDek && wStav === 1) wDek.postMessage({ typ: 'predstin', dlazdice: [] }); } catch (e) { /* nic */ }
   }
   function wPredgenPosli() {
     try {
@@ -3263,6 +3437,17 @@ const Dekorace = (() => {
       if (L - 1 >= 13) okno(L - 1, b.getWest() - dLon, b.getSouth() - dLat, b.getEast() + dLon, b.getNorth() + dLat, 18);
       if (L + 1 <= 15) okno(L + 1, c.lng - dLon * 0.3, c.lat - dLat * 0.3, c.lng + dLon * 0.3, c.lat + dLat * 0.3, 14);
       wDek.postMessage({ typ: 'predgeneruj', dlazdice: seznam });
+      // ⭐ engine 357: stíny po dlaždicích – úroveň rastru = zaokrouhlený zoom (dlaždice 512), prstenec kolem
+      // výřezu a sousední úrovně; worker je nakreslí do keše až po dekoracích (jen pohodlí navíc)
+      if (stinyP && stinyP.kryti > 0 && z >= 14.3 && mapa.getSource('stiny-domu')) {
+        const zs = Math.max(15, Math.min(18, Math.round(z)));
+        const puvodni = seznam.length;
+        okno(zs, b.getWest() - dLon * 0.5, b.getSouth() - dLat * 0.5, b.getEast() + dLon * 0.5, b.getNorth() + dLat * 0.5, 30);
+        if (zs + 1 <= 18) okno(zs + 1, c.lng - dLon * 0.3, c.lat - dLat * 0.3, c.lng + dLon * 0.3, c.lat + dLat * 0.3, 10);
+        if (zs - 1 >= 15) okno(zs - 1, b.getWest() - dLon, b.getSouth() - dLat, b.getEast() + dLon, b.getNorth() + dLat, 12);
+        const stiny = seznam.splice(puvodni);
+        if (stiny.length) wDek.postMessage({ typ: 'predstin', verze: stinyP.verze, dlazdice: stiny });
+      }
     } catch (e) { /* předgenerování je jen pohodlí navíc */ }
   }
   let predgenHook = null;
@@ -3305,12 +3490,13 @@ const Dekorace = (() => {
   }
   function wZprava(ev) {
     const m = ev.data || {};
-    if (m.typ === 'dlazdice' || m.typ === 'stav') {
+    if (m.typ === 'dlazdice' || m.typ === 'stav' || m.typ === 'stin') {
       const f = wCekani.get(m.id);
       if (f) { wCekani.delete(m.id); f(m); }
       return;
     }
     if (m.typ === 'mlha') { wOdpovezMlha(m); return; }
+    if (m.typ === 'silueta') { wOdpovezSilueta(m); return; }     // engine 357
     if (m.typ === 'dem') { wOdpovezDem(m); return; }
     if (m.typ === 'obnov') {
       try {
@@ -3319,6 +3505,28 @@ const Dekorace = (() => {
       return;
     }
     if (m.typ === 'chyba') wSelhal(m.msg);
+  }
+  /// ⭐ engine 357: STÍNY PO DLAŽDICÍCH – světlo, dlaždice, silueta spritu stromu (alfa v barvě stínu, main.js)
+  let stinyP = null;
+  function wNastavStiny(p) {
+    stinyP = p;
+    try { if (wDek && wStav === 1) wDek.postMessage(Object.assign({ typ: 'svetlo' }, p)); } catch (e) { /* nic */ }
+  }
+  async function wStinDlazdice(z, x, y, verze) {
+    // worker se teprve chystá (start mapy) → počkat, jinak by dlaždice téhle verze zůstala prázdná
+    for (let i = 0; i < 50 && wStav === 0; i++) await new Promise((res) => setTimeout(res, 200));
+    if (!wDek || wStav !== 1) return null;
+    return wPozadej({ typ: 'stin', z, x, y, verze });
+  }
+  function wOdpovezSilueta(m) {
+    let s = null;
+    try { s = (typeof siluetaSpritu === 'function') ? siluetaSpritu(m.ik) : null; } catch (e) { s = null; }
+    try {
+      if (s && s.px && s.w && s.h) {
+        const px = s.px.slice().buffer;
+        wDek.postMessage({ typ: 'silueta', id: m.id, w: s.w, h: s.h, px }, [px]);
+      } else wDek.postMessage({ typ: 'silueta', id: m.id, w: 0, h: 0, px: null });
+    } catch (e) { /* worker pryč */ }
   }
   /// mlha pro body z workeru – TÝŽ dotaz jako starý generátor (memo v Mlha)
   function wOdpovezMlha(m) {
@@ -3385,6 +3593,7 @@ const Dekorace = (() => {
       let cfg = null;
       try { cfg = wNastaveni(); } catch (e) { cfg = null; }
       if (cfg) wDek.postMessage(Object.assign({ typ: 'nastav' }, cfg));
+      if (cfg && stinyP) wDek.postMessage(Object.assign({ typ: 'svetlo' }, stinyP));   // engine 357
     }
     try {
       const zd = mapa && mapa.getSource('dekorace');
@@ -3446,10 +3655,45 @@ const Dekorace = (() => {
   function wUlozEvidenci(z, x, y, ev) {
     const k = z + '/' + x + '/' + y;
     wEvidence.delete(k);
-    wEvidence.set(k, { z, x, y, sv: ev.sv || [], stromy: ev.stromy, pf: null });
+    wEvidence.set(k, { z, x, y, sv: ev.sv || [], stromy: ev.stromy, pf: null,
+                       draty: ev.draty || null, vrtule: ev.vrtule || null });   // engine 357
     while (wEvidence.size > 140) wEvidence.delete(wEvidence.keys().next().value);
     wKotvyVerze++;
+    if (ev.draty || ev.vrtule) wVedeniVerze++;
     wNaplanujSvetla();
+  }
+  /// ⭐ engine 357: rozpětí vodičů a vrtule větrníků ze všech dlaždic evidence (bez dvojníků): { verze, draty:
+  /// Float64Array [a,b,c,d,ha,hb,t]…, vrtule: [lon,lat,h]… }. Kreslí vedeni3d.js (dráty) a animace.js (listy).
+  let wVedeniVerze = 0, wVedeniKes = null;
+  function wVedeni() {
+    if (wVedeniKes && wVedeniKes.verze === wVedeniVerze) return wVedeniKes;
+    const vid = new Set(), d = [], v = [];
+    for (const t of wEvidence.values()) {
+      const D = t.draty;
+      if (D) {
+        for (let i = 0; i + 6 < D.length; i += 7) {
+          const k = Math.round(D[i] * 1e6) + ',' + Math.round(D[i + 1] * 1e6) + ',' + Math.round(D[i + 2] * 1e6) + ',' + Math.round(D[i + 3] * 1e6);
+          if (vid.has(k)) continue;
+          vid.add(k);
+          for (let j = 0; j < 7; j++) d.push(D[i + j]);
+        }
+      }
+      const W = t.vrtule;
+      if (W) {
+        // ⛔ poloha větrníku je z geometrie dlaždice – na z14 a z15 se liší o kvantizaci (~0,5 m) → klíč po ~10 m
+        // i se sousedy (prohlížeč 24. 9.: tentýž větrník ze dvou zoomů = dva rotory, šest listů)
+        for (let i = 0; i + 2 < W.length; i += 3) {
+          const gx = Math.round(W[i] * 1e4), gy = Math.round(W[i + 1] * 1e4);
+          let uz = false;
+          for (let a = -1; a <= 1 && !uz; a++) for (let b = -1; b <= 1; b++) if (vid.has('w' + (gx + a) + ',' + (gy + b))) { uz = true; break; }
+          if (uz) continue;
+          vid.add('w' + gx + ',' + gy);
+          v.push(W[i], W[i + 1], W[i + 2]);
+        }
+      }
+    }
+    wVedeniKes = { verze: wVedeniVerze, draty: Float64Array.from(d), vrtule: Float64Array.from(v) };
+    return wVedeniKes;
   }
   /// ⭐ engine 340: kotvy animací nad mapou (animace.js) z evidence dlaždic z15 –
   /// komíny (sv:3, těžiště domů) a voda (sv:4); jen objevené (worker je pustí přes mlhu)
@@ -3698,6 +3942,9 @@ const Dekorace = (() => {
     return wStav === 1 ? wZapsane() : zapsaneFeatury;
   }
   return { pripoj, nastavStin, nastavDohled, zapsane,
+    nastavStiny: wNastavStiny, stinDlazdice: wStinDlazdice,                    // engine 357
+    vedeni: () => (wStav === 1 ? wVedeni() : null),
+    stinyStav: () => wPozadej({ typ: 'stiny-stav' }),
     kotvyAnimaci: () => wKotvyAnimaci(), kotvyVerze: () => wKotvyVerze,
     pripravOblast: (w, s, e, n) => wPripravOblast(w, s, e, n),
     kontextPtaku: (w, s, e, n) => wKontextPtaku(w, s, e, n),

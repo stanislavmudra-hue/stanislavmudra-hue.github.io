@@ -258,12 +258,12 @@
     }
   }
   const V5 = new URLSearchParams(location.search).get('ml') === '5';
-  const VERZE = '?v=356';
+  const VERZE = '?v=357';
   const SKRIPTY = ['js/styles.js', 'js/fog.js', 'js/pocasi.js',
     'js/svetlo.js', 'js/trpyt.js',
     'js/postavicka.js', 'js/dekorace.js', 'js/ilustrace.js',
     'js/erby.js', 'js/ptaci.js', 'js/vitr.js', 'js/navigace.js', 'js/dobyvatel.js',
-    'js/modely3d.js', 'js/stiny-kresba.js', 'js/animace.js', 'js/main.js'];
+    'js/modely3d.js', 'js/stiny-kresba.js', 'js/vedeni3d.js', 'js/animace.js', 'js/main.js'];
   // ⭐ 5. 9. 2026: WEBOVÝ REŽIM (okolnik.cz/mapa/?web=1) – stav hry ze
   // synchronizace pod účtem místo mostu do aplikace; až PO main.js
   if (new URLSearchParams(location.search).get('web') === '1') {
@@ -285,7 +285,7 @@
     document.body.appendChild(el);
   } else {
     document.getElementById('ml-css').href = 'vendor/maplibre-gl-v6.css';
-    import('./vendor/maplibre-gl-v6.mjs?v=356')
+    import('./vendor/maplibre-gl-v6.mjs?v=357')
       .then(function (m) { window.maplibregl = m; dal(); })
       .catch(function (e) {
         console.error('[zavaděč] MapLibre v6 se nenačetl — nouzově v5',

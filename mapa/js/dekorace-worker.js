@@ -152,17 +152,18 @@ function dekodujMVT(buf, chci) {
     for (let i = 0; i < rozsahy.length; i += 2) {
       p.pos = rozsahy[i];
       const kf = rozsahy[i + 1];
-      let typ = 0; const vl = {}; let g0 = 0, g1 = 0;
+      let typ = 0; const vl = {}; let g0 = 0, g1 = 0, id = null;
       while (p.pos < kf) {
         const t3 = cVarint(p), f3 = t3 >> 3, w3 = t3 & 7;
-        if (f3 === 2 && w3 === 2) {
+        if (f3 === 1 && w3 === 0) id = cVarint(p);                   // engine 357: id prvku
+        else if (f3 === 2 && w3 === 2) {
           const n = cVarint(p), ke = p.pos + n;
           while (p.pos < ke) { const ki = cVarint(p), vi = cVarint(p); vl[klice[ki]] = hodnoty[vi]; }
         } else if (f3 === 3 && w3 === 0) typ = cVarint(p);
         else if (f3 === 4 && w3 === 2) { const n = cVarint(p); g0 = p.pos; g1 = p.pos + n; p.pos = g1; }
         else preskoc(p, w3);
       }
-      prvky.push({ typ, vl, g0, g1, geom: null });
+      prvky.push({ typ, vl, g0, g1, geom: null, id });
     }
     out[nazev] = { extent, prvky, b };
     p.pos = konec;
@@ -697,6 +698,9 @@ async function generuj(z, x, y) {
   if (z >= 14 && N.zdroje.drobnosti && N.drobnosti) potreba.set('drobnosti', new Set(['body']));
   if (z >= 14 && N.zdroje.lampymesta && N.drobnosti) potreba.set('lampymesta', new Set(['body']));
   if (z >= 14 && N.zdroje.dtmbody && N.drobnosti) potreba.set('dtmbody', new Set(['body']));   // engine 356
+  // engine 357: elektrické vedení – ZABAGED od z12 (větrníky; stožáry a rozpětí v archivu od z13), OSM od z14
+  if (z >= 12 && N.zdroje.vedenizab && N.vedeni) potreba.set('vedenizab', new Set(['s', 'r', 'w']));
+  if (z >= 14 && N.zdroje.vedeniosm && N.vedeni) potreba.set('vedeniosm', new Set(['s', 'r']));
   // výška terénu se začne shánět hned (hlavní vlákno bývá při startu mapy
   // vytížené – na TT čekání až 0,5 s), souběžně se zdrojovými dlaždicemi
   const zD = Math.min(12, z), dD = z - zD;
@@ -998,6 +1002,166 @@ async function generuj(z, x, y) {
       }
     }
   }
+  // ⭐⭐ engine 357 (T 24. 9.: „udělej … i to vedení a stožáry atd.“): ELEKTRICKÉ VEDENÍ. Podpěry (stožáry VVN,
+  // sloupy VN a NN, podpěry lanovek) a větrné elektrárny jako kresbičky ve skutečné výšce (měřítko světa jako
+  // stromy); rozpětí vodičů a vrtule větrníků do evidence dlaždice (dráty kreslí 3D vrstva vedeni3d.js, listy
+  // animace.js). Mlha jako u všeho.
+  // DVOJNÍCI OSM × ZABAGED (tatáž linka v obou zdrojích) – vyhrává PODROBNĚJŠÍ: ⛔ prohlížeč 24. 9. (Kryštofovy
+  // Hamry): ZABAGED měl VN linku zjednodušenou (rozpětí 130–250 m, vrcholy jen v lomech), OSM tutéž se sloupy po
+  // 65 m. Rozpětí ZABAGED, podél kterého stojí podpěra OSM (VN+, ≤ 6 m od linky, > 15 m od obou konců), je
+  // HRUBÉ → jeho drát nahradí rozpětí OSM. Jinak se OSM podél linky ZABAGED (vzorky ¼, ½, ¾ do 10 m) zahodí.
+  // Podpěra OSM do 12 m (NN 6 m) od podpěry ZABAGED je tatáž → kreslí se ZABAGED a konce OSM rozpětí se na ni
+  // PŘICHYTÍ (drát končí na kresbičce). OSM rozpětí NN > 120 m a VN > 350 m = linka kreslená bez sloupů → pryč.
+  // Obě zdrojové dlaždice se čtou CELÉ (i za hranou výstupní) – jinak na hranách unikali dvojníci.
+  if (N.vedeni && (zdrojove.vedenizab || zdrojove.vedeniosm)) {
+    const V = N.vedeni;
+    K.draty = []; K.vrtule = [];
+    let pocetV = 0;
+    const MR = 40, MB = 12;
+    const nacti = (zd) => {
+      const out = { s: [], r: [] };
+      if (!zd) return out;
+      const vs = zd.vrstvy.s, vr = zd.vrstvy.r;
+      if (vs) {
+        const kS = EXT / vs.extent;
+        for (const f of vs.prvky) {
+          const t = +f.vl.t;
+          if (!V.tridy[t]) continue;
+          for (const c of geomPrvku(vs, f)) {
+            const px = c[0] * kS * zd.m + zd.ox, py = c[1] * kS * zd.m + zd.oy;
+            const lon = lonZ((x + px / EXT) / n), lat = latZ((y + py / EXT) / n);
+            out.s.push({ t, lon, lat, px, py, h: +f.vl.h || 0, X: lon * kxM, Y: lat * 111320,
+                         uvnitr: px >= 0 && px < EXT && py >= 0 && py < EXT });
+          }
+        }
+      }
+      if (vr) {
+        const kR = EXT / vr.extent;
+        for (const f of vr.prvky) {
+          const t = +f.vl.t;
+          if (!V.tridy[t]) continue;
+          const a = +f.vl.a, b = +f.vl.b, cc = +f.vl.c, d = +f.vl.d;
+          if (!isFinite(a) || !isFinite(b) || !isFinite(cc) || !isFinite(d)) continue;
+          for (const g of geomPrvku(vr, f)) {
+            const px = g[0] * kR * zd.m + zd.ox, py = g[1] * kR * zd.m + zd.oy;
+            out.r.push({ t, a, b, c: cc, d, ha: +f.vl.ha || 0, hb: +f.vl.hb || 0, px, py,
+                         u: [a * kxM, b * 111320, cc * kxM, d * 111320],
+                         uvnitr: px >= 0 && px < EXT && py >= 0 && py < EXT });
+          }
+        }
+      }
+      return out;
+    };
+    const Zv = nacti(zdrojove.vedenizab), Ov = nacti(zdrojove.vedeniosm);
+    // mřížky: rozpětí ZABAGED po 40 m, podpěry ZABAGED po 12 m (metry: lon·kxM, lat·111320)
+    const segZ = new Map(), podZ = new Map();
+    for (const r of Zv.r) {
+      const u = r.u;
+      const gx0 = Math.floor(Math.min(u[0], u[2]) / MR), gx1 = Math.floor(Math.max(u[0], u[2]) / MR);
+      const gy0 = Math.floor(Math.min(u[1], u[3]) / MR), gy1 = Math.floor(Math.max(u[1], u[3]) / MR);
+      if ((gx1 - gx0 + 1) * (gy1 - gy0 + 1) > 400) continue;
+      for (let gx = gx0; gx <= gx1; gx++) for (let gy = gy0; gy <= gy1; gy++) {
+        const k = gx + ':' + gy;
+        let l = segZ.get(k);
+        if (!l) { l = []; segZ.set(k, l); }
+        l.push(r);
+      }
+    }
+    for (const q of Zv.s) {
+      const k = Math.floor(q.X / MB) + ':' + Math.floor(q.Y / MB);
+      let l = podZ.get(k);
+      if (!l) { l = []; podZ.set(k, l); }
+      l.push(q);
+    }
+    const bodNaUsek = (px, py, u) => {
+      const dx = u[2] - u[0], dy = u[3] - u[1], l2 = dx * dx + dy * dy;
+      const t = l2 > 0 ? Math.max(0, Math.min(1, ((px - u[0]) * dx + (py - u[1]) * dy) / l2)) : 0;
+      return Math.hypot(px - (u[0] + t * dx), py - (u[1] + t * dy));
+    };
+    const kolemUseku = (px, py, m, fn) => {               // všechna rozpětí ZABAGED do m metrů
+      const gx = Math.floor(px / MR), gy = Math.floor(py / MR);
+      const vid = new Set();
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+        const l = segZ.get((gx + a) + ':' + (gy + b));
+        if (l) for (const r of l) if (!vid.has(r)) { vid.add(r); const dd = bodNaUsek(px, py, r.u); if (dd <= m) fn(r, dd); }
+      }
+    };
+    const nejblizsiUsek = (px, py, m) => { let nej = null, nd = Infinity; kolemUseku(px, py, m, (r, dd) => { if (dd < nd) { nd = dd; nej = r; } }); return nej; };
+    const blizkaPodpera = (px, py, m) => {                // nejbližší podpěra ZABAGED do m (≤ 12) metrů
+      const gx = Math.floor(px / MB), gy = Math.floor(py / MB);
+      let nej = null, nd = m;
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+        const l = podZ.get((gx + a) + ':' + (gy + b));
+        if (l) for (const q of l) { const dd = Math.hypot(q.X - px, q.Y - py); if (dd <= nd) { nd = dd; nej = q; } }
+      }
+      return nej;
+    };
+    if (Ov.s.length || Ov.r.length) {
+      // 1) hrubá rozpětí ZABAGED: podpěra OSM (VN+) podél nich, dál než 15 m od obou konců
+      for (const q of Ov.s) {
+        if (q.t < 1) continue;
+        kolemUseku(q.X, q.Y, 6, (r) => {
+          if (Math.hypot(q.X - r.u[0], q.Y - r.u[1]) > 15 && Math.hypot(q.X - r.u[2], q.Y - r.u[3]) > 15) r.hrube = true;
+        });
+      }
+      // 2) podpěry OSM: tatáž jako ZABAGED, nebo na (podrobné) lince ZABAGED → pryč
+      for (const q of Ov.s) {
+        if (blizkaPodpera(q.X, q.Y, q.t === 0 ? 6 : MB)) { q.pryc = true; continue; }
+        const r = nejblizsiUsek(q.X, q.Y, 6);
+        if (r && !r.hrube) q.pryc = true;
+      }
+      // 3) rozpětí OSM: podél podrobné linky ZABAGED → pryč; konce u podpěr ZABAGED → přichytit
+      const MAX_OSM = [120, 350];
+      for (const r of Ov.r) {
+        const u = r.u;
+        if ([0.25, 0.5, 0.75].every((f) => {
+          const z0 = nejblizsiUsek(u[0] + (u[2] - u[0]) * f, u[1] + (u[3] - u[1]) * f, 10);
+          return z0 && !z0.hrube;
+        })) { r.pryc = true; continue; }
+        if (r.t <= 1 && Math.hypot(u[2] - u[0], u[3] - u[1]) > MAX_OSM[r.t]) { r.pryc = true; continue; }
+        const zA = blizkaPodpera(u[0], u[1], MB), zB = blizkaPodpera(u[2], u[3], MB);
+        if (zA) { r.a = zA.lon; r.b = zA.lat; if (zA.h) r.ha = zA.h; }
+        if (zB) { r.c = zB.lon; r.d = zB.lat; if (zB.h) r.hb = zB.h; }
+      }
+    }
+    const kresliV = (src) => {
+      for (const q of src.s) {
+        if (!q.uvnitr || q.pryc) continue;
+        const cfg = V.tridy[q.t];
+        if (z < cfg.zMin) continue;
+        const h = Math.max(4, Math.min(90, q.h || cfg.h));
+        pridej(q.lon, q.lat, q.px, q.py, cfg.ikona, h / (cfg.H * 0.1167), cfg.z0, 0, 0);
+        if (++pocetV > 6000) return;
+      }
+      for (const r of src.r) {
+        if (!r.uvnitr || r.pryc || r.hrube) continue;                  // rozpětí patří dlaždici se středem
+        const cfg = V.tridy[r.t];
+        if (z < cfg.zMin) continue;
+        const i = K.lon.length;
+        pridej(lonZ((x + r.px / EXT) / n), latZ((y + r.py / EXT) / n), r.px, r.py, '', 0, 0, 7, 0);
+        K.draty.push({ i, a: r.a, b: r.b, c: r.c, d: r.d, ha: r.ha || cfg.h, hb: r.hb || cfg.h, t: r.t });
+      }
+    };
+    kresliV(Zv);
+    kresliV(Ov);
+    const zw = zdrojove.vedenizab, vw = zw && zw.vrstvy.w;
+    if (vw) {
+      const kW = EXT / vw.extent;
+      for (const f of vw.prvky) {
+        for (const c of geomPrvku(vw, f)) {
+          const px = c[0] * kW * zw.m + zw.ox, py = c[1] * kW * zw.m + zw.oy;
+          if (px < 0 || px >= EXT || py < 0 || py >= EXT) continue;
+          const lon = lonZ((x + px / EXT) / n), lat = latZ((y + py / EXT) / n);
+          const h = Math.max(40, Math.min(200, +f.vl.h || 120));
+          const cfg = V.vetrnik;
+          pridej(lon, lat, px, py, cfg.ikona, h / (cfg.H * 0.1167 * cfg.podilVezeH), cfg.z0, 0, 0);
+          const i = K.lon.length;
+          pridej(lon, lat, px, py, '', 0, 0, 8, 0);
+          K.vrtule.push({ i, lon, lat, h });
+        }
+      }
+    }
+  }
   const pocetK = K.lon.length;
   const tKand = performance.now();
   const vysl = {
@@ -1008,6 +1172,7 @@ async function generuj(z, x, y) {
     sv: Uint8Array.from(K.sv), id: Uint32Array.from(K.id), lic: Uint8Array.from(K.lic),
     ev: new Float32Array(pocetK), maska: null,
     uh: Float32Array.from(K.uh), mpx: mNaPx,           // engine 354: komíny (natočení, m na jednotku)
+    draty: K.draty || null, vrtule: K.vrtule || null,  // engine 357: rozpětí vodičů a vrtule větrníků
   };
   // výška terénu → velikost (vyskovyFaktor: 1 ve 400 m, ±1 % na 30 m)
   await doplnVysku(vysl, demP);
@@ -1139,6 +1304,7 @@ function vystupDlazdice(v) {
     if (!v.maska[i]) continue;
     const ik = retezce[v.ik[i]];
     if (v.sv[i]) {
+      if (v.sv[i] === 7 || v.sv[i] === 8) continue;   // engine 357: dráty a vrtule jdou zvlášť (níž)
       // engine 341: `r` = u ryb dosah vody (m), jinak velikost druhu
       sv.push({ id: v.id[i], sv: v.sv[i], ik, lon: v.lon[i], lat: v.lat[i], r: v.k[i] });
       // engine 354: komín na střeše (jen odkryté – maska mlhy platí i tady)
@@ -1174,7 +1340,39 @@ function vystupDlazdice(v) {
     S.lon[j] = v.lon[i]; S.lat[j] = v.lat[i]; S.ik.push(retezce[v.ik[i]]);
     S.k[j] = v.k[i]; S.ev[j] = v.ev[i]; S.z0[j] = v.z0[i]; S.lic[j] = v.lic ? v.lic[i] : 0;
   }
-  return { data: zakodujMVT(body, kominy), ev: { sv, stromy: S, prvku: body.length } };
+  // engine 357: rozpětí vodičů [a,b,c,d,ha,hb,t]… a vrtule [lon,lat,h]… – jen odkryté (maska mlhy středu)
+  let draty = null, vrtule = null;
+  if (v.draty && v.draty.length) {
+    const o = [];
+    for (const q of v.draty) if (v.maska[q.i]) o.push(q.a, q.b, q.c, q.d, q.ha, q.hb, q.t);
+    if (o.length) draty = Float64Array.from(o);
+  }
+  if (v.vrtule && v.vrtule.length) {
+    const o = [];
+    for (const q of v.vrtule) if (v.maska[q.i]) o.push(q.lon, q.lat, q.h);
+    if (o.length) vrtule = Float64Array.from(o);
+  }
+  return { data: zakodujMVT(body, kominy), ev: { sv, stromy: S, prvku: body.length, draty, vrtule } };
+}
+
+/// engine 357: vygenerovaná dlaždice dekorací (keš, jinak vyrobit + maska mlhy) – pro stíny stromů
+async function ziskejVystup(z, x, y) {
+  if (!N || !N.herni || z < Z_MIN || z > Z_MAX) return null;
+  const klic = z + '/' + x + '/' + y;
+  const kfg = cfgKlic;
+  let v = vystup.get(klic);
+  if (v && v.cfg !== kfg) v = null;
+  if (!v) {
+    v = await generuj(z, x, y);
+    v.cfg = kfg;
+    await doplnMlhu(v);
+    if (kfg !== cfgKlic) return v;
+    if (!vystup.has(klic)) {
+      vystup.set(klic, v);
+      while (vystup.size > KES_VYSTUP) vystup.delete(vystup.keys().next().value);
+    } else v = vystup.get(klic);
+  } else if (!v.maska || v.mlhaStara) { v.mlhaStara = false; await doplnMlhu(v); }
+  return v;
 }
 
 async function vyridDlazdici(m) {
@@ -1294,9 +1492,25 @@ async function diagnostika(lon, lat) {
 // ---------------------------------------------------------------------------
 self.onmessage = (ev) => {
   const m = ev.data || {};
-  if (m.typ === 'mlha' || m.typ === 'dem') {
+  if (m.typ === 'mlha' || m.typ === 'dem' || m.typ === 'silueta') {
     const res = dotazy.get(m.id);
     if (res) { dotazy.delete(m.id); res(m); }
+    return;
+  }
+  // ⭐ engine 357: STÍNY PO DLAŽDICÍCH (js/stiny-dlazdice.js)
+  if (m.typ === 'svetlo') { if (self.StinyDlazdice) self.StinyDlazdice.nastavSvetlo(m); return; }
+  if (m.typ === 'stin') {
+    posledniSkutecny = performance.now();
+    if (!self.StinyDlazdice) { self.postMessage({ typ: 'stin', id: m.id, bmp: null, chyba: 'bez modulu' }); return; }
+    self.StinyDlazdice.dlazdice(m.z, m.x, m.y, m.verze).then((o) => {
+      if (o && o.bmp) self.postMessage({ typ: 'stin', id: m.id, bmp: o.bmp, odkryte: o.odkryte, prazdna: !!o.prazdna }, [o.bmp]);
+      else self.postMessage({ typ: 'stin', id: m.id, bmp: null, odkryte: o ? o.odkryte : null });
+    }).catch((e) => self.postMessage({ typ: 'stin', id: m.id, bmp: null, chyba: String((e && e.message) || e) }));
+    return;
+  }
+  if (m.typ === 'predstin') { if (self.StinyDlazdice) self.StinyDlazdice.predstin(m); return; }
+  if (m.typ === 'stiny-stav') {
+    self.postMessage({ typ: 'stav', id: m.id, stiny: self.StinyDlazdice ? self.StinyDlazdice.stav() : null });
     return;
   }
   if (m.typ === 'predgeneruj') {                // engine 355
@@ -1323,9 +1537,13 @@ self.onmessage = (ev) => {
       if (!vrstvyZdroju.has('krajina')) vrstvyZdroju.set('krajina', new Set());
       vrstvyZdroju.get('krajina').add('body');
       vrstvyZdroju.get('krajina').add('cary');
+      vrstvyZdroju.get('krajina').add('stavby');              // engine 357: stíny staveb ZABAGED
+      vrstvyZdroju.get('krajina').add('vertikaly');
       vrstvyZdroju.set('drobnosti', new Set(['body']));       // engine 349
       vrstvyZdroju.set('lampymesta', new Set(['body']));      // engine 350
       vrstvyZdroju.set('dtmbody', new Set(['body']));         // engine 356
+      vrstvyZdroju.set('vedenizab', new Set(['s', 'r', 'w'])); // engine 357
+      vrstvyZdroju.set('vedeniosm', new Set(['s', 'r']));
       zdrojDl.clear();
       oKesV.clear();
       cfgKlic = JSON.stringify([m.verze, m.sezona, m.dz, m.ex, m.herni, m.zdroje, m.plochy, Object.keys(m.druhy)]);
@@ -1338,6 +1556,7 @@ self.onmessage = (ev) => {
     return;
   }
   if (m.typ === 'mlha-zmena') {
+    if (self.StinyDlazdice) self.StinyDlazdice.zmenaMlhy();   // engine 357
     if (m.o === null) {                  // reset mlhy: generování platí dál, masky znovu
       objevenoKes.clear();
       for (const v of vystup.values()) { v.maska = null; v.mlhaStara = false; }
@@ -1355,3 +1574,9 @@ self.onmessage = (ev) => {
     self.postMessage({ typ: 'stav', id: m.id, vystup: vystup.size, zdroj: zdrojDl.size, casy });
   }
 };
+
+// ⭐ engine 357: STÍNY PO DLAŽDICÍCH – kresba týmž kódem jako dřív (StinyGL / StinyKresba), data z tohoto workeru
+try {
+  const Qs = self.location.search || '';
+  importScripts('stiny-kresba.js' + Qs, 'stiny-gl.js' + Qs, 'stiny-dlazdice.js' + Qs);
+} catch (e) { /* bez stínů – dekorace jedou dál */ }

@@ -176,7 +176,8 @@ const AnimaceNadMapou = (() => {
   function vycisti(uplne) {
     if (ctx && !prazdne) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, platno.width, platno.height); }
     prazdne = true;
-    if (uplne) { oblacky.length = 0; krouzky.length = 0; lety.length = 0; kudrlinky.length = 0; sedici = []; sediciSig = ''; }
+    if (uplne) { oblacky.length = 0; krouzky.length = 0; lety.length = 0; kudrlinky.length = 0; sedici = []; sediciSig = '';
+                 vrtule = []; vrtuleSig = ''; vrtuleNaPlatne = 0; }
   }
   function naplanuj() { if (!raf && mapa) raf = requestAnimationFrame(snimek); }
   function aktivita() { aktivitaMs = performance.now(); naplanuj(); }
@@ -2009,8 +2010,119 @@ const AnimaceNadMapou = (() => {
     if (oblacky.length || krouzky.length || lety.length || kudrlinky.length) return true;
     if (necinny()) return false;
     const z = mapa.getZoom();
+    if (vrtule.length && z >= 11.6) return true;             // engine 357: točící se listy větrníků
     if (z >= KOUR_OD_Z && kominy.length && topnaSezona(st)) return true;
     return z >= VODA_OD_Z && vodni.length > 0 && !vodaZamrzla(st);
+  }
+
+  // ------------------------------------------------------------------ větrné elektrárny
+  // ⭐ engine 357 (T 24. 9.: „udělej … i to vedení a stožáry atd.“): LISTY VĚTRNÍKŮ. Věž s gondolou kreslí worker
+  // dekorací (kresbička deko-vetrnik 96×512 ve skutečné výšce, bez listů); tři listy se točí tady na náboji
+  // kresbičky – geometrie billboardu jako sovy na stromech (posun na obrazovce × měřítko kresby v místě). Rovina
+  // rotoru kolmo na vítr z počasí (z boku se rotor zúží do svislé čárky, zezadu se točí opačně), otáčky podle síly
+  // větru (bezvětří volnoběh, vichřice nad 90 km/h stojí). V noci červená překážková světla na gondolách – blikají
+  // všechna naráz (jako skutečné farmy). Jen odkryté (evidence dekorací), náběh jako kresbička (z0 12).
+  const VRT_NABOJ_X = -8 / 464, VRT_NABOJ_Y = 458 / 464;       // náboj vůči kotvě, v podílech výšky náboje
+  const VRT_SVETLO_X = 3 / 464, VRT_SVETLO_Y = 1;              // světlo na střeše gondoly
+  const VRT_LIST = 0.42;                                       // délka listu / výška náboje
+  const BARVY_LISTU = ['#f3f4f5', '#dfe2e6', '#b7bcc4', '#8e95a0'];
+  let vrtule = [], vrtuleSig = '', vrtuleFaze = 0, vrtuleNaPlatne = 0;
+  function obnovVrtule() {
+    if (typeof Dekorace === 'undefined' || !Dekorace.vedeni) return;
+    const ev = Dekorace.vedeni();
+    const W = ev && ev.vrtule;
+    if (!W || !W.length || mapa.getZoom() < 11.5) { if (vrtule.length) { vrtule = []; vrtuleSig = ''; } return; }
+    const b = mapa.getBounds();
+    const pw = (b.getEast() - b.getWest()) * 0.3, ph = (b.getNorth() - b.getSouth()) * 0.3;
+    const w = b.getWest() - pw, e = b.getEast() + pw, s = b.getSouth() - ph, n = b.getNorth() + ph;
+    const sig = ev.verze + '|' + [w, s, e, n].map((v) => v.toFixed(3)).join(',');
+    if (sig === vrtuleSig) return;
+    vrtuleSig = sig;
+    const stare = new Map(vrtule.map((q) => [q.key, q]));
+    const nove = [];
+    for (let i = 0; i + 2 < W.length; i += 3) {
+      const lon = W[i], lat = W[i + 1];
+      if (lon < w || lon > e || lat < s || lat > n) continue;
+      const ix = Math.round(lon * 1e5), iy = Math.round(lat * 1e5), key = ix + ',' + iy;
+      nove.push(stare.get(key) || { key, lon, lat, h: W[i + 2], el: null, faze: h32(ix, iy, 57) * 2 * Math.PI });
+    }
+    const c = mapa.getCenter();
+    nove.sort((a, b2) => Math.hypot(a.lon - c.lng, a.lat - c.lat) - Math.hypot(b2.lon - c.lng, b2.lat - c.lat));
+    vrtule = nove.slice(0, 40);
+    if (vrtule.length) naplanuj();
+  }
+  /// úhlová rychlost rotorů (rad/s) podle větru z počasí
+  function otackyVrtuli() {
+    const v = (typeof Pocasi !== 'undefined' && Pocasi.vitr) ? Pocasi.vitr() : null;
+    const kmh = v && typeof v.kmh === 'number' ? v.kmh : 14;
+    if (kmh > 90) return 0;
+    const ot = kmh < 8 ? 1.5 : 6 + 9 * Math.min(1, (kmh - 8) / 34);   // ot/min
+    return ot * Math.PI / 30;
+  }
+  function kresliVrtule(t, st, ton) {
+    if (!vrtule.length) return 0;
+    const z = mapa.getZoom();
+    const dz = typeof window.dohledDz === 'function' ? (+window.dohledDz() || 0) : 0;
+    const nastup = Math.max(0, Math.min(1, (z + dz - 12.0) / 0.35));
+    if (nastup <= 0) return 0;
+    const c = mapa.getCenter(), mPxC = metryNaPx(z, c.lat);
+    const br = mapa.getBearing() * Math.PI / 180, rx = Math.cos(br), ry = -Math.sin(br);   // vpravo na obrazovce (v, s)
+    const Wc = platno.width / hustota, Hc = platno.height / hustota;
+    const zakl = 0.19686 * Math.pow(2, z - 13.25);          // px na metr kresby při perspektivě 1
+    const v = (typeof Pocasi !== 'undefined' && Pocasi.vitr) ? Pocasi.vitr() : { kmh: 14, smerRoj: 0 };
+    const ex = Math.cos(v.smerRoj || 0), ey = Math.sin(v.smerRoj || 0);
+    // vodorovná osa roviny rotoru (−ey, ex) promítnutá na „vpravo“ obrazovky (hloubka se u billboardu nepromítá)
+    const ch = -ey * rx + ex * ry;
+    const tma = ton >= 2 || noc(st);
+    const blik = tma && (Date.now() % 2000) < 1000;
+    const barva = BARVY_LISTU[Math.max(0, Math.min(3, ton | 0))];
+    ctx.strokeStyle = 'rgba(70,74,80,0.75)';
+    ctx.lineJoin = 'round';
+    let n = 0;
+    for (const q of vrtule) {
+      if (q.el === null) { q.el = vyskaTerenu(q.lon, q.lat); if (q.el === null) continue; }
+      const p0 = bod(q.lon, q.lat, q.el);
+      if (p0.x < -400 || p0.x > Wc + 400 || p0.y < -100 || p0.y > Hc + 1200) continue;
+      const kx = 111320 * Math.cos(q.lat * Math.PI / 180);
+      const p1 = bod(q.lon + rx * 5 / kx, q.lat + ry * 5 / 111320, q.el);
+      const pr = Math.max(0, Math.min(4, (Math.hypot(p1.x - p0.x, p1.y - p0.y) / 5) * mPxC));
+      const S = zakl * pr * q.h;                             // px na výšku náboje
+      const hx = p0.x + VRT_NABOJ_X * S, hy = p0.y - VRT_NABOJ_Y * S;
+      const R = VRT_LIST * S;
+      if (R < 1.2 || hx < -R || hx > Wc + R || hy < -R || hy > Hc + R) continue;
+      const a0 = vrtuleFaze + q.faze;
+      const w0 = Math.max(0.8, 0.075 * R), w1 = Math.max(0.5, 0.02 * R);
+      ctx.globalAlpha = nastup;
+      ctx.fillStyle = barva;
+      ctx.beginPath();
+      for (let k = 0; k < 3; k++) {
+        const th = a0 + k * 2.0943951;
+        const tx = hx + R * Math.cos(th) * ch, ty = hy - R * Math.sin(th);
+        // šířka napříč listem v rovině rotoru (−sin, cos) → obrazovka (−sin·ch, −cos)
+        let nx = -Math.sin(th) * ch, ny = -Math.cos(th);
+        const nl = Math.hypot(nx, ny) || 1;
+        nx /= nl; ny /= nl;
+        ctx.moveTo(hx + nx * w0 * 0.5, hy + ny * w0 * 0.5);
+        ctx.lineTo(tx + nx * w1 * 0.5, ty + ny * w1 * 0.5);
+        ctx.lineTo(tx - nx * w1 * 0.5, ty - ny * w1 * 0.5);
+        ctx.lineTo(hx - nx * w0 * 0.5, hy - ny * w0 * 0.5);
+        ctx.closePath();
+      }
+      ctx.fill();
+      if (R > 10) { ctx.lineWidth = 0.6; ctx.stroke(); }
+      ctx.beginPath(); ctx.arc(hx, hy, Math.max(0.8, 0.0105 * S), 0, Math.PI * 2); ctx.fill();   // náboj navrch
+      if (R > 10) ctx.stroke();
+      if (blik) {
+        const lx = p0.x + VRT_SVETLO_X * S, ly = p0.y - VRT_SVETLO_Y * S, r = Math.max(1.3, 0.012 * S);
+        const gr = ctx.createRadialGradient(lx, ly, 0, lx, ly, r * 4);
+        gr.addColorStop(0, 'rgba(255,70,50,0.95)'); gr.addColorStop(0.25, 'rgba(255,40,30,0.55)'); gr.addColorStop(1, 'rgba(255,30,20,0)');
+        ctx.fillStyle = gr;
+        ctx.beginPath(); ctx.arc(lx, ly, r * 4, 0, Math.PI * 2); ctx.fill();
+      }
+      n++;
+    }
+    ctx.globalAlpha = 1;
+    return n;
   }
 
   // ------------------------------------------------------------------ smyčka
@@ -2023,6 +2135,7 @@ const AnimaceNadMapou = (() => {
     posledni = t;
     const t0 = performance.now();
     const st = pocasi(t);
+    if (vrtule.length && !necinny()) vrtuleFaze = (vrtuleFaze + otackyVrtuli() * dt) % (2 * Math.PI);
     promitniKotvy();
     krokKour(t, st);
     krokPtaci(dt, t, st);
@@ -2034,6 +2147,7 @@ const AnimaceNadMapou = (() => {
     dalsiSovaMs = krokSovy(t);
     kresliVodu(t, st);
     kresliKour(t, st);
+    vrtuleNaPlatne = kresliVrtule(t, st, ton);
     sovNaPlatne = kresliSedici(t, st, ton);
     kresliVitr(t);
     kresliPtaky(t, st, ton);
@@ -2061,6 +2175,7 @@ const AnimaceNadMapou = (() => {
     const st = vykresli(t);
     if (neco(st)) naplanuj();
     else if (sovNaPlatne) planujSovy(t);                   // sovy: jen další změna, ne 24 Hz
+    else if (vrtuleNaPlatne) { /* nečinnost: listy zůstanou stát nakreslené (nic nemizí) */ }
     else vycisti(false);
   }
   function naRender() {
@@ -2079,6 +2194,7 @@ const AnimaceNadMapou = (() => {
     const t = performance.now();
     const st = pocasi(t);
     obnovSedici(st);
+    obnovVrtule();
     // svítání: viditelné sovy odlétají jedna po druhé (nemizí na místě)
     if (!sovySedi(st) && sedici.length && lety.length < MAX_LETU) {
       const q = sedici.find((x) => x.vidi && !x.pryc);
@@ -2118,7 +2234,11 @@ const AnimaceNadMapou = (() => {
       pripoj.hotovo = true;
       mapa.on('move', aktivita);
       mapa.on('render', naRender);
-      mapa.on('moveend', () => { obnovKotvy(false); try { obnovSedici(pocasi(performance.now())); } catch (e) { /* nic */ } });
+      mapa.on('moveend', () => {
+        obnovKotvy(false);
+        try { obnovSedici(pocasi(performance.now())); } catch (e) { /* nic */ }
+        try { obnovVrtule(); } catch (e) { /* nic */ }
+      });
       mapa.on('resize', velikost);
       try { mapa.getCanvas().addEventListener('touchstart', aktivita, { passive: true }); } catch (e) { /* nic */ }
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') aktivita(); });
@@ -2133,6 +2253,7 @@ const AnimaceNadMapou = (() => {
       stav: () => ({ bezi: !!raf, smi: smi(), kominu: kominy.length, vodnich: vodni.length, oblacku: oblacky.length,
                      krouzku: krouzky.length, lety: lety.map((l) => l.druh + '×' + l.ptaci.length).join(','),
                      sov: sedici.length, sovKresleno: sovNaPlatne, necinny: necinny(), ton: tonNoci(performance.now()),
+                     vrtuli: vrtule.length, vrtuliKresleno: vrtuleNaPlatne,
                      uroven, cenaMs: +cenaEma.toFixed(2),
                      hustota, platno: platno ? platno.width + 'x' + platno.height : null }),
       // předskok 0–1 = kolik z cesty k cíli má let už za sebou (0,5 ≈ uprostřed obrazovky)

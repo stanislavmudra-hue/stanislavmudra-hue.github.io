@@ -2211,6 +2211,8 @@ function aplikujDoplnky() {
     try { if (window.Vitr) Vitr.pripoj(mapa); } catch (e) { console.warn('[vitr]', e); }
     // ⭐ engine 340: animace nad mapou (kouř z komínů, hejna ptáků, kroužky na vodě)
     try { if (window.AnimaceNadMapou) AnimaceNadMapou.pripoj(mapa); } catch (e) { console.warn('[animace]', e); }
+    // ⭐ engine 357: dráty elektrického vedení mezi kresbičkami stožárů (vedeni3d.js)
+    try { if (window.Vedeni3D) Vedeni3D.pripoj(mapa); } catch (e) { console.warn('[vedení]', e); }
     try { nasadDomalovani(); } catch (e) { console.warn('[domalovani]', e); }
   } else {
     Pocasi.zavri();
@@ -2564,6 +2566,8 @@ function nasadBudovyHerni() {
                'fill-extrusion-opacity': nastup } }, pred);
     mapa.addLayer({ id: 'okolnik-vertikaly-3d', type: 'fill-extrusion',
       source: 'krajina', 'source-layer': 'vertikaly', minzoom: 14 - dohledDz(),
+      // engine 357: větrné elektrárny kreslí dekorace (věž s gondolou) a animace (točící se listy) – ne sloup
+      filter: ['!=', ['get', 't'], 'vetrnik'],
       paint: { 'fill-extrusion-color': ['case', ODK, ['match', ['get', 't'],
                  'komin', '#8B5A46', 'vez_kostel', '#E2D2B2', 'vez_kaple', '#E6D8BC',
                  'vysilac', '#C9CCCF', 'rozhledna', '#9E7B55', 'vodojem', '#8C9AA0',
@@ -2651,6 +2655,12 @@ function naplanujBudovyHerni() {
 /// DOMECH – jedna obří Path2D je kvadratická (viz níže u kresby).
 /// engine 217: i stromy a keře z dekorace.js (koruna elipsa + kmen, od z15,5).
 const stinSvetlo = { az: 335, el: 45, sila: 0 };
+/// ⭐⭐ engine 357 (T 24. 9. 2026: „udělej stíny jako dlaždice“): STÍNY PO DLAŽDICÍCH. Každou dlaždici stínů
+/// kreslí worker dekorací sám za sebe (js/stiny-dlazdice.js – domy, stavby, stromy, kopce ze svých dat) a platí,
+/// dokud se nezmění světlo, odkrytí nebo volby (verze v URL `stinyd://<verze>/z/x/y`). Žádné plátno výřezu, žádná
+/// výměna všech dlaždic po gestu. Staré plátno zůstává jako záloha: `?stinyDlazdice=0`.
+const STINY_DLAZDICE = new URLSearchParams(location.search).get('stinyDlazdice') !== '0';
+let stinyDVerze = 0, stinyDKlic = '', stinyDObjeveni = 0, stinyDObjCas = null;
 let stinyCasovac = null;
 let stinyPodpis = '';
 let stinyPlatno = null;          // HTMLCanvasElement (mimo DOM)
@@ -2671,7 +2681,7 @@ const STINY_OD_Z = 14.5;
 // engine 342: 3 000 → 5 000 (stromy ×2,4 – se stropem dostávala stín po každém posunu
 // JINÁ sada nejbližších stromů a stíny na okrajích mizely a naskakovaly; kresba na GPU)
 const STINY_MAX_STROMU = 8000;   // engine 345: 5 000 → 8 000 (plátno s okrajem 70 %)
-const STINY_DLAZDICE = 512;      // engine 221: velikost rastrové dlaždice stínů (px)
+const STINY_DLAZDICE_PX = 512;   // engine 221: velikost rastrové dlaždice stínů (px) – staré plátno
 const STROM_VYSKA_M = 22.9;      // sprite 98 CSS px × icon-size 19,7 na z22 = 22,9 m × k × ev
 let budovyKes = { cas: 0, prvky: [] };
 // ⭐ engine 334: kresba stínů ve WORKERU (js/stiny-kresba-worker.js, kód
@@ -2700,8 +2710,76 @@ window.nastavStinyDomuSvetlo = function (az, el, sila) {
     || Math.round(el) !== Math.round(stinSvetlo.el);
   const bylaSila = stinSvetlo.sila;
   stinSvetlo.az = az; stinSvetlo.el = el; stinSvetlo.sila = sila;
+  if (STINY_DLAZDICE) { aktualizujStinyDlazdice(); return; }     // engine 357
   nastavKrytiStinu();
   if (zmenaSmeru || (sila > 0 && bylaSila <= 0)) naplanujStinyDomu();
+};
+/// engine 357: parametry stínů po dlaždicích – světlo zaokrouhlené (azimut po 2°, výška po 1°, krytí po 0,05),
+/// aby se dlaždice nepřekreslovaly zbytečně (slunce se posune o 2° asi za 8 minut)
+function stinyDParametry() {
+  const k = Math.min(STINY_KRYTI_MAX, Math.max(0, stinSvetlo.sila));
+  const el = Math.round(stinSvetlo.el);
+  let kryti = k <= 0.005 ? 0 : Math.max(0.05, Math.round(k * 20) / 20);
+  if (el < 2) kryti = 0;
+  const az = ((Math.round(stinSvetlo.az / 2) * 2) % 360 + 360) % 360;
+  let ex = 1;
+  try { ex = (mapa.getTerrain && mapa.getTerrain() && +mapa.getTerrain().exaggeration) || 1; } catch (e) { ex = 1; }
+  const jen3D = !!(budovyHerniZap && mapa && mapa.getLayer('okolnik-budovy-herni-zdi'));
+  const stavby = !!(mapa && mapa.getLayer('okolnik-stavby-3d'));
+  return { az, el, kryti, ex: +ex.toFixed(2), jen3D, stavby };
+}
+/// Nová verze dlaždic stínů, když se změnilo světlo / odkrytí / volby (`vynutit` = vždy)
+function aktualizujStinyDlazdice(vynutit) {
+  if (!STINY_DLAZDICE || !mapa) return;
+  const p = stinyDParametry();
+  const klic = [p.az, p.el, p.kryti, p.ex, p.jen3D ? 1 : 0, p.stavby ? 1 : 0, stinyDObjeveni].join('|');
+  if (!vynutit && klic === stinyDKlic && mapa.getSource('stiny-domu')) return;
+  const zmena = klic !== stinyDKlic || vynutit;
+  stinyDKlic = klic;
+  if (zmena) stinyDVerze++;
+  p.verze = stinyDVerze;
+  try { if (typeof Dekorace !== 'undefined' && Dekorace.nastavStiny) Dekorace.nastavStiny(p); } catch (e) { /* nic */ }
+  const meli = !!mapa.getSource('stiny-domu');
+  if (!zajistiVrstvuStinu()) return;
+  if (meli && zmena) {
+    try { mapa.getSource('stiny-domu').setTiles(['stinyd://' + stinyDVerze + '/{z}/{x}/{y}']); } catch (e) { /* styl se mění */ }
+  }
+}
+/// Odkrytí (chůze) → nové stíny nejvýš jednou za 4 s (odkryté domy mají stín, 3D dům naskočí s ním)
+function naplanujStinyObjeveni() {
+  if (!STINY_DLAZDICE || stinyDObjCas) return;
+  stinyDObjCas = setTimeout(() => { stinyDObjCas = null; stinyDObjeveni++; aktualizujStinyDlazdice(); }, 4000);
+}
+/// Domy, které worker při kresbě stínu našel odkryté → hned 3D (jinak by stín stál chvíli bez domu,
+/// než je najde prepoctiBudovyHerni po gestu)
+function oznacOdkryteZeStinu(ids) {
+  if (!ids || !ids.length || !budovyHerniZap || !mapa || !mapa.getLayer('okolnik-budovy-herni-zdi')) return;
+  for (const id of ids) {
+    if (oznacenoOdkryte.has(id)) continue;
+    oznacenoOdkryte.add(id);
+    budovyHerniStav.set(id, true);
+    try { mapa.setFeatureState({ source: 'omt', sourceLayer: 'building', id }, { o: true }); }
+    catch (e) { oznacenoOdkryte.delete(id); }
+  }
+}
+function registrujProtokolStinuD() {
+  if (registrujProtokolStinuD._hotovo || typeof maplibregl === 'undefined' || !maplibregl.addProtocol) return;
+  registrujProtokolStinuD._hotovo = true;
+  maplibregl.addProtocol('stinyd', async (params) => {
+    const m = /stinyd:\/\/(\d+)\/(\d+)\/(\d+)\/(\d+)/.exec((params && params.url) || '');
+    if (!m || !NASTAVENI_MAPY.stiny || typeof Dekorace === 'undefined' || !Dekorace.stinDlazdice) {
+      return { data: await prazdnaDlazdice() };
+    }
+    let odp = null;
+    try { odp = await Dekorace.stinDlazdice(+m[2], +m[3], +m[4], +m[1]); } catch (e) { odp = null; }
+    if (odp && odp.odkryte && odp.odkryte.length) oznacOdkryteZeStinu(odp.odkryte);
+    if (odp && odp.bmp) return { data: odp.bmp };
+    return { data: await prazdnaDlazdice() };
+  });
+}
+/// Ladění (CDP): stav stínů po dlaždicích ve workeru
+window.__stinyD = function () {
+  return (typeof Dekorace !== 'undefined' && Dekorace.stinyStav) ? Dekorace.stinyStav() : Promise.resolve(null);
 };
 /// ⛔⛔ engine 222: NA VRSTVĚ STÍNŮ SE NIKDY NEMĚNÍ PAINT. Terénní RTT si
 /// stack s rastrem kešuje a po změně `raster-opacity` (přechod 300 ms) se
@@ -2892,7 +2970,7 @@ function registrujProtokolStinu() {
     }
     // sub-rect plátna pro dlaždici (engine 333: dlaždice jen v rozlišení
     // zdroje, 64–512 px – viz StinyKresba.vyrez)
-    const c = StinyKresba.vyrez(stinyPlatno, r, z, x, y, STINY_DLAZDICE, (D) => {
+    const c = StinyKresba.vyrez(stinyPlatno, r, z, x, y, STINY_DLAZDICE_PX, (D) => {
       const k = document.createElement('canvas');
       k.width = D; k.height = D;
       return k;
@@ -3045,7 +3123,7 @@ function dlazdiceStinuZWorkeru(z, x, y) {
       setTimeout(publikujStiny, 300);
     }, 8000);
     kresbaDlazdice.set(id, (bmp) => { clearTimeout(casovac); res(bmp); });
-    try { wk.postMessage({ typ: 'dlazdice', id, z, x, y, Dmax: STINY_DLAZDICE }); }
+    try { wk.postMessage({ typ: 'dlazdice', id, z, x, y, Dmax: STINY_DLAZDICE_PX }); }
     catch (e) { kresbaDlazdice.delete(id); clearTimeout(casovac); res(null); }
   });
 }
@@ -3068,17 +3146,30 @@ window.__stinyPixelyWorkeru = function () {
 function zajistiVrstvuStinu() {
   if (!mapa || !mapa.getLayer('budovy-vypln')) return false;
   if (mapa.getLayer('stin-domu') && mapa.getSource('stiny-domu')) { srovnejPoradiStinu(false); return true; }
-  if (!stinyPlatno) {
+  if (!STINY_DLAZDICE && !stinyPlatno) {
     stinyPlatno = document.createElement('canvas');
     stinyPlatno.width = 64; stinyPlatno.height = 64;
   }
-  registrujProtokolStinu();
-  stinyKresbaWorker();              // engine 334: worker kresby se probudí napřed
+  if (STINY_DLAZDICE) {
+    registrujProtokolStinuD();      // engine 357: dlaždice kreslí worker dekorací
+    try {
+      if (!stinyDObjeveni && typeof Mlha !== 'undefined' && Mlha.priObjeveni && !zajistiVrstvuStinu._hook) {
+        zajistiVrstvuStinu._hook = true;
+        Mlha.priObjeveni(() => naplanujStinyObjeveni());
+      }
+    } catch (e) { /* nic */ }
+  } else {
+    registrujProtokolStinu();
+    stinyKresbaWorker();            // engine 334: worker kresby se probudí napřed
+  }
   try {
     if (!mapa.getSource('stiny-domu')) {
-      mapa.addSource('stiny-domu', { type: 'raster', tileSize: STINY_DLAZDICE,
-                                     tiles: ['stiny://' + stinyVerze + '/{z}/{x}/{y}'],
-                                     minzoom: 14, maxzoom: 22 });
+      // engine 357: rastr 512 (úroveň dlaždic = zaokrouhlený zoom mapy), obrázky 256 px od z16 / 512 px do z15,
+      // nad z18 se roztahuje z18
+      mapa.addSource('stiny-domu', STINY_DLAZDICE
+        ? { type: 'raster', tileSize: 512, tiles: ['stinyd://' + stinyDVerze + '/{z}/{x}/{y}'], minzoom: 14, maxzoom: 18 }
+        : { type: 'raster', tileSize: STINY_DLAZDICE_PX, tiles: ['stiny://' + stinyVerze + '/{z}/{x}/{y}'],
+            minzoom: 14, maxzoom: 22 });
     }
     if (!mapa.getLayer('stin-domu')) {
       const ls = mapa.getStyle().layers.map((l) => l.id);
@@ -3359,6 +3450,7 @@ function terenStinu(r, W, H, mpu, stredLat, ex) {
   return { maska: { id: 'sync:' + (++terenSyncId), G, img, veStinu }, dx: 0, dy: 0, dw: W, dh: H };
 }
 function prepoctiStinyDomu() {
+  if (STINY_DLAZDICE) { if (mapa) aktualizujStinyDlazdice(); return; }   // engine 357: dlaždice kreslí worker
   if (!mapa || !zajistiVrstvuStinu()) return;
   if (!NASTAVENI_MAPY.stiny) { zneplatniStiny(); return; }   // engine 268: stíny vypnuté v nastavení mapy
   // během gesta nepřepočítávat (50 ms v hustém městě = trhnutí) – až po něm
@@ -5104,6 +5196,7 @@ window.budovyHerni = function (zap) {
   try { localStorage.setItem(BUDOVY_HERNI_KLIC, zap ? '1' : '0'); } catch (e) { /* nic */ }
   nasadBudovyHerni();
   if (budovyHerniZap) prepoctiBudovyHerni(); else nastavFiltrStinuDomu(null);
+  aktualizujStinyDlazdice();         // engine 357: stíny jen pod stojícími domy / pod všemi
   return budovyHerniZap;
 };
 

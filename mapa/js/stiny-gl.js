@@ -290,7 +290,8 @@ void main() { o = texture(uTex, vUV) * uK; }`;
         const od = tex.n / 4;
         for (const i of idx) {
           const tbx = d[4 * i], tby = d[4 * i + 1], Hm = d[4 * i + 2];
-          const A = (Hm / sil.h) * pxNaMetr, B = A * tg;       // jako setTransform ve 2D (bez S)
+          const A = (Hm / sil.h) * pxNaMetr;                  // jako setTransform ve 2D (bez S)
+          const B = Math.min(A * tg, (zad.maxStinPx || Infinity) / sil.h);   // engine 357: strop délky (dlaždice)
           const ex = tbx - (sil.w / 2) * A * pX + sil.h * B * dX;
           const ey = tby - (sil.w / 2) * A * pY + sil.h * B * dY;
           const ux = A * pX * sil.w, uy = A * pY * sil.w;      // roh (w, 0) − (0, 0)
@@ -401,13 +402,15 @@ void main() { o = texture(uTex, vUV) * uK; }`;
       // 4) půdorysy ven (stín neleží na střeše)
       gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
       stencilem(pudorys, M, 0, 0, 0, 1);
-      // 4b) engine 341: měkký okraj plátna (výsledek × maska)
-      gl.blendFunc(gl.ZERO, gl.SRC_ALPHA);
-      kvadr.n = 0;
-      kvadr.v(0, 0, 0, 0); kvadr.v(Wp, 0, 1, 0); kvadr.v(0, Hp, 0, 1);
-      kvadr.v(Wp, 0, 1, 0); kvadr.v(Wp, Hp, 1, 1); kvadr.v(0, Hp, 0, 1);
-      nahraj(vboTex, kvadr);
-      texturou(zajistiOkraj(), 0, 6, M);
+      // 4b) engine 341: měkký okraj plátna (výsledek × maska); engine 357: dlaždice stínů ho nemají
+      if (!zad.bezOkraje) {
+        gl.blendFunc(gl.ZERO, gl.SRC_ALPHA);
+        kvadr.n = 0;
+        kvadr.v(0, 0, 0, 0); kvadr.v(Wp, 0, 1, 0); kvadr.v(0, Hp, 0, 1);
+        kvadr.v(Wp, 0, 1, 0); kvadr.v(Wp, Hp, 1, 1); kvadr.v(0, Hp, 0, 1);
+        nahraj(vboTex, kvadr);
+        texturou(zajistiOkraj(), 0, 6, M);
+      }
       // 5) MSAA → textura
       gl.disable(gl.BLEND);
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb.msaa);
