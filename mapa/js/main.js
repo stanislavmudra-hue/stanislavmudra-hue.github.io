@@ -1153,13 +1153,46 @@ mapa.on('error', (e) => {
     if (!APP_REZIM || !e || !e.lngLat) return;
     mostHlas('onDlouhyStisk', { lat: e.lngLat.lat, lon: e.lngLat.lng });
   });
+  // ⭐ engine 353 (T 24. 9. 2026: „po otevření detailu místa mi hned skočí 2 okna – jedno
+  // s informacemi a druhé s navigovat“): PODRŽENÍ a KLEPNUTÍ SE VYLUČUJÍ. Časovač podržení je
+  // vlastní (600 ms), systém ale pozná podržení podle SVÉ prodlevy (TT 400 ms, nastavení
+  // „prodleva dotyku a podržení“ až 1–1,5 s). Na telefonu s delší prodlevou stisk 0,6–1 s poslal
+  // obojí: nabídku podržení (Navigace, zápis, vlastní místo) i po puštění klepnutí → detail místa
+  // přes ni. Teď: (1) klepnutí, které ukončí podržený dotyk, se spolkne (zachycení na kontejneru
+  // mapy PŘED MapLibre); (2) podržení NA MÍSTĚ (kresba, značka, shluk, vlajka…) = totéž co
+  // klepnutí – jen detail; nabídka podržení jen na prázdné mapě; (3) když appka mezitím WebView
+  // schovala (detail přes celou obrazovku zmenší mapu na 1×1 px), puštění prstu sem nedorazí –
+  // podržení se pak nespustí vůbec.
   (function dlouhyDotyk() {
     const platno = mapa.getCanvasContainer();
     let cas = null;
     let x0 = 0;
     let y0 = 0;
+    let dotyk = 0;              // pořadí dotyku (touchstart)
+    let podrzenyDotyk = -1;     // dotyk, který skončil podržením – jeho klepnutí se spolkne
     const zrus = () => { clearTimeout(cas); cas = null; };
+    // vrstvy, které na klepnutí něco otevřou (posluchači vrstev + kresby, ty mají vlastní test)
+    const klikaciVrstvy = () => {
+      const v = new Set(['ink-ilustrace', 'ink-ilustrace-stuhy', 'ink-ilustrace-odznaky']);
+      for (const d of ((mapa._delegatedListeners || {}).click || [])) {
+        for (const id of (d.layers || [])) v.add(id);
+      }
+      return [...v].filter((id) => mapa.getLayer(id)
+          && (mapa.getLayoutProperty(id, 'visibility') || 'visible') !== 'none');
+    };
+    const mistoPodPrstem = (px) => {
+      const f = mapa.queryRenderedFeatures(px, { layers: klikaciVrstvy() });
+      // dohaslé (odcházející) kresby a spolknuté ikony klepnutí nechytají
+      return f.some((x) => !x.state || x.state.op === undefined || x.state.op > 0.05);
+    };
+    mapa.getContainer().addEventListener('click', (e) => {
+      if (podrzenyDotyk !== dotyk) return;
+      podrzenyDotyk = -1;
+      e.stopPropagation();
+      e.preventDefault();
+    }, true);
     platno.addEventListener('touchstart', (e) => {
+      dotyk++;
       if (!APP_REZIM || e.touches.length !== 1) { zrus(); return; }
       const t = e.touches[0];
       x0 = t.clientX;
@@ -1168,10 +1201,24 @@ mapa.on('error', (e) => {
       cas = setTimeout(() => {
         cas = null;
         try {
+          // WebView schovaná (appka ji zmenšila na 1×1 px) → nic. ⛔ Rozměr z PLÁTNA, ne
+          // z kontejneru plátna – ten má výšku jen ~18 px (plátno je v něm absolutně) a kontrola
+          // na něm zabila každé podržení (TT 24. 9.)
+          const c = mapa.getCanvas().getBoundingClientRect();
+          if (document.hidden || c.width < 60 || c.height < 60) return;
           const r = platno.getBoundingClientRect();
+          const px = [x0 - r.left, y0 - r.top];
+          podrzenyDotyk = dotyk;
+          if (mistoPodPrstem(px)) {
+            // totéž co klepnutí: posluchači vrstev, kresby, sběrač (jedna zpráva appce)
+            if (window.maplibregl && maplibregl.MapMouseEvent) {
+              const ev = new MouseEvent('click', { clientX: x0, clientY: y0 });
+              mapa.fire(new maplibregl.MapMouseEvent('click', mapa, ev));
+            }
+            return;
+          }
           // přesně (s terénem) – během gesta je map.unproject rovinný
-          const b = (window.unprojectPresne || mapa.unproject.bind(mapa))(
-              [x0 - r.left, y0 - r.top]);
+          const b = (window.unprojectPresne || mapa.unproject.bind(mapa))(px);
           mostHlas('onDlouhyStisk', { lat: b.lat, lon: b.lng });
         } catch (err) { /* mapa se zrovna přestavuje */ }
       }, 600);
@@ -6114,6 +6161,11 @@ function nastavPodpisyMist(noc) {
       if (ted !== chci) mapa.setLayoutProperty(id, 'text-field', zap ? ['coalesce', ['get', pole], ''] : '');
       const pb = podpisPaint(!!noc);
       for (const k of Object.keys(pb)) mapa.setPaintProperty(id, k, pb[k]);
+    }
+    // engine 353: názvy kreseb (ink-ilustrace-stuhy) jsou podpisy vždy – tady jen barvy den/noc
+    if (mapa.getLayer('ink-ilustrace-stuhy')) {
+      const pb = podpisPaint(!!noc);
+      for (const k of Object.keys(pb)) mapa.setPaintProperty('ink-ilustrace-stuhy', k, pb[k]);
     }
     if (mapa.getLayer('okolnik-mista-stuha')) {
       const v = zap ? 'none' : 'visible';

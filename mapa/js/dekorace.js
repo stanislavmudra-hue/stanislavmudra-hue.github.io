@@ -3072,7 +3072,8 @@ const Dekorace = (() => {
     // engine 350: drobnosti2 = + stromy z OSM; lampy_mesta1 = Brno (CC BY 4.0), Plzeň, Děčín
     // engine 352: drobnosti3 = + výstražníky, semafory, závory (a zebry pro styl); lampy_mesta2 = + ruční lampy
     try { out.drobnosti = r2('drobnosti3.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez drobností */ }
-    try { out.lampymesta = r2('lampy_mesta2.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez lamp měst */ }
+    // engine 353: lampy_mesta3 = ruční lampa Sezemice 52 posunutá k autobusové zastávce (T 24. 9.)
+    try { out.lampymesta = r2('lampy_mesta3.pmtiles').slice('pmtiles://'.length); } catch (e) { /* bez lamp měst */ }
     return out;
   }
   function wNastaveni() {

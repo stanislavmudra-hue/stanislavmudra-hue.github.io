@@ -38,8 +38,8 @@
 // druhý setData (po dotažení kreseb) se zahazuje, když už platí novější
 // sestava.
 //
-// STUŽKY (skutečný text na assets/stuha.webp) drží u kresby ve VŠECH
-// fázích: v růstové fázi zeměpisnou kotvou na spodní hraně území,
+// NÁZVY (engine 353: podpis Kalam Bold pod kresbou, stužka se nekreslí;
+// dřív text na assets/stuha.webp) drží u kresby ve VŠECH fázích: v růstové fázi zeměpisnou kotvou na spodní hraně území,
 // v klamp fázích (58 px / strop) konstantním px ofsetem od místa —
 // v obou případech je geometrie za zoomu neměnná, přechod mezi režimy
 // je spojitý a projde jedním setData (režim je v podpisu).
@@ -79,14 +79,15 @@ const Ilustrace = (() => {
   const KONEC_OD_Z = 17.4;
   const KONEC_SPAN = 1.0;
   const BANNER_BIAS = 0.07;      // stará zapečená cedule (dnes 1 kresba)
-  const LABEL_W_FRAC = 0.94;
-  const LABEL_OVERLAP_PX = 4;    // stužka těsně pod spodkem kresby
+  const LABEL_OVERLAP_PX = 4;    // podpis těsně pod spodkem kresby
   const FADE_KROK = 0.11;        // opacity za snímek
-  const MIN_LABEL_W = 66.0 * TEXT_SKALA;
-  const MAX_LABEL_W = 168.0 * TEXT_SKALA;
-  // 104 px místo 84 z 2D — jména na samotných stužkách byla nečitelná
-  const RIBBON_ONLY_W = 104.0 * TEXT_SKALA;
   const RIB_ASPECT = 57.0 / 300.0;
+  // ⭐ engine 353: názvy kreseb jako PODPIS pod kresbou – písmo a velikost jako podpisy míst
+  // (`PODPIS_PISMO`, `PODPIS_VELIKOST` v main.js). Dřív velikost dopasovaná do stužky:
+  // na telefonu 6,3–6,9 px u všech kreseb (T 24. 9.: „Radobýl … je tam, ale malý“).
+  const PODPIS_PISMO_KRESEB = ['Kalam Bold'];
+  const PODPIS_PX = 13.5 * TEXT_SKALA;
+  const PODPIS_MAX_EM = 9;       // `text-max-width` – delší název se zalomí
   const ZAKLAD_CSS = 140;        // kresby 280 px / pixelRatio 2
   const PRODLEVA_MS = 650;       // režim se nesmí měnit častěji…
   const PRODLEVA_ZOOM = 0.35;    // …leda by zoom znatelně ujel
@@ -983,12 +984,26 @@ const Ilustrace = (() => {
     });
   }
 
-  function pismoProStuhu(jmeno, labW, labH) {
-    merak.font = '700 100px "Noto Sans", sans-serif';
-    const sirka100 = Math.max(1, merak.measureText(jmeno).width);
-    // ⚠️ 10. 8. 2026 zkoušeno 0,56 / 0,78 (výtka „názvy pod obrázky jsou
-    // moc drobné"); VRÁCENO na původní, uživatel chce zadat přesněji.
-    return Math.min(0.46 * labH, 0.72 * labW * 100 / sirka100 * 0.96);
+  /// engine 353: odhad rozměru podpisu pro rezervaci místa v kaskádě (Kalam Bold se tu měří
+  /// jako tučné bezpatkové – skutečné kolize textu řeší MapLibre)
+  function rozmerPodpisu(jmeno) {
+    merak.font = '700 ' + PODPIS_PX + 'px "Noto Sans", sans-serif';
+    const w = merak.measureText(jmeno || '').width;
+    const maxW = PODPIS_MAX_EM * PODPIS_PX;
+    const radky = Math.max(1, Math.ceil(w / maxW));
+    return { w: Math.min(w, maxW) + 6, h: radky * PODPIS_PX * 1.25 };
+  }
+
+  /// engine 353: barvy podpisu den/noc – tytéž jako podpisy míst (`podpisPaint` v main.js,
+  /// `nav` = navštíveno → tmavá tuš, jinak šedá); noc přebarvuje `nastavPodpisyMist`
+  function barvyPodpisu() {
+    try {
+      if (typeof podpisPaint === 'function') {
+        return podpisPaint(typeof krokNoci === 'number' && krokNoci >= 2);
+      }
+    } catch (e) { /* main.js ještě nedoběhl */ }
+    return { 'text-color': ['case', ['has', 'nav'], '#34322F', '#6F6A62'],
+             'text-halo-color': 'rgba(250,244,226,0.95)', 'text-halo-width': 1.4, 'text-halo-blur': 0.8 };
   }
 
   // -------------------------------------------------------------------------
@@ -1016,37 +1031,33 @@ const Ilustrace = (() => {
     mapa.addSource('ilus-odznaky',
                    { type: 'geojson', data: prazdny, buffer: 0, maxzoom: 12 });
 
-    // stužky POD obrázky
+    // NÁZVY POD obrázky (id vrstvy zůstává kvůli pořadí stylu, klikání a Dobyvateli)
+    // ⭐ engine 353 (T 24. 9. 2026: „Radobýl … je tam, ale malý“, „asi to nebude jediné
+    // místo s tak malým textem“): PODPIS POD KRESBOU jako u podpisů míst (engine 303) –
+    // Kalam Bold 13,5 px, papírová záře, barva podle objevení. Stužka se nekreslí (T: „stužky
+    // už se kreslit nemají“); dřív text velikostí dopasovaný do stužky (6,3–6,9 px).
+    // ⭐ v1.405 (bod A): názvy se účastní kolizí — jména sídel mají přednost (rozmisťují se
+    // dřív), kolidující název se schová; kresba samotná zůstává. Mezi sebou vyhrává
+    // důležitější (`srt` = −imp, nižší klíč se rozmisťuje dřív).
     mapa.addLayer({
       id: 'ink-ilustrace-stuhy', type: 'symbol', source: 'ilus-stuhy',
-      // ⭐ v1.405 (bod A): stuhy kreseb se účastní kolizí — jména
-      // sídel mají přednost (rozmisťují se dřív), kolidující stuha
-      // se schová; kresba samotná zůstává.
       layout: {
-        'icon-image': 'ilus-stuha',
-        'icon-size': ['get', 'isz'],
-        // pod kresbou: kotva horním okrajem (zeměpisný bod / místo);
-        // samotná uhýbající stužka (rb=1) kotví středem
-        'icon-anchor': ['case', ['==', ['get', 'rb'], 1], 'center', 'top'],
-        'icon-offset': ['get', 'iof'],
-        'icon-allow-overlap': false,
-        'icon-ignore-placement': false,
         'text-field': ['get', 't'],
-        'text-font': ['Noto Sans Bold'],
-        'text-size': ['get', 'ts'],
-        // text VŽDY středem (tof míří na střed stuhy) — kotva 'top'
-        // posílala text i s výškou řádku přes spodní hranu stuhy
-        'text-anchor': 'center',
+        'text-font': PODPIS_PISMO_KRESEB,
+        'text-size': PODPIS_PX,
+        // pod kresbou kotva horním okrajem (tof = spodní hrana obrázku);
+        // samotný uhýbající název (rb=1) kotví středem
+        'text-anchor': ['case', ['==', ['get', 'rb'], 1], 'center', 'top'],
         'text-offset': ['get', 'tof'],
+        'text-max-width': PODPIS_MAX_EM,
+        'text-line-height': 1.05,
+        'text-justify': 'center',
+        'text-padding': 1,
         'text-allow-overlap': false,
         'text-ignore-placement': false,
         'symbol-sort-key': ['get', 'srt'],
       },
-      paint: {
-        'icon-opacity': opacita,
-        'text-opacity': opacita,
-        'text-color': '#3A2812',
-      },
+      paint: Object.assign({ 'text-opacity': opacita }, barvyPodpisu()),
     });
 
     // ⭐ 5. 9. 2026: STÍNY KRESEB – tatáž featura, obrázek `st`
@@ -1340,10 +1351,10 @@ const Ilustrace = (() => {
         }
       }
 
-      // — aspoň stužka (uhýbá svisle); z dálky se osamocené nekreslí —
-      if (!placed && stuhaNactena && z >= 10.8) {
-        const labW = RIBBON_ONLY_W;
-        const labH = labW * stuhaAsp;
+      // — aspoň název (uhýbá svisle); z dálky se osamocené nekreslí —
+      // engine 353: rozměr podpisu (stužka se nekreslí, na její obrázek se nečeká)
+      if (!placed && z >= 10.8) {
+        const { w: labW, h: labH } = rozmerPodpisu(it.p.n);
         const okraj = minule === 5 ? -9.0 : 3.0;
         const kroky = [0.0, labH * 1.15, -labH * 1.15, labH * 2.3,
                        -labH * 2.3, labH * 3.45, -labH * 3.45,
@@ -1536,13 +1547,6 @@ const Ilustrace = (() => {
     }
   }
 
-  // Pevná šířka stužky místa (ze středu jeho pásma) — čitelná, neroste
-  function sirkaStuhy(p, sw) {
-    const stredni = Math.sqrt(MIN_PX * stropPx(p, sw));
-    return Math.min(MAX_LABEL_W,
-        Math.max(MIN_LABEL_W, LABEL_W_FRAC * stredni));
-  }
-
   /// Featury jednoho umístěného místa. Klíče: o (obrázek), s0 (stužka
   /// pod obrázkem), s1 (samotná stužka), z (odznak +N). properties.pd =
   /// diskriminátor do podpisu (věci neměnné za čistého zoomu).
@@ -1550,6 +1554,8 @@ const Ilustrace = (() => {
     const it = pl.it;
     const p = it.p;
     const vysledek = {};
+    // engine 353: barva podpisu – navštívená kresba je barevná (stav bez `#bw`/`#sil`)
+    const navstivena = !String(it.stav || '').includes('#');
     if (pl.obrazek) {
       vysledek.o = {
         type: 'Feature', id: idFeatury(it.slug, 'o'),
@@ -1591,11 +1597,7 @@ const Ilustrace = (() => {
         },
         geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
       };
-      if (it.nb && stuhaNactena) {
-        const labW = sirkaStuhy(p, sw);
-        const labH = labW * stuhaAsp;
-        const isz = labW / stuhaZaklad;
-        const ts = Math.max(5, pismoProStuhu(p.n, labW, labH));
+      if (it.nb) {
         // KOTVA DLE FÁZE: v růstové fázi zeměpisně na spodní hraně
         // území (drží za zoomu samospádem); v klamp fázích (58 px /
         // strop) je kreslená velikost KONSTANTNÍ, takže drží konstantní
@@ -1622,33 +1624,26 @@ const Ilustrace = (() => {
         vysledek.s0 = {
           type: 'Feature', id: idFeatury(it.slug, 's0'),
           properties: {
-            s: it.slug, t: p.n, rb: 0, isz,
-            iof: [0, posunPx / isz],
-            ts,
-            // STŘED textu na střed stuhy (kotva 'center'); −3 % výšky
-            // jako u pečeného labelu v 2D
-            tof: [0, (posunPx + labH * 0.5 - 0.03 * labH) / ts],
-            srt: it.imp,
-            pd: rezimKotvy,
+            s: it.slug, t: p.n, rb: 0,
+            // engine 353: podpis těsně pod spodní hranou kresby (kotva textu `top`, em = PODPIS_PX)
+            tof: [0, posunPx / PODPIS_PX],
+            srt: -it.imp,
+            ...(navstivena ? { nav: 1 } : {}),
+            pd: rezimKotvy + (navstivena ? 'n' : ''),
           },
           geometry: { type: 'Point', coordinates: geometrie },
         };
       }
     } else {
-      const labW = RIBBON_ONLY_W;
-      const labH = labW * stuhaAsp;
-      const isz = labW / stuhaZaklad;
-      const ts = Math.max(5, pismoProStuhu(p.n, labW, labH));
       vysledek.s1 = {
         type: 'Feature', id: idFeatury(it.slug, 's1'),
         properties: {
-          s: it.slug, t: p.n, rb: 1, isz,
-          iof: [0, pl.dy / isz],
-          ts,
-          tof: [0, (pl.dy - 0.03 * labH) / ts],
-          srt: it.imp,
+          s: it.slug, t: p.n, rb: 1,
+          tof: [0, pl.dy / PODPIS_PX],
+          srt: -it.imp,
+          ...(navstivena ? { nav: 1 } : {}),
           // uhnutí do podpisu — přeskok slotu musí projít setData
-          pd: String(Math.round(pl.dy)),
+          pd: String(Math.round(pl.dy)) + (navstivena ? 'n' : ''),
         },
         geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
       };
