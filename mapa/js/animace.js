@@ -44,7 +44,7 @@ const AnimaceNadMapou = (() => {
   const oblacky = [], krouzky = [];
   const lety = [];
   let dalsiLetMs = performance.now() + 8000 + Math.random() * 15000, posledniDruh = '';
-  let dalsiRybaMs = 0, stKes = null, stKesMs = 0;
+  let dalsiRybaMs = 0, stKes = null, stKesMs = 0, dalsiKapkaMs = 0;
   let spriteSvetly = null, spriteTmavy = null;
 
   const T = () => { try { return mapa._camera.transform; } catch (e) { return null; } };
@@ -1306,10 +1306,19 @@ const AnimaceNadMapou = (() => {
   };
   // výška SEDÍCÍ sovy (m, stylizace jako rozpětí: 7 × skutečná^0,8); engine 348: +25 % (čitelnost tvaru)
   const SOVA_VYSKA_M = { pustik: 4.2, kalous: 3.9, sova_palena: 3.8, sycek: 2.7 };
-  const MIN_PX_DRUHU = 5, MAX_PX_PTAKA = 130;
+  // engine 369 (T: „Když zoomuji, tak se ptáci nepřibližují, ale zachovávají stejnou velikost“): strop 130 → 200 px –
+  // volavka, čáp a labuť ho dosáhli kolem z19,5 a dál nerostli, zatímco stromy a domy ano
+  const MIN_PX_DRUHU = 5, MAX_PX_PTAKA = 200;
   const metryNaPx = (z, lat) => 78271.52 / Math.pow(2, z) * Math.cos(lat * Math.PI / 180);
   /// nejnižší zoom, na kterém má druh v zeměpisné šířce lat aspoň MIN_PX_DRUHU px
   const odZoomDruhu = (c, lat) => Math.log2(MIN_PX_DRUHU * 78271.52 * Math.cos(lat * Math.PI / 180) / c.rozM);
+  // ⭐ engine 369 (T: „Když zoomuji, tak se ptáci nepřibližují, ale zachovávají stejnou velikost“): výška ptáků
+  // rostla se zoomem správně (volavka z15→z18 ×8), ale NOVÁ hejna se vybírala jen s prahem 5 px – na z17–18
+  // v obci převládli vrabci a špačci (8–16 px), takže ptáci jako celek skoro nerostli a vůči mapě se zmenšovali.
+  // Práh výběru teď s přiblížením roste (5 px na z15, ×√2 na úroveň): z16 7 px, z17 10, z18 14, z19 20 –
+  // vrabec až od ~z18,8, špaček od ~z17,4, holub od ~z16,3; letící hejna se dál ruší až pod odZoomDruhu − 1.
+  const smiDruhNaZoomu = (c, lat, z) => c.rozM * Math.pow(2, z) / (78271.52 * Math.cos(lat * Math.PI / 180))
+    >= MIN_PX_DRUHU * Math.pow(2, 0.5 * Math.max(0, z - 15));
   /// výška kamery nad středem (m) – strop výšky letu, ať pták nevletí „do objektivu“
   function vyskaKamery() {
     try {
@@ -1478,7 +1487,7 @@ const AnimaceNadMapou = (() => {
     const lat = mapa.getCenter().lat;
     let suma = 0;
     for (const d in vahy) {
-      if (z < odZoomDruhu(PTACI[d], lat) || jine.indexOf(d) >= 0) vahy[d] = 0;
+      if (!smiDruhNaZoomu(PTACI[d], lat, z) || jine.indexOf(d) >= 0) vahy[d] = 0;
       if (d === posledniDruh) vahy[d] *= 0.35;
       suma += vahy[d];
     }
@@ -1649,7 +1658,8 @@ const AnimaceNadMapou = (() => {
       tanEl = Math.tan(st.slunceEl * Math.PI / 180);
       const az = (st.slunceAz || 180) * Math.PI / 180;          // odkud svítí (0 = sever)
       smx = -Math.sin(az); smy = -Math.cos(az);
-      stinA = 0.18 * (1 - Math.min(0.8, st.oblacnost || 0));
+      stinA = 0.18 * (typeof Pocasi !== 'undefined' && Pocasi.primeSvetlo ? Pocasi.primeSvetlo(st, false)   // engine 369
+        : (1 - Math.min(0.8, st.oblacnost || 0)));
     }
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'medium';
@@ -1696,9 +1706,33 @@ const AnimaceNadMapou = (() => {
     ctx.setTransform(hustota, 0, 0, hustota, 0, 0);
     ctx.globalAlpha = 1;
   }
+  /// engine 371: síla deště u středu 0–1 (sníh a mráz = 0)
+  function prsiSila(st) {
+    if (!st) return 0;
+    const druh = String(st.druh || ''), mm = +st.srazky || 0;
+    if (druh === 'snih' || (typeof st.teplota === 'number' && st.teplota < 0.8)) return 0;
+    if (druh === 'dest' || druh === 'bourka' || mm > 0.1) {
+      return Math.max(druh === 'bourka' ? 0.7 : (druh === 'dest' ? 0.35 : 0), Math.min(1, mm / 4));
+    }
+    return 0;
+  }
   function krokVoda(t, st) {
     for (let i = krouzky.length - 1; i >= 0; i--) if ((t - krouzky[i].t0) / 1000 > krouzky[i].zivot) krouzky.splice(i, 1);
-    if (mapa.getZoom() < VODA_OD_Z || !vodni.length || vodaZamrzla(st) || t < dalsiRybaMs || necinny()) return;
+    if (mapa.getZoom() < VODA_OD_Z || !vodni.length || vodaZamrzla(st) || necinny()) return;
+    // ⭐ engine 371 (T: „…osvětlení blesky a podobně“ – déšť): kroužky od KAPEK po celé hladině – malé, krátké, hodně
+    const dest = window.__vynutDest != null ? window.__vynutDest : prsiSila(st);
+    if (dest > 0 && t > dalsiKapkaMs && krouzky.length < MAX_KROUZKU + 36) {
+      dalsiKapkaMs = t + (-Math.log(1 - Math.random()) / (5 + 25 * dest)) * 1000;
+      for (let pokus = 0; pokus < 3; pokus++) {
+        const k = vodni[Math.floor(Math.random() * vodni.length)];
+        if (k.h === null || !k.vidi) continue;
+        const r = Math.min(k.r * 0.8, 9) * Math.sqrt(Math.random()), fi = Math.random() * 2 * Math.PI;
+        krouzky.push({ k, t0: t, zivot: 0.8 + Math.random() * 0.4, rMaxM: 0.8 + Math.random() * 1.1, pocet: 1, kapka: true,
+                       ox: Math.cos(fi) * r, oy: Math.sin(fi) * r });
+        break;
+      }
+    }
+    if (t < dalsiRybaMs) return;
     const f = Math.min(1.6, 0.3 + vodni.length * 0.03);               // ryb za sekundu
     dalsiRybaMs = t + (-Math.log(1 - Math.random()) / f) * 1000;
     if (krouzky.length >= MAX_KROUZKU) return;
@@ -1718,6 +1752,18 @@ const AnimaceNadMapou = (() => {
     for (const r of krouzky) {
       const a = (t - r.t0) / 1000, k = r.k;
       const pxm = k.pxNaM || 1;
+      if (r.kapka) {                                   // engine 371: kroužek od dešťové kapky (tenký, bez šplouchnutí)
+        const x = k.sx + r.ox * pxm, y = k.sy + r.oy * pxm * zplosteni;
+        const rx = Math.min(22, r.rMaxM * Math.pow(Math.min(1, a / r.zivot), 0.6) * pxm);
+        if (rx < 0.7) continue;
+        ctx.lineWidth = 1.1;
+        ctx.globalAlpha = zakl * 0.75 * (1 - a / r.zivot);
+        ctx.strokeStyle = '#eef8fb';
+        ctx.beginPath();
+        ctx.ellipse(x, y, rx, rx * zplosteni, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        continue;
+      }
       if (a < 0.3) {                                   // šplouchnutí
         ctx.globalAlpha = zakl * (1 - a / 0.3);
         ctx.fillStyle = '#ffffff';
@@ -2080,7 +2126,8 @@ const AnimaceNadMapou = (() => {
       spriteOdl = {
         slunce: spriteZare('255,255,250', '255,244,214', '255,226,170'),
         zlate: spriteZare('255,250,236', '255,222,160', '255,184,100'),
-        mesic: spriteZare('238,244,255', '196,214,255', '150,180,240'),
+        // engine 369 (T: „Odlesky v noci do barev svitu měsíce“): stříbřitě modrý svit místo skoro bílé
+        mesic: spriteZare('214,228,255', '156,186,246', '104,136,222'),
         // engine 359: jiskry sněhu a jinovatky – drobné barevné nádechy ledových krystalků
         snih0: spriteZare('246,250,255', '214,232,255', '170,200,255'),
         snih1: spriteZare('255,252,238', '255,236,190', '255,210,140'),
@@ -2122,7 +2169,7 @@ const AnimaceNadMapou = (() => {
                sprite: st.slunceEl < 14 ? 'zlate' : 'slunce', kov: true };
     }
     if (typeof st.slunceEl === 'number' && st.slunceEl < -4 && st.mesicEl > 8 && (st.mesicOsvit || 0) > 0.3 && obl < 0.6) {
-      return { S: smer(st.mesicAz || 180, st.mesicEl), az: st.mesicAz || 180, el: st.mesicEl, sila: 0.55 * st.mesicOsvit * (1 - obl) * dest,
+      return { S: smer(st.mesicAz || 180, st.mesicEl), az: st.mesicAz || 180, el: st.mesicEl, sila: 0.42 * st.mesicOsvit * (1 - obl) * dest,
                sprite: 'mesic', kov: false };
     }
     return null;

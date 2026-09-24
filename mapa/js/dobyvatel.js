@@ -831,6 +831,8 @@ window.Dobyvatel = (function () {
       if (el) el.style.display = schovat ? 'none' : '';
       const at = document.getElementById('okolnik-atmosfera');            // engine 368: nové mraky taky
       if (at) at.style.display = schovat ? 'none' : '';
+      const ka = document.getElementById('okolnik-kapky');                 // engine 371: kapky na displeji
+      if (ka) ka.style.display = schovat ? 'none' : '';
     } catch (e) { /* styl bez počasí */ }
   }
 

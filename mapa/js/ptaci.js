@@ -179,7 +179,7 @@ const Ptaci = (() => {
   // povrchem realisticky“): káně ve STEJNÉM měřítku jako ostatní ptáci (animace.js) –
   // rozpětí 8,4 m světa (stylizace 7 × 1,25 m^0,8), px na metr v místě a výšce ptáka;
   // dřív ~38 m na z16 a při oddálení rostlo proti krajině. Strop 130 px (velký zoom).
-  const ROZPETI_M = 8.4, SIRKA_SVG = 116, MAX_PX = 130;
+  const ROZPETI_M = 8.4, SIRKA_SVG = 116, MAX_PX = 200;   // engine 369: 130 → 200 (káně rostla jen do ~z19,5)
   function meritkoSvet(p, tr, h) {
     try {
       const ll = new maplibregl.LngLat(p.x, p.y);
@@ -397,7 +397,8 @@ const Ptaci = (() => {
         sx = Math.sin(az) * delkaM;
         sy = Math.cos(az) * delkaM;
         sila = (0.16 + Math.min(0.26, st.slunceEl / 140))
-          * (1 - Math.min(1, (st.oblacnost || 0) * 0.8));
+          * (typeof Pocasi !== 'undefined' && Pocasi.primeSvetlo ? Pocasi.primeSvetlo(st, false)   // engine 369
+            : (1 - Math.min(1, (st.oblacnost || 0) * 0.8)));
       }
       const mLat = 1 / 110574;
       const mLon = 1 / (111320 * Math.cos(p.y * Math.PI / 180));

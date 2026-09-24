@@ -50,9 +50,12 @@ const Svetlo = (() => {
     // engine 211 („chtělo by to zvýraznit stíny"): slunce 0,50 → 0,65 (plné
     // od výšky 20°), měsíc 0,22 → 0,35, mraky ubírají 30 % (bylo 40)
     // engine 359: slunce 0,65 → 0,78 (strop krytí 0,62 v main.js – kontrastnější stíny i ve středním zoomu)
-    let celk = zdroj === 'slunce' ? 0.78 * Math.min(1, Math.max(0, el) / 20)
-      : (zdroj === 'mesic' ? 0.5 * (st.mesicOsvit || 0.5) : 0);    // engine 264: lehké stíny od měsíce; 346: 0,42 → 0,5 (nad nočním překryvem)
-    celk *= 1 - 0.3 * Math.min(1, st.oblacnost || 0);
+    // ⭐ engine 369 (T 24. 9. večer: „Stíny v noci ne tak silné a pouze za jasného počasí. To stejné přes den. Když je
+    // silně zataženo, tak stíny slabší.“): přímé světlo projde jen MEZERAMI v mracích. Pokrytí = nízká a střední
+    // vrstva (MET), bez vrstev celková oblačnost; do ~25 % plné stíny, zataženo 0,95 zbude 10 %; déšť, sníh 0,55×,
+    // mlha 0,3×. Měsíc jen za jasna (nad 55 % pokrytí nic) a slabě: 0,5 → 0,22 × osvit.
+    const celk = zdroj === 'slunce' ? 0.78 * Math.min(1, Math.max(0, el) / 20) * Pocasi.primeSvetlo(st, false)
+      : (zdroj === 'mesic' ? 0.22 * (st.mesicOsvit || 0.5) * Pocasi.primeSvetlo(st, true) : 0);
     // engine 215: jeden geometrický stín (main.js) – síla a směr světla
     try { if (window.nastavStinyDomuSvetlo) window.nastavStinyDomuSvetlo(az, el, celk); }
     catch (eG) { /* nic */ }
@@ -112,9 +115,18 @@ const Svetlo = (() => {
         zdroj = 'tma';
       }
       if (st.oblacnost > 0.7) intenzita *= 0.7;   // pod mraky měkčí světlo
+      // engine 371: mokré silnice – prší nebo pršelo v posledních 3 h (ne v mrazu)
+      try {
+        if (window.nastavMokro) {
+          window.nastavMokro(!!(st.mokro || /dest|bourka/.test(String(st.druh || '')) || (+st.srazky || 0) > 0.1)
+                             && !(typeof st.teplota === 'number' && st.teplota < 0));
+        }
+      } catch (eM) { /* nic */ }
       if (window.__svetloPevne) { az = 335; el = 45; }
+      // engine 369: i podíl přímého světla (změna počasí bez změny slunce musí stíny přepočítat)
+      const prime = Pocasi.primeSvetlo(st, zdroj === 'mesic');
       const klic = [zdroj, Math.round(az), Math.round(el), barva,
-                    intenzita.toFixed(2)].join('|');
+                    intenzita.toFixed(2), prime.toFixed(2)].join('|');
       if (klic === posl) return;
       posl = klic;
       mapa.setLight({

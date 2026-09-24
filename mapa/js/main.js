@@ -326,7 +326,7 @@ function pridejMaskuZahranici() {
 //   podpisy:    engine 303 – názvy míst jako podpis pod kresbou (Kalam Bold, papírová
 //               záře, barva podle objevování); vypnuto = stužky jako dřív.
 const NASTAVENI_MAPY = { vrstevnice: null, objekty3d: true, ilustrace: true, stiny: true, podpisy: true,
-                         tempo30: false, dohled: 2 };
+                         tempo30: false, dohled: 2, pocasi: true };   // engine 370: pocasi = mraky a mlha (atmosfera.js)
 
 /// ⭐ engine 321: DOHLED (přání 16. 9. 2026: „přidej do nastavení mapy dohled a
 /// třeba 3 stupně"). Posun prahů zoomu, od kterých se ukazují 3D domy, stíny,
@@ -2206,6 +2206,8 @@ function aplikujDoplnky() {
     Pocasi.pripoj(mapa);    // mraky dle skutečného počasí (v2.1)
     // ⭐ engine 368: opravdové mraky ve výšce + jejich stíny (WebGL, atmosfera.js); Pocasi dál kreslí Slunce a Měsíc
     try { if (window.Atmosfera) Atmosfera.pripoj(mapa); } catch (e) { console.warn('[atmosfera]', e); }
+    // engine 371: kapky deště na displeji (kapky.js)
+    try { if (window.Kapky) Kapky.pripoj(mapa); } catch (e) { console.warn('[kapky]', e); }
     Erby.pripoj(mapa);      // erby dokončených obcí (v2.2)
     try { Trpyt.pripoj(mapa); } catch (e) { console.warn('[trpyt]', e); }
     // ⭐ 5. 9. 2026: káně kroužící nad krajinou (den, herní styl)
@@ -2222,6 +2224,7 @@ function aplikujDoplnky() {
   } else {
     Pocasi.zavri();
     try { if (window.Atmosfera) Atmosfera.zavri(); } catch (e) { /* nic */ }
+    try { if (window.Kapky) Kapky.zavri(); } catch (e) { /* nic */ }
     try { Trpyt.zavri(); } catch (e) { /* nic */ }
   }
   // v1.607: skutečné světlo budov a stínování – ve všech stylech
@@ -2712,6 +2715,40 @@ function budovyVPohledu() {
   return prvky;
 }
 
+/// ⭐ engine 371 (T 24. 9.: „…osvětlení blesky a podobně“ – mokré silnice): když prší nebo pršelo v posledních 3 h,
+/// asfalt a cesty herního stylu ztmavnou (mokrý povrch). Paint drapovaných vrstev si terénní RTT keš nevšimne
+/// (engine 222) → po změně jednou `releaseAllRTT` (jen při změně stavu, tedy výjimečně). Nový styl = nové vrstvy.
+let mokroStav = null, mokroVrstva = null, asfaltSuchy = null, cestySuche = null;
+function ztmavBarvy(v, k) {
+  if (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)) {
+    const n = parseInt(v.slice(1), 16);
+    const f = (c) => Math.max(0, Math.min(255, Math.round(c * k))).toString(16).padStart(2, '0');
+    return '#' + f(n >> 16) + f((n >> 8) & 255) + f(n & 255);
+  }
+  return Array.isArray(v) ? v.map((x) => ztmavBarvy(x, k)) : v;
+}
+window.nastavMokro = function (mokro) {
+  try {
+    if (!mapa || !mapa.getLayer('silnice-asfalt')) return;
+    const vr = mapa.getLayer('silnice-asfalt');
+    if (vr !== mokroVrstva) { mokroVrstva = vr; mokroStav = null; asfaltSuchy = null; cestySuche = null; }
+    mokro = !!mokro && !window.__mokroVyp;
+    if (mokro === mokroStav) return;
+    if (asfaltSuchy === null) asfaltSuchy = mapa.getPaintProperty('silnice-asfalt', 'line-color');
+    mapa.setPaintProperty('silnice-asfalt', 'line-color', mokro ? ztmavBarvy(asfaltSuchy, 0.7) : asfaltSuchy);
+    if (mapa.getLayer('cesty')) {
+      if (cestySuche === null) cestySuche = mapa.getPaintProperty('cesty', 'line-color');
+      mapa.setPaintProperty('cesty', 'line-color', mokro ? ztmavBarvy(cestySuche, 0.8) : cestySuche);
+    }
+    const bylo = mokroStav;
+    mokroStav = mokro;
+    if (bylo !== null || mokro) {
+      try { if (mapa.terrain && mapa.terrain.tileManager && mapa.terrain.tileManager.releaseAllRTT) mapa.terrain.tileManager.releaseAllRTT(); }
+      catch (e) { /* nic */ }
+      mapa.triggerRepaint();
+    }
+  } catch (e) { console.warn('[mokro]', e); }
+};
 window.nastavStinyDomuSvetlo = function (az, el, sila) {
   const zmenaSmeru = Math.round(az) !== Math.round(stinSvetlo.az)
     || Math.round(el) !== Math.round(stinSvetlo.el);
@@ -8791,7 +8828,7 @@ window.OkolnikMost = {
         NASTAVENI_MAPY.vrstevnice = (v === null || v === undefined || Number(v) < 0)
             ? null : Math.max(0, Math.min(1000, Number(v) || 0));
       }
-      for (const k of ['objekty3d', 'ilustrace', 'stiny', 'podpisy', 'tempo30']) if (k in c) NASTAVENI_MAPY[k] = !!c[k];
+      for (const k of ['objekty3d', 'ilustrace', 'stiny', 'podpisy', 'tempo30', 'pocasi']) if (k in c) NASTAVENI_MAPY[k] = !!c[k];
       if ('dohled' in c) {
         const d = Math.max(1, Math.min(3, Math.round(Number(c.dohled) || 2)));
         // engine 329 („appka si nepamatuje nastavení mapy"): po VÝMĚNĚ STYLU
@@ -8809,6 +8846,7 @@ window.OkolnikMost = {
       if (NASTAVENI_MAPY.tempo30) TempoGesta.nasad();
       if (NASTAVENI_MAPY.stiny) { zneplatniStiny(); naplanujStinyDomu(50); }
       if (NASTAVENI_MAPY.objekty3d) { pohledPodpisOkna = ''; naplanujOkna3d(50); }
+      try { if (window.Atmosfera) Atmosfera.kresli(); } catch (e) { /* nic */ }   // engine 370: počasí na mapě
       return Object.assign({}, NASTAVENI_MAPY);
     } catch (e) { console.warn('[most] nastaveniMapy', e); return null; }
   },
@@ -10326,7 +10364,9 @@ function nastavStinyMist(sv, st) {
     } else if (sv.zdroj === 'mesic') {
       sila = 0.20 * Math.max(0.3, Math.min(1, (st && st.mesicOsvit) || 0.5));
     }
-    if (st && typeof st.oblacnost === 'number') sila *= (1 - 0.6 * st.oblacnost);
+    // engine 369: podle přímého světla (zataženo = slabší, měsíc jen za jasna)
+    if (st && typeof Pocasi !== 'undefined' && Pocasi.primeSvetlo) sila *= Pocasi.primeSvetlo(st, sv.zdroj === 'mesic');
+    else if (st && typeof st.oblacnost === 'number') sila *= (1 - 0.6 * st.oblacnost);
     const elRad = Math.max(8, Math.min(80, sv.el || 45)) * Math.PI / 180;
     const delka = 66 * Math.max(0.25, Math.min(2.2, 1 / Math.tan(elRad)));
     const smer = ((sv.az || 0) + 180) * Math.PI / 180;

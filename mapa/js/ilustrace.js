@@ -2031,7 +2031,9 @@ const Ilustrace = (() => {
       } else if (sv.zdroj === 'mesic') {
         sila = 0.20 * Math.max(0.3, Math.min(1, (st && st.mesicOsvit) || 0.5));
       }
-      if (st && typeof st.oblacnost === 'number') sila *= (1 - 0.6 * st.oblacnost);
+      // engine 369: podle přímého světla (zataženo = slabší, měsíc jen za jasna); kresba si nechá třetinu (nálepka)
+      if (st && typeof Pocasi !== 'undefined' && Pocasi.primeSvetlo) sila *= 0.3 + 0.7 * Pocasi.primeSvetlo(st, sv.zdroj === 'mesic');
+      else if (st && typeof st.oblacnost === 'number') sila *= (1 - 0.6 * st.oblacnost);
       const elRad = Math.max(8, Math.min(80, sv.el || 45)) * Math.PI / 180;
       const delka = 0.35 * Math.max(0.25, Math.min(2.2, 1 / Math.tan(elRad)));
       const smer = ((sv.az || 0) + 180) * Math.PI / 180;

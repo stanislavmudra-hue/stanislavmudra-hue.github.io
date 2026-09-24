@@ -334,12 +334,22 @@ const Pocasi = (() => {
       teplota: w && isFinite(w.teplota) ? w.teplota : null,
       // engine 368: srážky, mlha, vlhkost, bouřka u středu mapy (déšť, mlha a blesky v dalších kolech)
       srazky: w && isFinite(w.srazky) ? w.srazky : 0,
+      mrakyN: w && isFinite(w.mrakyN) ? w.mrakyN : -1,      // engine 369: vrstvy pro sílu stínů
+      mrakyS: w && isFinite(w.mrakyS) ? w.mrakyS : -1,
+      mrakyV: w && isFinite(w.mrakyV) ? w.mrakyV : -1,
       mlha: w && isFinite(w.mlha) ? w.mlha : 0,
       vlhkost: w && isFinite(w.vlhkost) ? w.vlhkost : -1,
       bourka: w && isFinite(w.bourka) ? w.bourka : 0,
     };
     if (window.__vynutSvetlo && typeof window.__vynutSvetlo === 'object') {
       Object.assign(st, window.__vynutSvetlo);
+      // engine 369: vnucená oblačnost (sdílená karta „den“, testy) platí i pro vrstvy a druh – jinak by skutečné
+      // mrakyN / déšť u středu mapy dál tlumily stíny
+      const vn = window.__vynutSvetlo;
+      if ('oblacnost' in vn) {
+        if (!('mrakyN' in vn)) { st.mrakyN = -1; st.mrakyS = -1; st.mrakyV = -1; }
+        if (!('druh' in vn)) st.druh = vn.oblacnost < 0.3 ? 'jasno' : (vn.oblacnost < 0.75 ? 'polojasno' : 'zatazeno');
+      }
     }
     return st;
   }
@@ -1432,8 +1442,26 @@ const Pocasi = (() => {
     return krok;
   }
 
+  /// ⭐ engine 369 (T 24. 9. večer: „Stíny v noci ne tak silné a pouze za jasného počasí. To stejné přes den. Když
+  /// je silně zataženo, tak stíny slabší.“): podíl PŘÍMÉHO světla 0–1 pro všechny vržené stíny (domy, stromy, terén,
+  /// kresby, ptáci). Ostrý stín vrhá jen světlo, které projde mezerami v mracích: pokrytí = nízká a střední vrstva
+  /// MET (vysoká řasa slunce jen zjemní), bez vrstev celková oblačnost. Slunce: do 25 % plně, zataženo 95 % zbude
+  /// 10 %; měsíc je slabý zdroj – stín jen za jasna (nad 55 % pokrytí nic). Déšť, sníh 0,55×, mlha 0,3×.
+  function primeSvetlo(st, mesic) {
+    if (!st) return 1;
+    const hl = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    let p = Math.min(1, Math.max(0, +st.oblacnost || 0));
+    if (st.mrakyN >= 0) p = Math.max(st.mrakyN, 0.85 * Math.max(0, st.mrakyS || 0), 0.25 * Math.max(0, st.mrakyV || 0));
+    let f = mesic ? 1 - hl(0.1, 0.55, p) : 1 - 0.9 * hl(0.25, 0.95, p);
+    const d = String(st.druh || '');
+    if (d === 'mlha') f *= 0.3;
+    else if (d === 'dest' || d === 'bourka' || d === 'snih') f *= 0.55;
+    f *= 1 - 0.7 * hl(0.15, 0.7, +st.mlha || 0);          // engine 370: podíl mlhy (MET) u středu mapy
+    return Math.max(0, Math.min(1, f));
+  }
+
   return { pripoj, zavri, nastavZvenku, nastavVidno, stavNoci, krokSlunce, snihCm,
-           polohaSlunce, polohaMesice, stavSvetla, vitr,
+           polohaSlunce, polohaMesice, stavSvetla, vitr, primeSvetlo,
            body: () => data, verze: () => dataVerze,                       // engine 368: pro atmosfera.js
            vidno: () => vidnoZvenku };
 })();
