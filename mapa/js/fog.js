@@ -49,6 +49,9 @@ const Mlha = (() => {
   let platno = null;             // canvas pro zdroj 'mlha-kronika'
   let ctx2d = null;
   let pripraveno = false;        // rytina načtena a plátno vykresleno
+  // engine 372: atmosféra bere z alfy plátna MASKU NEOBJEVENÉHO (skutečná mlha nad neobjeveným) – verze se zvedá
+  // s každou změnou plátna, maska platí až s hotovou vrstvou rytiny (do té doby je plátno prázdné)
+  let verzePlatna = 0, rytinaKresli = false;
 
   // -------------------------------------------------------------------------
   // ⭐⭐⭐ KEŠ HOTOVÉHO PLÁTNA (12. 8. 2026, „šedá mapa ~10 s po startu").
@@ -449,6 +452,7 @@ const Mlha = (() => {
   // počká na 5 snímků; každý z nich texturu nahrává, obsah plátna je
   // v tu chvíli už finální (kreslí se synchronně před obnovZdroj).
   function obnovZdroj() {
+    verzePlatna++;
     if (!mapa) return;
     const z = mapa.getSource('mlha-kronika');
     if (!z || !z.play) return;
@@ -618,6 +622,7 @@ const Mlha = (() => {
     mapa.addLayer({ id: 'mlha-rytina', type: 'raster',
       source: 'mlha-kronika',
       paint: { 'raster-fade-duration': 0 } }, kotva());
+    rytinaKresli = true;
     // Rytina už kreslí — teprve teď se do masky vyřízne její obdélník
     const m = mapa.getSource('mlha-maska');
     if (m) m.setData(maska(true));
@@ -1124,5 +1129,7 @@ const Mlha = (() => {
   try { nactiAssety(); } catch (e) { /* dohoní to `pripoj` */ }
 
   return { pripoj, objev, objevObceDavka, dokoncenaObec, reset, demoVyprava,
-           zastav, priObjeveni, jeObjeveno };
+           zastav, priObjeveni, jeObjeveno,
+           // engine 372: plátno rytiny s dírami (alfa = neobjeveno) pro mlhu v atmosfera.js
+           maskaPlatno: () => (pripraveno && rytinaKresli && platno && meta) ? { platno, verze: verzePlatna, meta } : null };
 })();

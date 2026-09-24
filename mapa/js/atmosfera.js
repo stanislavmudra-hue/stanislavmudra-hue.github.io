@@ -38,7 +38,7 @@ const Atmosfera = (() => {
   // na kopcích slabší). Optická hloubka = síla × tloušťka / sinus paprsku (šikmo hustší, dálka mizí), chuchvalce =
   // šum unášený přízemním větrem. Síla v bodě počasí: podíl mlhy MET (fog_area_fraction), kód 45/48, vlhkost nad
   // 93 %. Strop krytí 0,8 (mapa musí zůstat čitelná), při přiblížení (kamera pod ~900 m) slabší.
-  const OKT_MLHA_P = [9.6, 4.0], OKT_MLHA_UHEL = [0.9, 2.6], OKT_MLHA_VITR = [1.0, 1.35];
+  const OKT_MLHA_P = [9.6, 4.0, 1.2], OKT_MLHA_UHEL = [0.9, 2.6, 1.3], OKT_MLHA_VITR = [1.0, 1.35, 1.6];   // 372: + 1,2 km
   const TER_UROVNE = [[14.2, 12], [11.7, 10], [9.2, 8], [-99, 6]];     // od zoomu → úroveň mozaiky DEM
 
   let mapa = null, platno = null, gl = null;
@@ -325,8 +325,12 @@ uniform sampler2D uTerDno2;
 uniform vec4 uTerMap2;
 uniform vec4 uTer;           // x = váha nové mozaiky, y = je mozaika, z = prolínat se starou, w = převýšení (0 = plochá mapa)
 uniform vec4 uMlha;          // x = výška země u středu (vykreslené m), y = strop krytí, z = je mlha
-uniform vec2 uOktMlha[2];    // posun oktáv chuchvalců (přízemní vítr)
+uniform vec2 uOktMlha[3];    // posun oktáv chuchvalců (přízemní vítr); [2] = jemná 1,2 km (mlha neobjeveného)
 uniform vec3 uMlhaBarva;     // barva mlhy (slunce/měsíc + obloha)
+uniform sampler2D uNeob;     // engine 372: maska neobjeveného = alfa plátna rytiny (fog.js), 1 = neobjeveno
+uniform vec4 uNeobMap;       // uv masky = xy_m * uNeobMap.xy + uNeobMap.zw (Mercator lineárně, v dolů = jih)
+uniform vec4 uNeobPar;       // x = zapnuto, y = strop krytí, z = výška mlhy nad zemí (m), w = velikost texelu masky (m)
+uniform vec3 uNeobBarva;     // barva mlhy neobjeveného (světlo + nádech pergamenu)
 uniform vec4 uSrazky;        // engine 371: x = déšť 0..1, y = sníh 0..1, z = čas (s), w = náběh podle zoomu
 uniform vec3 uKamera;        // engine 371b: poloha kamery (lokální m) – nadir = kam kapky „padají“ na obrazovce
 uniform vec2 uOffPad[14];    // posun buněk srážek po oktávách (svět mod 64 buněk, buňka oktávy k = 2^k m)
@@ -422,6 +426,47 @@ vec4 nad(vec4 horni, vec4 dolni) { return horni + dolni * (1.0 - horni.a); }
 
 // ---- engine 370: MLHA
 vec4 pocasi2(vec2 xy) { return textureLod(uPoc2, xy * uPocMap.xy + uPocMap.zw, 0.0); }
+
+// ---- engine 372: MLHA NEOBJEVENÉHO (T: „mlha neobjeveného jako skutečná mlha s prosvítající rytinou“ – varianta b)
+// Maska = alfa plátna rytiny z fog.js (díry = objeveno, stejné jako v rytině mapy). Mlha je VRSTVA nad terénem
+// (výška H): paprsek od země zpět ke kameře v 5 krocích sčítá hustotu = neobjeveno × profil výšky (dole hustá,
+// nahoře řídne, lavice různě vysoké) → na hranici objeveného stojí měkká stěna, která se při náklonu přes
+// hranici naklání; lavice (3 oktávy, jemná 1,2 km) pomalu táhnou s větrem. Strop krytí – rytina prosvítá.
+float neobjeveno(vec2 xy) {
+  vec2 uv = xy * uNeobMap.xy + uNeobMap.zw;
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 1.0;       // mimo rytinu = pergamen = neobjeveno
+  return textureLod(uNeob, uv, log2(max(gStopa / uKmNaM / uNeobPar.w, 1.0))).a;
+}
+float lavice(vec2 xy) {                                   // 0,75..1,2 (mlha, ne kupy mraků)
+  vec2 p = xy * uKmNaM;
+  float a = textureLod(uSum, rot(0.9) * p / 9.6 + uOktMlha[0], log2(max(gStopa * 256.0 / 9.6, 1.0))).r;
+  float b = textureLod(uSum, rot(2.6) * p / 4.0 + uOktMlha[1], log2(max(gStopa * 256.0 / 4.0, 1.0))).r;
+  float c = textureLod(uSum, rot(1.3) * p / 1.2 + uOktMlha[2], log2(max(gStopa * 256.0 / 1.2, 1.0))).r;
+  return 0.75 + 0.45 * smoothstep(0.32, 0.68, 0.45 * a + 0.3 * b + 0.25 * c);
+}
+vec4 mlhaNeob(vec3 B, vec3 r, float tg) {
+  float s = abs(r.z) / length(r);
+  float H = uNeobPar.z;
+  float dt = H / max(-r.z, 1e-6);                         // o kolik t výš je horní hladina vrstvy
+  float u0 = neobjeveno((B + r * tg).xy), uH = neobjeveno((B + r * (tg - dt)).xy);
+  if (u0 < 0.01 && uH < 0.01) return vec4(0.0);           // objeveno pod i nad – nic
+  // ⚡ měřeno TT (tahy +1 p. b. snímků nad 33 ms): lavice jen JEDNOU na pixel (uprostřed vrstvy) a uvnitř
+  // neobjeveného (dole i nahoře plně) se maska v krocích nevzorkuje – jen u hranice
+  bool uvnitr0 = u0 > 0.98 && uH > 0.98;
+  float w = lavice((B + r * (tg - 0.5 * dt)).xy);
+  float sum = 0.0, vys = 0.0;
+  for (int i = 0; i < 5; i++) {
+    float hr = (float(i) + 0.5) / 5.0;                    // výška nad zemí / H
+    float u = uvnitr0 ? 1.0 : neobjeveno((B + r * (tg - hr * dt)).xy);
+    float d = u * (1.0 - smoothstep(0.3 * w, w, hr));
+    sum += d;
+    vys += d * hr;
+  }
+  float tau = 0.0081 * (H / 5.0) / max(s, 0.25) * sum;
+  float a = (1.0 - exp(-tau)) * uNeobPar.y;
+  float horni = sum > 0.0 ? vys / sum : 0.0;              // horní části lavic jasnější (nasvícené shora)
+  return vec4(uNeobBarva * (0.93 + 0.12 * horni) * a, a);
+}
 
 // ---- engine 371b: SRÁŽKY V PROSTORU (T: „…aby to působilo, že se posouvám v dešti nebo ve sněžení“)
 // Tři vodorovné vrstvy mezi kamerou a zemí (25 / 50 / 72 % výšky kamery, nejvýš pod mraky). Paprsek pixelu protne
@@ -587,6 +632,18 @@ void main() {
     vec4 zem = vec4(vec3(0.05, 0.07, 0.11) * s, s);                 // stín (tmavě modrošedý)
     zem = nad(zem, vec4(vec3(0.30, 0.33, 0.38) * pon, pon));        // pošmourno (šedý závoj)
     if (uMlha.z > 0.5) zem = nad(mlha(vB, r, t), zem);             // engine 370: mlha nad stíny mraků
+    if (uNeobPar.x > 0.5) {                                         // engine 372: mlha neobjeveného
+      float tg = t;
+      if (uTer.y > 0.5) {                                           // dotáhnout na terén jako údolní mlha
+        float tt = t;
+        for (int i = 0; i < 2; i++) {
+          float zl = vyskaT(uTerH, uTerMap, (vB + r * tt).xy) * uTer.w - uMlha.x;
+          tt = clamp((zl - vB.z) / r.z, t * 0.3, t * 3.0);
+        }
+        tg = mix(t, tt, uvnitr(uTerMap, (vB + r * tt).xy));
+      }
+      zem = nad(mlhaNeob(vB, r, tg), zem);
+    }
     if (uBlesk.z > 0.0) {                                           // engine 371: krajina ozářená bleskem
       float sb = uBlesk.z * 0.5 * (1.0 - smoothstep(0.0, uBlesk.w, length(g - uBlesk.xy)));
       zem = nad(vec4(vec3(0.8, 0.86, 1.0) * sb, sb * 0.35), zem);
@@ -662,7 +719,7 @@ void main() {
                     'uKryti', 'uZavoj', 'uPonuro', 'uPrahZ', 'uOktUtlum', 'uOktNorm', 'uOkt', 'uBlizko', 'uDaleko', 'uPixUhel',
                     'uPoc2', 'uTerH', 'uTerDno', 'uTerMap', 'uTerH2', 'uTerDno2', 'uTerMap2', 'uTer', 'uMlha', 'uOktMlha',
                     'uMlhaBarva', 'uSrazky', 'uKamera', 'uOffPad', 'uVitrPad', 'uBarvaDeste', 'uBlesk', 'uBleskBody', 'uBleskKanal',
-                    'uKapky', 'uKapekN'];
+                    'uKapky', 'uKapekN', 'uNeob', 'uNeobMap', 'uNeobPar', 'uNeobBarva'];
   let pocPx = null, poc2Px = null;        // data mřížky počasí (pro oba kontexty); 2 = mlha, srážky, bouřka, sníh
   function vytvorKreslic(g) {
     const sh = (typ, zdroj) => {
@@ -707,6 +764,31 @@ void main() {
     g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE);
     g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
     return t;
+  }
+  /// engine 372: plátno rytiny (fog.js) → textura masky neobjeveného (jen alfa se čte); nové jen při změně plátna,
+  /// během růstu čerstvých děr nejvýš ~5× za s
+  function nahrajNeob(k, MK) {
+    if (k.texNeob && k.neobVerze === MK.verze) return;
+    const ted = performance.now();
+    if (k.texNeob && ted - (k.neobCas || 0) < 180) return;
+    const g = k.g;
+    if (!k.texNeob) k.texNeob = g.createTexture();
+    g.bindTexture(g.TEXTURE_2D, k.texNeob);
+    g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL, false);
+    g.pixelStorei(g.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, MK.platno);
+    g.generateMipmap(g.TEXTURE_2D);
+    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.LINEAR_MIPMAP_LINEAR);
+    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.LINEAR);
+    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE);
+    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
+    k.neobVerze = MK.verze; k.neobCas = ted;
+    stat.neobNahrano = (stat.neobNahrano || 0) + 1;
+  }
+  function maskaNeob() {
+    // ⚠️ `Mlha` je globální const (fog.js), ne vlastnost window
+    if (window.__neobVyp || typeof Mlha === 'undefined' || !Mlha.maskaPlatno) return null;
+    try { return Mlha.maskaPlatno(); } catch (e) { return null; }
   }
   /// nová mozaika do kontextu; předchozí zůstane jako „stará“ pro prolnutí
   function nahrajTeren(k) {
@@ -1000,10 +1082,10 @@ void main() { o = texture(uTex, vUV); }`;
     vitrMlha[0] += Math.sin(kam) * dsM;
     vitrMlha[1] += -Math.cos(kam) * dsM;
   }
-  const oktMOut = new Float32Array(4);
+  const oktMOut = new Float32Array(6);
   function oktavyMlhy(K) {
     const gx = K.Ox * C_REF / 1000, gy = K.Oy * C_REF / 1000;
-    for (let k = 0; k < 2; k++) {
+    for (let k = 0; k < 3; k++) {
       const px = gx - vitrMlha[0] * OKT_MLHA_VITR[k], py = gy - vitrMlha[1] * OKT_MLHA_VITR[k];
       const c = Math.cos(OKT_MLHA_UHEL[k]), s = Math.sin(OKT_MLHA_UHEL[k]);
       const ux = (c * px - s * py) / OKT_MLHA_P[k], uy = (s * px + c * py) / OKT_MLHA_P[k];
@@ -1047,7 +1129,8 @@ void main() { o = texture(uTex, vUV); }`;
   /// null = nic nekreslit
   function pripravSnimek(t0, bezSrazek) {
     if (!smi()) { srazkyZive = false; return null; }
-    if (!postavPocasi() || !(maMraky || maMlhu || maSrazky)) { srazkyZive = false; return null; }   // nic k vidění
+    const MK = maskaNeob();                              // engine 372: mlha neobjeveného
+    if (!postavPocasi() || !(maMraky || maMlhu || maSrazky || MK)) { srazkyZive = false; return null; }   // nic k vidění
     const K = kamera();
     if (!K) return null;
     vitrKrok(t0);
@@ -1096,6 +1179,23 @@ void main() { o = texture(uTex, vUV); }`;
       mlha = { strop, barva, okt: oktavyMlhy(K), z0: K.z0m, ex: terenEx() };
       if (window.__mlhaLadeni) Object.assign(mlha, window.__mlhaLadeni);   // test: {barva: [1, 0, 0], strop: 1}
     }
+    // engine 372: mlha neobjeveného – z přehledu slabší (rytina celé ČR zůstane čitelná), z12–15 plná, zblízka slabší
+    let neob = null;
+    if (MK) {
+      zajistiTeren(K, zoom);
+      oktavyMlhy(K);
+      const mw = MK.meta;
+      const x0 = mercX(mw.west), x1 = mercX(mw.east), y0 = mercY(mw.north), y1 = mercY(mw.south);
+      const hl = (a, b, x) => { const q = Math.max(0, Math.min(1, (x - a) / (b - a))); return q * q * (3 - 2 * q); };
+      const strop = 0.4 + 0.22 * hl(9, 12, zoom) - 0.14 * hl(15, 17.5, zoom);   // rytina má prosvítat
+      const zakl = [0, 1, 2].map((i) => sv.noc ? sv.okoli[i] * 0.8 + sv.svetlo[i] * 0.9 + 0.04
+                                                : sv.okoli[i] * 0.45 + sv.svetlo[i] * 0.72);
+      const perg = [0.93, 0.9, 0.83];
+      neob = { MK, strop, H: 200, texM: (x1 - x0) * K.Cm / MK.platno.width,
+               map: [1 / (K.Cm * (x1 - x0)), 1 / (K.Cm * (y1 - y0)), (K.Ox - x0) / (x1 - x0), (K.Oy - y0) / (y1 - y0)],
+               barva: zakl.map((x, i) => x * 0.7 + perg[i] * (sv.noc ? 0.1 : 0.3)) };
+      if (window.__neobLadeni) Object.assign(neob, window.__neobLadeni);   // test: {barva: [1, 0, 0], strop: 1}
+    }
     // engine 371: déšť a sníh (pod mraky – od z10,5 nabíhá), blesky
     let srazky = null;
     const nabehS = Math.max(0, Math.min(1, (zoom - 10.5) / 1.3));
@@ -1111,7 +1211,7 @@ void main() { o = texture(uTex, vUV); }`;
     if (window.Kapky && !bezSrazek) {
       try { kapkyZive = Kapky.krok(t0); if (Kapky.pocet()) kapky = Kapky.data(MERITKO); } catch (e) { kapky = null; }
     }
-    if (vid[0] <= 0 && vid[1] <= 0 && vid[2] <= 0 && zavoj <= 0 && sv.stin <= 0.005 && sv.noc && !mlha && !srazky && !blesk && !kapky) return null;
+    if (vid[0] <= 0 && vid[1] <= 0 && vid[2] <= 0 && zavoj <= 0 && sv.stin <= 0.005 && sv.noc && !mlha && !srazky && !blesk && !kapky && !neob) return null;
     const kryti = 0.9 - 0.2 * Math.max(0, Math.min(1, (zoom - 9) / 4));
     // uv mřížky počasí: lon/lat → uv (lineárně v Mercatoru)
     const x0 = mercX(POC.w), x1 = mercX(POC.e), y0 = mercY(POC.n), y1 = mercY(POC.s);
@@ -1126,7 +1226,7 @@ void main() { o = texture(uTex, vUV); }`;
       sv, vys, vid, kryti: sv.noc ? kryti * 0.7 : kryti, zavoj, ponuro: sv.noc ? 0.1 : 0.2,
       prahZ: [prah(0.97), prah(0.85)], utlum: [ut[2], ut[3], ut[4]], norm: Math.sqrt(vPlna / Math.max(1e-6, vUtl)),
       pixUhel: pixUhel(),
-      K, mlha, srazky, blesk, kapky,
+      K, mlha, srazky, blesk, kapky, neob, ex: (mlha || neob) ? terenEx() : 1,
     };
   }
   function kresliDo(k, S, doMapy) {
@@ -1172,8 +1272,9 @@ void main() { o = texture(uTex, vUV); }`;
     g.uniform1f(u.uOktNorm, S.norm);
     g.uniform1f(u.uPixUhel, S.pixUhel);
     // engine 370: mlha
-    if (S.mlha) nahrajTeren(k);
-    const T1 = S.mlha && k.ter ? k.ter : null, T2 = S.mlha && k.ter2 ? k.ter2 : null;
+    const terOn = !!(S.mlha || S.neob);                 // engine 372: výškopis i pro mlhu neobjeveného
+    if (terOn) nahrajTeren(k);
+    const T1 = terOn && k.ter ? k.ter : null, T2 = terOn && k.ter2 ? k.ter2 : null;
     let vaha = T2 ? Math.min(1, (performance.now() - terPrechodMs) / 900) : 1;
     vaha = vaha * vaha * (3 - 2 * vaha);
     g.activeTexture(g.TEXTURE2); g.bindTexture(g.TEXTURE_2D, k.texPoc2); g.uniform1i(u.uPoc2, 2);
@@ -1183,9 +1284,16 @@ void main() { o = texture(uTex, vUV); }`;
     g.activeTexture(g.TEXTURE6); g.bindTexture(g.TEXTURE_2D, T2 ? T2.tD : k.texNic); g.uniform1i(u.uTerDno2, 6);
     g.uniform4fv(u.uTerMap, T1 ? mapaTer(T1, S.K) : [0, 0, 0, 0]);
     g.uniform4fv(u.uTerMap2, T2 ? mapaTer(T2, S.K) : [0, 0, 0, 0]);
-    g.uniform4f(u.uTer, vaha, T1 ? 1 : 0, T2 && vaha < 1 ? 1 : 0, S.mlha ? S.mlha.ex : 1);
-    g.uniform4f(u.uMlha, S.mlha ? S.mlha.z0 : 0, S.mlha ? S.mlha.strop : 0, S.mlha ? 1 : 0, 0);
-    g.uniform2fv(u.uOktMlha, S.mlha ? S.mlha.okt : oktMOut);
+    g.uniform4f(u.uTer, vaha, T1 ? 1 : 0, T2 && vaha < 1 ? 1 : 0, S.ex);
+    g.uniform4f(u.uMlha, S.K.z0m, S.mlha ? S.mlha.strop : 0, S.mlha ? 1 : 0, 0);
+    g.uniform2fv(u.uOktMlha, oktMOut);
+    // engine 372: mlha neobjeveného
+    if (S.neob) nahrajNeob(k, S.neob.MK);
+    const neobOk = !!(S.neob && k.texNeob);
+    g.activeTexture(g.TEXTURE7); g.bindTexture(g.TEXTURE_2D, neobOk ? k.texNeob : k.texNic); g.uniform1i(u.uNeob, 7);
+    g.uniform4fv(u.uNeobMap, neobOk ? S.neob.map : [0, 0, 0, 0]);
+    g.uniform4f(u.uNeobPar, neobOk ? 1 : 0, neobOk ? S.neob.strop : 0, neobOk ? S.neob.H : 1, neobOk ? S.neob.texM : 1);
+    g.uniform3fv(u.uNeobBarva, neobOk ? S.neob.barva : [1, 1, 1]);
     g.uniform3fv(u.uMlhaBarva, S.mlha ? S.mlha.barva : [1, 1, 1]);
     // engine 371: srážky a blesk
     const sr = S.srazky, bl = S.blesk;
@@ -1362,6 +1470,7 @@ void main() { o = texture(uTex, vUV); }`;
                    snimku: stat.snimku, msPrumer: stat.snimku ? +(stat.msSum / stat.snimku).toFixed(2) : 0,
                    msMax: +stat.msMax.toFixed(2), klid: stat.klid, pohyb: stat.pohyb, dojezd: stat.dojezd, vynechano: stat.vynechano,
                    lut: lut ? [lut[4], lut[10], lut[16]].map((x) => +x.toFixed(3)) : null,
+                   neob: { maska: !!maskaNeob(), nahrano: stat.neobNahrano || 0 },
                    srazky: { maSrazky, zive: srazkyZive, sr: svKes && svKes.sr ? svKes.sr : null, blesk: !!blesk,
                              posledni: posledniBlesk ? { sila: +posledniBlesk.sila.toFixed(2), kanal: +posledniBlesk.kanal.toFixed(2),
                                                          px: posledniBlesk.kanalPx ? Array.from(posledniBlesk.kanalPx).map(Math.round) : null } : null },
