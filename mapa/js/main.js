@@ -2204,6 +2204,8 @@ function aplikujDoplnky() {
     Mlha.pripoj(mapa);
     Ilustrace.pripoj(mapa);
     Pocasi.pripoj(mapa);    // mraky dle skutečného počasí (v2.1)
+    // ⭐ engine 368: opravdové mraky ve výšce + jejich stíny (WebGL, atmosfera.js); Pocasi dál kreslí Slunce a Měsíc
+    try { if (window.Atmosfera) Atmosfera.pripoj(mapa); } catch (e) { console.warn('[atmosfera]', e); }
     Erby.pripoj(mapa);      // erby dokončených obcí (v2.2)
     try { Trpyt.pripoj(mapa); } catch (e) { console.warn('[trpyt]', e); }
     // ⭐ 5. 9. 2026: káně kroužící nad krajinou (den, herní styl)
@@ -2219,6 +2221,7 @@ function aplikujDoplnky() {
     try { nasadDomalovani(); } catch (e) { console.warn('[domalovani]', e); }
   } else {
     Pocasi.zavri();
+    try { if (window.Atmosfera) Atmosfera.zavri(); } catch (e) { /* nic */ }
     try { Trpyt.zavri(); } catch (e) { /* nic */ }
   }
   // v1.607: skutečné světlo budov a stínování – ve všech stylech
@@ -6675,7 +6678,10 @@ function aplikujNoc() {
     nastavNocniKresbu(krok);   // ⭐ v1.511: cesty a budovy čitelné i v noci
     // engine 213: obloha a opar podle kroku noci (den světle modrá, soumrak
     // oranžový horizont, noc tmavě modrá) – světlý horizont v noci svítil
-    try { if (mapa.setSky && typeof obloha === 'function') mapa.setSky(obloha(null, krok)); }
+    // engine 368: krok zvednutý jen POČASÍM (zataženo/déšť ve dne) → šedá obloha a opar, ne barvy soumraku
+    let krokZMraku = false;
+    try { krokZMraku = krok > Pocasi.krokSlunce(); } catch (eK) { krokZMraku = false; }
+    try { if (mapa.setSky && typeof obloha === 'function') mapa.setSky(obloha(null, krok, krokZMraku)); }
     catch (eSky) { /* starší maplibre */ }
     prestavNocniDiry();
     // ⚠️ opacity stromů NEsahat — nese náběhovou rampu z `nastup()`

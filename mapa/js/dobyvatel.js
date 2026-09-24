@@ -829,6 +829,8 @@ window.Dobyvatel = (function () {
       // plátně zůstal (a posun mapy kreslí dál); plátno se musí schovat
       const el = document.getElementById('pocasi-mraky');
       if (el) el.style.display = schovat ? 'none' : '';
+      const at = document.getElementById('okolnik-atmosfera');            // engine 368: nové mraky taky
+      if (at) at.style.display = schovat ? 'none' : '';
     } catch (e) { /* styl bez počasí */ }
   }
 

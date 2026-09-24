@@ -115,6 +115,7 @@ const Pocasi = (() => {
   let mrakNacten = false;
   let data = [];                      // [{lng, lat, druh, oblacnost}]
   let dataCas = 0;
+  let dataVerze = 0;                  // engine 368: atmosfera.js staví mřížku počasí jen po změně
   let tikac = null;
   let faze = 0;
   // engine 328: vítr pro drift mraků (obrazovkový vektor, síla 0..1) – v tiku oblohy
@@ -122,6 +123,7 @@ const Pocasi = (() => {
   let posledniKresba = 0;
   // plátno mraků kreslíme v polovičním rozlišení (roztažené CSS)
   const MERITKO_PLATNA = 0.5;
+  let platnoSkryte = false;           // engine 368: prázdné plátno schované (atmosfera.js kreslí mraky)
   const tonovane = new Map();         // "druh|krokDne|tvar" → canvas
   const tvary = new Map();            // tvar → složený netónovaný canvas
 
@@ -129,7 +131,7 @@ const Pocasi = (() => {
   function druhZKodu(k) {
     if (k >= 95) return 'bourka';
     if ((k >= 71 && k <= 77) || k === 85 || k === 86) return 'snih';
-    if ((k >= 51 && k <= 67) || (k >= 80 && k <= 82)) return 'dest';
+    if ((k >= 51 && k <= 67) || (k >= 80 && k <= 84)) return 'dest';   // engine 368: + 83/84 (sněhové přeháňky)
     if (k === 45 || k === 48) return 'mlha';
     if (k === 3) return 'zatazeno';
     if (k === 2) return 'polojasno';
@@ -155,10 +157,20 @@ const Pocasi = (() => {
       vitr: isFinite(+p.vitr) ? Math.max(0, +p.vitr) : 0,
       vitrSmer: isFinite(+p.vitrSmer) ? +p.vitrSmer : 0,
       naraz: isFinite(+p.naraz) ? Math.max(0, +p.naraz) : 0,
+      // ⭐ engine 368 (MET Norway přes funkci `pocasi`): srážky mm/h, vrstvy oblačnosti 0–1 (−1 = neznámo → odvodit),
+      // mlha 0–1, vlhkost %, pravděpodobnost bouřky 0–1
+      srazky: isFinite(+p.srazky) ? Math.max(0, +p.srazky) : 0,
+      mrakyN: isFinite(+p.mrakyN) ? +p.mrakyN : -1,
+      mrakyS: isFinite(+p.mrakyS) ? +p.mrakyS : -1,
+      mrakyV: isFinite(+p.mrakyV) ? +p.mrakyV : -1,
+      mlha: isFinite(+p.mlha) ? Math.max(0, Math.min(1, +p.mlha)) : 0,
+      vlhkost: isFinite(+p.vlhkost) ? +p.vlhkost : -1,
+      bourka: isFinite(+p.bourka) ? Math.max(0, Math.min(1, +p.bourka)) : 0,
     })).filter((p) => isFinite(p.lat) && isFinite(p.lng));
     if (!nova.length) return;
     data = nova;
     dataCas = Date.now();
+    dataVerze++;
     obloha.klic = '';        // vynutit přepočet sestavy
     console.log('[Pocasi] z aplikace:', data.length, 'bodů');
     // v1.607: pamatovat si, kdy u středu mapy naposled pršelo (louže)
@@ -196,18 +208,11 @@ const Pocasi = (() => {
       .then((r) => r.json())
       .then((d) => {
         const body = (d && Array.isArray(d.body)) ? d.body : [];
-        data = body.map((p) => ({
-          lng: +p.lon, lat: +p.lat,
-          druh: druhZKodu(+p.kod || 0),
-          oblacnost: Math.max(0, Math.min(1, +p.oblacnost || 0)),
-          den: p.den !== false,
-          snih: isFinite(+p.snih) ? Math.max(0, +p.snih) : 0,
-          teplota: isFinite(+p.teplota) ? +p.teplota : null,
-          vitr: +p.vitr || 0, vitrSmer: +p.vitrSmer || 0, naraz: +p.naraz || 0,
-        })).filter((p) => isFinite(p.lat) && isFinite(p.lng));
+        // engine 368: přes nastavZvenku – táž pole jako z appky (vrstvy oblačnosti, mlha, bouřka…) a nová verze
+        // dat pro atmosfera.js; data z appky, která mezitím dorazila, nepřepisovat
+        if (data.length && Date.now() - dataCas < 60 * 1000 && dataVerze > 0) return;
+        nastavZvenku(body);
         console.log('[Pocasi] načteno bodů (MET Norway):', data.length);
-        obloha.klic = '';
-        try { if (window.aktualizujSezonu) window.aktualizujSezonu(); } catch (e) { /* nic */ }
       })
       .catch((e) => console.warn('[Pocasi] stažení selhalo', e));
   }
@@ -327,6 +332,11 @@ const Pocasi = (() => {
       naraz: w && isFinite(w.naraz) ? w.naraz : 0,
       // engine 340: teplota u středu mapy (°C, null = bez dat) – kouř z komínů, led na vodě
       teplota: w && isFinite(w.teplota) ? w.teplota : null,
+      // engine 368: srážky, mlha, vlhkost, bouřka u středu mapy (déšť, mlha a blesky v dalších kolech)
+      srazky: w && isFinite(w.srazky) ? w.srazky : 0,
+      mlha: w && isFinite(w.mlha) ? w.mlha : 0,
+      vlhkost: w && isFinite(w.vlhkost) ? w.vlhkost : -1,
+      bourka: w && isFinite(w.bourka) ? w.bourka : 0,
     };
     if (window.__vynutSvetlo && typeof window.__vynutSvetlo === 'object') {
       Object.assign(st, window.__vynutSvetlo);
@@ -1014,6 +1024,15 @@ const Pocasi = (() => {
     // oblohu i za jasna, kdy se nekreslí ani jeden mrak (a než dorazí
     // počasí z aplikace, je `data` prázdné).
     kresliSlunce(w, h);
+    // ⭐ engine 368: mraky, jejich stíny a pošmourno kreslí atmosfera.js (WebGL) – tady už jen Slunce a Měsíc;
+    // bez nich (přiblíženo nad z10,5) plátno SCHOVAT, jinak je nad mapou druhá prázdná celoobrazovková vrstva
+    // (skládání v prohlížeči stojí i prázdná)
+    if (window.Atmosfera && Atmosfera.aktivni && Atmosfera.aktivni()) {
+      const skryt = mapa.getZoom() >= 10.5;
+      if (skryt !== platnoSkryte) { platno.style.visibility = skryt ? 'hidden' : ''; platnoSkryte = skryt; }
+      return;
+    }
+    if (platnoSkryte) { platno.style.visibility = ''; platnoSkryte = false; }
     if (!data.length || !mrakNacten) return;
     const kratsi = Math.min(w, h);
     // NÁKLON: 0 = pohled shora (chování 2D beze změny), 1 = plný náklon.
@@ -1414,5 +1433,7 @@ const Pocasi = (() => {
   }
 
   return { pripoj, zavri, nastavZvenku, nastavVidno, stavNoci, krokSlunce, snihCm,
-           polohaSlunce, polohaMesice, stavSvetla, vitr };
+           polohaSlunce, polohaMesice, stavSvetla, vitr,
+           body: () => data, verze: () => dataVerze,                       // engine 368: pro atmosfera.js
+           vidno: () => vidnoZvenku };
 })();

@@ -51,11 +51,13 @@ const FONT_I = ['Noto Sans Italic'];
 // `fog-ground-blend` = od jaké normované hloubky začíná opar na zemi
 // (shader: v_fog_depth > blend) – 0,6 → 0,4 = dálky blednou dřív, vzdušná
 // perspektiva dělá hloubku. Krok 0 den, 1 soumrak, 2 šero, 3 noc.
-function obloha(horizont, krok) {
+function obloha(horizont, krok, zMraku) {
   const k = krok || 0;
-  const SKY = ['#88bfe0', '#5b6f9e', '#233257', '#0a1228'];
-  const HORIZONT = ['#eef4f8', '#f0b27a', '#6a7391', '#1a2442'];
-  const OPAR = ['#e3eaee', '#d8c3ae', '#7c8496', '#1d2637'];
+  // ⭐ engine 368: `zMraku` = krok zvedlo jen počasí (zataženo/déšť ve dne) → ŠEDÁ paleta; dřív dostal zatažený
+  // den barvy soumraku (oranžový horizont #f0b27a a béžový opar v dálce)
+  const SKY = zMraku ? ['#9aa7b3', '#8793a1', '#5d6878', '#0a1228'] : ['#88bfe0', '#5b6f9e', '#233257', '#0a1228'];
+  const HORIZONT = zMraku ? ['#e4e8eb', '#d3d8dd', '#9aa2ad', '#1a2442'] : ['#eef4f8', '#f0b27a', '#6a7391', '#1a2442'];
+  const OPAR = zMraku ? ['#dde2e6', '#cdd3d9', '#8e97a3', '#1d2637'] : ['#e3eaee', '#d8c3ae', '#7c8496', '#1d2637'];
   return {
     'sky-color': SKY[k],
     'horizon-color': (k === 0 && horizont) || HORIZONT[k],
