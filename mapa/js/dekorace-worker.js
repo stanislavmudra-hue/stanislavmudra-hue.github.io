@@ -1185,7 +1185,7 @@ async function generuj(z, x, y) {
   if (z === 15 && N.ploty) {
     let dem13 = null;
     try { dem13 = await demDlazdice(13, x >> 2, y >> 2); } catch (e) { dem13 = null; }
-    if (zdrojove.dtmbody && zdrojove.dtmbody.vrstvy && zdrojove.dtmbody.vrstvy.cary) ploty = plotyZDlazdice(zdrojove.dtmbody, x, y, dem13);
+    if (zdrojove.dtmbody && zdrojove.dtmbody.vrstvy && zdrojove.dtmbody.vrstvy.cary) ploty = plotyZDlazdice(zdrojove.dtmbody, x, y, dem13, idx);
     voda = mistaVPlochach(idx, x, y, dem13, ODL_VODA_IDS, 7, 6000, 71);   // engine 358: místa odlesků na hladinách
     zem = mistaVPlochach(idx, x, y, dem13, ODL_ZEM_IDS, 12, 5000, 81);     // engine 359: sníh, jinovatka
     cesty = mistaNaCestach(idx, x, y, dem13, 9, 3000);                     // engine 359: led na silnicích
@@ -1316,13 +1316,58 @@ function mistaNaCestach(idx, x, y, dem, krokM, max) {
   if (!bod.length) return null;
   return { bod: Float32Array.from(bod), bunka: Uint16Array.from(bunka), n: bunka.length, obj: null, x, y };
 }
-function plotyZDlazdice(zd, x, y, dem) {
+// ⭐ engine 373 (T 24. 9.: „Občas ploty lezou do silnic a cest“): čára plotu z DTM vede i přes silnici nebo cestu
+// z OSM (ve skutečnosti je tam brána nebo vjezd; DTM a OSM se liší o metry a pás silnice se na z16–18 kreslí až
+// 1,5× širší než skutečný). Plot, který silnici KŘÍŽÍ (úhel nad 30°), se proto v šíři kresleného pásu přeruší
+// (1,5 × poloviční šířka + 0,7 m). Plot souběžný se silnicí zůstává – lemuje ulici nebo most (zábradlí) – a pryč
+// je jen, když by stál přímo na vozovce (blíž ose než 0,6 poloviční šířky = chyba dat). Poloviční šířky = skutečné
+// šířky kreslení (styles.js SILNICE_M, cesty 2 m, účelové 3 m). Ořez po 0,5 m podél plotu, stíny berou tytéž úseky.
+const PLOT_PUL_SIRKY_M = { motorway: 5.75, trunk: 5.25, primary: 4.5, secondary: 3.75, tertiary: 3.0, minor: 2.5,
+                           service: 1.5, track: 1.0, path: 1.0 };
+function plotNaSilnici(idx, px, py, ux, uy, mNaPx) {
+  const gx = Math.min(MRIZKA_IDX - 1, Math.max(0, Math.floor(px / idx.B)));
+  const gy = Math.min(MRIZKA_IDX - 1, Math.max(0, Math.floor(py / idx.B)));
+  const useky = idx.mrizkaCar[gy * MRIZKA_IDX + gx];
+  if (!useky) return false;
+  for (let i = 0; i < useky.length; i++) {
+    const u = useky[i];
+    const pul = PLOT_PUL_SIRKY_M[u.c];
+    if (!pul || px < u.x0 || px > u.x1 || py < u.y0 || py > u.y1) continue;   // obálka úseku (SIRKY_CAR) je širší než R
+    const dx = u.bx - u.ax, dy = u.by - u.ay, l2 = dx * dx + dy * dy;
+    if (l2 <= 0) continue;
+    const soubezne = Math.abs((dx * ux + dy * uy) / Math.sqrt(l2)) > 0.866;
+    const R = (soubezne ? 0.6 * pul : 1.5 * pul + 0.7) / mNaPx;
+    let t = ((px - u.ax) * dx + (py - u.ay) * dy) / l2;
+    t = t < 0 ? 0 : (t > 1 ? 1 : t);
+    const ex = px - u.ax - t * dx, ey = py - u.ay - t * dy;
+    if (ex * ex + ey * ey < R * R) return true;
+  }
+  return false;
+}
+function plotyZDlazdice(zd, x, y, dem, idx) {
   const v = zd.vrstvy.cary;
   if (!v || !v.prvky.length) return null;
   const kS = EXT / v.extent;
   const nZ = 32768;
   const latS = latZ((y + 0.5) / nZ);
   const mNaFr = 40075016.686 * Math.cos(latS * Math.PI / 180) / nZ;       // metrů na zlomek dlaždice
+  const mNaPx = mNaFr / EXT;                                                // metrů na px výstupní dlaždice
+  const silnice = !!(idx && idx.mrizkaCar);
+  /// úseky [t0, t1] přímky A→B mimo pásy silnic a cest (vzorky po 0,5 m)
+  const volne = (ax, ay, bx, by, t0, t1, Lcel, ux, uy) => {
+    if (!silnice) return [[t0, t1]];
+    const krok = 0.5 / Lcel, out = [];
+    let zac = null, posl = t0;                      // posl = poslední volný vzorek (konec plotu před silnicí)
+    for (let t = t0; ; t += krok) {
+      const tt = Math.min(t, t1);
+      const na = plotNaSilnici(idx, (ax + (bx - ax) * tt) * EXT, (ay + (by - ay) * tt) * EXT, ux, uy, mNaPx);
+      if (!na) { if (zac === null) zac = tt; posl = tt; }
+      else if (zac !== null) { out.push([zac, posl]); zac = null; }
+      if (tt >= t1) break;
+    }
+    if (zac !== null) out.push([zac, posl]);
+    return out;
+  };
   const vyska = (fx, fy) => vyskaDem13(dem, x, y, fx, fy);
   const orez = (x0, y0, x1, y1) => {                // Liang–Barsky na [0,1]²
     let t0 = 0, t1 = 1;
@@ -1356,24 +1401,27 @@ function plotyZDlazdice(zd, x, y, dem) {
         // globální přímka úseku: s = (P · směr) v metrech, mod 20 (návaznost vzoru přes hrany dlaždic)
         const ux = (bx - ax) / (Math.hypot(bx - ax, by - ay) || 1), uy = (by - ay) / (Math.hypot(bx - ax, by - ay) || 1);
         const sA = (((x + ax) * ux + (y + ay) * uy) / nZ) * PLOT_C_REF;
-        const L = Lcel * (o[1] - o[0]);
-        const kroku = Math.max(1, Math.ceil(L / PLOT_KROK_M));
-        let px = ax + (bx - ax) * o[0], py = ay + (by - ay) * o[0], pe = vyska(px, py);
-        let ps = sA + Lcel * o[0] * (PLOT_C_REF / (mNaFr * nZ));
-        for (let k = 1; k <= kroku; k++) {
-          const tt = o[0] + (o[1] - o[0]) * k / kroku;
-          const qx = ax + (bx - ax) * tt, qy = ay + (by - ay) * tt, qe = vyska(qx, qy);
-          if (isFinite(pe) && isFinite(qe) && n < PLOT_MAX) {
-            const j = n * 8;
-            seg[j] = px; seg[j + 1] = py; seg[j + 2] = pe; seg[j + 3] = qx; seg[j + 4] = qy; seg[j + 5] = qe;
-            seg[j + 6] = ((ps % 20) + 20) % 20; seg[j + 7] = kod;
-            const mx = Math.min(PLOT_BUNEK - 1, Math.max(0, Math.floor((px + qx) * 0.5 * PLOT_BUNEK)));
-            const my = Math.min(PLOT_BUNEK - 1, Math.max(0, Math.floor((py + qy) * 0.5 * PLOT_BUNEK)));
-            bunka[n] = my * PLOT_BUNEK + mx;
-            n++;
+        for (const [t0, t1] of volne(ax, ay, bx, by, o[0], o[1], Lcel, ux, uy)) {   // engine 373: přes silnice ne
+          const L = Lcel * (t1 - t0);
+          if (L < 0.4) continue;
+          const kroku = Math.max(1, Math.ceil(L / PLOT_KROK_M));
+          let px = ax + (bx - ax) * t0, py = ay + (by - ay) * t0, pe = vyska(px, py);
+          let ps = sA + Lcel * t0 * (PLOT_C_REF / (mNaFr * nZ));
+          for (let k = 1; k <= kroku; k++) {
+            const tt = t0 + (t1 - t0) * k / kroku;
+            const qx = ax + (bx - ax) * tt, qy = ay + (by - ay) * tt, qe = vyska(qx, qy);
+            if (isFinite(pe) && isFinite(qe) && n < PLOT_MAX) {
+              const j = n * 8;
+              seg[j] = px; seg[j + 1] = py; seg[j + 2] = pe; seg[j + 3] = qx; seg[j + 4] = qy; seg[j + 5] = qe;
+              seg[j + 6] = ((ps % 20) + 20) % 20; seg[j + 7] = kod;
+              const mx = Math.min(PLOT_BUNEK - 1, Math.max(0, Math.floor((px + qx) * 0.5 * PLOT_BUNEK)));
+              const my = Math.min(PLOT_BUNEK - 1, Math.max(0, Math.floor((py + qy) * 0.5 * PLOT_BUNEK)));
+              bunka[n] = my * PLOT_BUNEK + mx;
+              n++;
+            }
+            ps += (L / kroku) * (PLOT_C_REF / (mNaFr * nZ));
+            px = qx; py = qy; pe = qe;
           }
-          ps += (L / kroku) * (PLOT_C_REF / (mNaFr * nZ));
-          px = qx; py = qy; pe = qe;
         }
       }
     }
