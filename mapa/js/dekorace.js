@@ -3525,7 +3525,7 @@ const Dekorace = (() => {
     try {
       if (s && s.px && s.w && s.h) {
         const px = s.px.slice().buffer;
-        wDek.postMessage({ typ: 'silueta', id: m.id, w: s.w, h: s.h, px }, [px]);
+        wDek.postMessage({ typ: 'silueta', id: m.id, w: s.w, h: s.h, dno: s.dno || s.h, px }, [px]);   // engine 359: dno
       } else wDek.postMessage({ typ: 'silueta', id: m.id, w: 0, h: 0, px: null });
     } catch (e) { /* worker pryč */ }
   }

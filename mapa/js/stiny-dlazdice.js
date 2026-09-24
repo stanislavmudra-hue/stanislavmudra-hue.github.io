@@ -67,7 +67,7 @@
     } catch (e) { sgl = null; glChyba = 'vytvor: ' + String((e && e.message) || e); }
     if (!sgl) return null;
     glStav = 1;
-    for (const [ik, s] of siluety) { try { sgl.silueta(ik, s.px, s.w, s.h); } catch (e) { /* nic */ } }
+    for (const [ik, s] of siluety) { try { sgl.silueta(ik, s.px, s.w, s.h, s.dno); } catch (e) { /* nic */ } }
     return sgl;
   }
 
@@ -89,9 +89,9 @@
       p = dotaz({ typ: 'silueta', ik }).then((m) => {
         siluetyCekaji.delete(ik);
         if (!m || !m.px || !m.w || !m.h) return null;
-        const s = { px: new Uint8Array(m.px), w: m.w, h: m.h, platno: null };
+        const s = { px: new Uint8Array(m.px), w: m.w, h: m.h, dno: m.dno || m.h, platno: null };   // engine 359: dno
         siluety.set(ik, s);
-        if (sgl) { try { sgl.silueta(ik, s.px, s.w, s.h); } catch (e) { /* nic */ } }
+        if (sgl) { try { sgl.silueta(ik, s.px, s.w, s.h, s.dno); } catch (e) { /* nic */ } }
         return s;
       }).catch(() => { siluetyCekaji.delete(ik); return null; });
       siluetyCekaji.set(ik, p);
@@ -106,7 +106,7 @@
       c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(s.px), s.w, s.h), 0, 0);
       s.platno = c;
     }
-    return { platno: s.platno, w: s.w, h: s.h };
+    return { platno: s.platno, w: s.w, h: s.h, dno: s.dno || s.h };
   }
 
   // --- domy a stavby -------------------------------------------------------------------------------
@@ -395,9 +395,10 @@
             const ik = retezce[v.ik[i]];
             if (!ik) continue;
             const hPodpery = VEDENI_STIN[ik];                     // engine 357: stožáry, větrníky (siluetou, z15+)
-            if (!(ik.startsWith('deko-strom') || ik.startsWith('deko-ker') || (hPodpery && zt >= 15))) continue;
+            const jeKamen = ik.startsWith('deko-kamen');          // engine 359: i balvany (siluetou, z15+)
+            if (!(ik.startsWith('deko-strom') || ik.startsWith('deko-ker') || (hPodpery && zt >= 15) || (jeKamen && zt >= 15))) continue;
             const k = v.k[i];
-            if (!hPodpery && k < 0.3) continue;
+            if (!hPodpery && k < (jeKamen ? 0.15 : 0.3)) continue;
             if (v.z0[i] - dz + pul > zt + 1e-6) continue;         // strom na tomhle zoomu ještě není vidět
             if (v.lic && v.lic[i] && zt < 15) continue;           // lichá buňka jemné mřížky (engine 343)
             const X = mercX(v.lon[i]), Y = mercY(v.lat[i]);
@@ -405,7 +406,7 @@
             const Hm = hPodpery ? 0.1167 * hPodpery * k : STROM_VYSKA_M * k;
             let j = poradi.get(ik);
             if (j === undefined) { j = ikony.length; ikony.push(ik); poradi.set(ik, j); }
-            stromy.push((X - T.x0) * pxNaMerc, (Y - T.y0) * pxNaMerc, Hm, hPodpery ? -1 : 0.36 * Hm * pxNaMetr, j);
+            stromy.push((X - T.x0) * pxNaMerc, (Y - T.y0) * pxNaMerc, Hm, (hPodpery || jeKamen) ? -1 : 0.36 * Hm * pxNaMetr, j);
             if (stromy.length >= MAX_STROMU * 5) break;
           }
         }

@@ -292,8 +292,9 @@ void main() { o = texture(uTex, vUV) * uK; }`;
           const tbx = d[4 * i], tby = d[4 * i + 1], Hm = d[4 * i + 2];
           const A = (Hm / sil.h) * pxNaMetr;                  // jako setTransform ve 2D (bez S)
           const B = Math.min(A * tg, (zad.maxStinPx || Infinity) / sil.h);   // engine 357: strop délky (dlaždice)
-          const ex = tbx - (sil.w / 2) * A * pX + sil.h * B * dX;
-          const ey = tby - (sil.w / 2) * A * pY + sil.h * B * dY;
+          // engine 359: pata = spodní neprůhledný řádek siluety (dno), ne spodek plátna – stín začíná u paty
+          const ex = tbx - (sil.w / 2) * A * pX + (sil.dno || sil.h) * B * dX;
+          const ey = tby - (sil.w / 2) * A * pY + (sil.dno || sil.h) * B * dY;
           const ux = A * pX * sil.w, uy = A * pY * sil.w;      // roh (w, 0) − (0, 0)
           const vx = -B * dX * sil.h, vy = -B * dY * sil.h;    // roh (0, h) − (0, 0)
           tex.v(ex, ey, 0, 0); tex.v(ex + ux, ey + uy, 1, 0); tex.v(ex + vx, ey + vy, 0, 1);
@@ -473,9 +474,9 @@ void main() { o = texture(uTex, vUV) * uK; }`;
       return { w, h, px: out.buffer };
     }
 
-    function silueta(ik, px, w, h) {
+    function silueta(ik, px, w, h, dno) {
       if (siluety.has(ik)) return;
-      siluety.set(ik, { tex: textura(px, w, h), w, h });
+      siluety.set(ik, { tex: textura(px, w, h), w, h, dno: dno || h });   // engine 359: spodní řádek kresby = pata
     }
     function nastavTeren(id, px, Gs) {
       if (teren && teren.id === id) return;

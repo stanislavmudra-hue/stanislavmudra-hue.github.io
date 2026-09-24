@@ -178,8 +178,7 @@ const AnimaceNadMapou = (() => {
     if (ctx && !prazdne) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, platno.width, platno.height); }
     prazdne = true;
     if (uplne) { oblacky.length = 0; krouzky.length = 0; lety.length = 0; kudrlinky.length = 0; sedici = []; sediciSig = '';
-                 vrtule = []; vrtuleSig = ''; vrtuleNaPlatne = 0; odlVsePryc(); odlSig = ''; }
-    vycistiO();
+                 vrtule = []; vrtuleSig = ''; vrtuleNaPlatne = 0; svit.clear(); odlSig = ''; svitSig = ''; vycistiO(); }
   }
   function naplanuj() { if (!raf && mapa) raf = requestAnimationFrame(snimek); }
   function aktivita() { aktivitaMs = performance.now(); naplanuj(); }
@@ -2009,11 +2008,11 @@ const AnimaceNadMapou = (() => {
     sovaCasovac = setTimeout(() => { sovaCasovac = 0; naplanuj(); }, Math.max(40, dalsiSovaMs - t));
   }
   function neco(st) {
-    if (oblacky.length || krouzky.length || lety.length || kudrlinky.length || odl.length) return true;
+    if (oblacky.length || krouzky.length || lety.length || kudrlinky.length || svitPrechod()) return true;
     if (necinny()) return false;
     const z = mapa.getZoom();
     if (vrtule.length && z >= 11.6) return true;             // engine 357: točící se listy větrníků
-    if (z >= 14.8 && (oV || oK || oS.length || oD.length) && svetloOdlesku(st)) return true;   // engine 358: odlesky
+    if (odleskyPotrebuji(st) || svitDycha()) return true;    // engine 358–359: odlesky (přepočet po pohybu, dýchání)
     if (z >= KOUR_OD_Z && kominy.length && topnaSezona(st)) return true;
     return z >= VODA_OD_Z && vodni.length > 0 && !vodaZamrzla(st);
   }
@@ -2023,33 +2022,28 @@ const AnimaceNadMapou = (() => {
   // míchání a záře)? Odlesky.“ → „Ty odlesky taky uděláš jako stíny? Aby se nemusely dopočítávat.“): ODLESKY SLUNCE
   // (v noci měsíce) na vodě a kovu. MÍSTA jsou hotová dopředu jako stíny: hladiny = body po ~7 m spočítané workerem
   // s dlaždicí z15 (Dekorace.odleskyVoda), kov = horní trubky kovových plotů, zábradlí, svodidla (3D ploty), stožáry
-  // a dráty vedení (evidence). Živě se jen rozhoduje, KDE se zablýskne – zrcadlový odraz (Blinn: poloviční vektor
-  // slunce–kamera): hladina má normálu vzhůru a drsnost podle větru (klid = ostrá stezka ke slunci, vítr = široké
-  // třpytivé pole), svodidla, zábradlí, trubky a dráty jsou VÁLCE (lesk tam, kde je poloviční vektor kolmý na osu –
-  // odlesk po nich při pohybu kamery klouže jako ve skutečnosti), příhradové stožáry mají plošky na všechny strany.
-  // Kreslí se na VLASTNÍ plátno s `mix-blend-mode: plus-lighter` = skutečné aditivní míchání (záře se PŘIČTE ke
-  // světlu vody/kovu pod ní), měkké kulaté záře BEZ cípů (⛔ 5. 9. „hvězdičky dej pryč“). Jen odkryté (místa jsou
-  // z evidence), ve dne slunce > 3° bez deště, sněžení a husté oblačnosti; v noci modravě od měsíce, jen voda.
-  // Pozn.: jako ve skutečnosti se hladina rozzáří hlavně při pohledu PROTI slunci; jinak jen jemné jiskření.
-  const ODL_MAX = 170, ODL_VODA_MAX = 5000, ODL_KOV_MAX = 2500;
+  // a dráty vedení (evidence). Kreslí se na VLASTNÍ plátno s `mix-blend-mode: plus-lighter` = skutečné aditivní
+  // míchání (záře se PŘIČTE ke světlu vody/kovu pod ní), měkké kulaté záře BEZ cípů (⛔ 5. 9. „hvězdičky dej pryč“).
+  // ⭐⭐ engine 359 (T: „mohly by se pozice záblesků měnit pouze při posunu kamery a na kovech zpomalit? Prostě aby
+  // vypadaly více realisticky.“): ŽÁDNÉ NÁHODNÉ JISKŘENÍ. Každé místo na hladině má PEVNOU plošku vlny (sklon podle
+  // větru, z hashe místa) a zablýskne se jen tehdy, když ploška zrcadlí slunce přesně do kamery – při stojící kameře
+  // svítí stále tatáž místa (jen jemně dýchají), při pohybu kamery se rozsvěcují jiná, jako skutečná třpytivá
+  // stezka. Kov = válce: lesk sedí tam, kde je poloviční vektor slunce–kamera kolmý na osu (na trubce, svodidle
+  // i drátu se najde přesné místo) a při pohybu kamery PLYNULE KLOUŽE; rozsvícení a zhasnutí pomalé (0,5 s).
+  // Stojí-li kamera a nic se nemění, plátno zůstane nakreslené a smyčka spí (šetří baterii). Jen odkryté (místa jsou
+  // z evidence), ve dne slunce > 3° bez deště/sněhu/mlhy a oblačnosti < 0,9; v noci modravě od měsíce, jen voda.
+  // Jako ve skutečnosti se hladina rozzáří jen při pohledu PROTI slunci (s větrem v širším pásu).
+  const ODL_VODA_MAX = 5000, ODL_KOV_MAX = 2500, ODL_SVIT_VODA = 150, ODL_SVIT_KOV = 60;
   const ODL_TYP_VYSKA = { 2: 1.55, 6: 0.97, 7: 0.62 };           // kód 3D plotu → výška lesklé trubky (m)
   const PRUVES_DRATU = [0.015, 0.02, 0.025, 0.027, 0.03, 0.008];  // = vedeni3d.js
+  const TAU_VODA = 0.22, TAU_KOV = 0.5;                           // s – náběh a dohasnutí záblesku
   let platnoO = null, ctxO = null, prazdneO = true;
-  const odl = [];                                                 // aktivní záblesky (objekty z bazénu)
-  const odlVolne = [];                                            // bazén (pooling – za běhu žádné nové objekty)
-  function novyOdl(t, druh, lon, lat, alt, el, bx, by, zivot, sila, velM, sprite, lesk) {
-    if (odl.length >= ODL_MAX) return;
-    const o = odlVolne.pop() || {};
-    o.t0 = t; o.druh = druh; o.lon = lon; o.lat = lat; o.alt = alt; o.el = el; o.bx = bx; o.by = by;
-    o.zivot = zivot; o.sila = sila; o.velM = velM; o.sprite = sprite; o.lesk = lesk;
-    odl.push(o);
-  }
-  function odlVsePryc() { while (odl.length) odlVolne.push(odl.pop()); }
-  let odlSig = '', odlSestaveno = 0;
+  let odlSig = '', oRef = null;
   let oV = null, oK = null, oS = [], oD = [];                     // voda, kov (ploty), stožáry, dráty
-  let oVahyV = null, oVahyK = null, oSumaV = 0, oSumaK = 0, oVahySig = '', oVahyMs = 0;
-  let oRef = null;                                                // místní metry: počátek a měřítko
+  let oVitr = -1;                                                 // vítr, pro který jsou spočítané plošky vln
   const oVysky = new Map();                                       // výšky podpěr (queryTerrainElevation) – keš
+  const svit = new Map();                                         // klíč místa → rozsvícený odlesk
+  let svitSig = '', svitMs = 0, svitSvetlo = null;
   let spriteOdl = null;
   function spriteZare(jadro, stred, okraj) {
     const c = document.createElement('canvas');
@@ -2115,11 +2109,26 @@ const AnimaceNadMapou = (() => {
     }
     return null;
   }
+  function vitrKmh() {
+    try { return (typeof Pocasi !== 'undefined' && Pocasi.vitr) ? (+Pocasi.vitr().kmh || 0) : 8; } catch (e) { return 8; }
+  }
+  /// pevné plošky vln (sklon podle větru – Rayleigh, směr náhodný z hashe místa) a velikost/dýchání záblesku
+  function ploskyVln() {
+    if (!oV) return;
+    const v = vitrKmh();
+    const sigma = 0.035 + 0.12 * Math.min(1, v / 30);            // rad: klid ~2°, vítr 30 km/h ~9°
+    for (let i = 0; i < oV.n; i++) {
+      const u1 = Math.max(1e-6, h32(oV.kx[i], oV.ky[i], 11)), u2 = h32(oV.kx[i], oV.ky[i], 12);
+      const th = sigma * Math.sqrt(-2 * Math.log(u1)), fi = 2 * Math.PI * u2;
+      oV.nx[i] = Math.sin(th) * Math.cos(fi); oV.ny[i] = Math.sin(th) * Math.sin(fi); oV.nz[i] = Math.cos(th);
+    }
+    oVitr = v;
+  }
   /// místa odlesků ve výřezu (+25 %) z hotových dat – po změně výřezu nebo dat (ne každý snímek)
   function obnovOdlesky() {
     if (!mapa || typeof Dekorace === 'undefined') return;
     const z = mapa.getZoom();
-    if (z < 14.8) { if (oV || oK || oS.length || oD.length) { oV = null; oK = null; oS = []; oD = []; odlSig = ''; } return; }
+    if (z < 14.8) { if (oV || oK || oS.length || oD.length) { oV = null; oK = null; oS = []; oD = []; odlSig = ''; svitSig = ''; } return; }
     const b = mapa.getBounds();
     const pw = (b.getEast() - b.getWest()) * 0.25, ph = (b.getNorth() - b.getSouth()) * 0.25;
     const w = b.getWest() - pw, e = b.getEast() + pw, s = b.getSouth() - ph, n = b.getNorth() + ph;
@@ -2131,14 +2140,15 @@ const AnimaceNadMapou = (() => {
     const sig = [evV ? evV.verze : -1, evP ? evP.verze : -1, evE ? evE.verze : -1, ex, w.toFixed(4), s.toFixed(4), e.toFixed(4), n.toFixed(4)].join('|');
     if (sig === odlSig) return;
     odlSig = sig;
+    svitSig = '';
     const c = mapa.getCenter();
     const kx = 111320 * Math.cos(c.lat * Math.PI / 180), ky = 110574;
     oRef = { lon: c.lng, lat: c.lat, kx, ky };
     const NZ = 32768;
     const lonT = (fx) => fx / NZ * 360 - 180;
     const latT = (fy) => Math.atan(Math.sinh(Math.PI * (1 - 2 * fy / NZ))) * 180 / Math.PI;
-    // voda
-    const vx = [], vy = [], vz = [];
+    // voda (klíč místa = dlaždice + pořadí → pevná ploška i po přestavbě)
+    const vx = [], vy = [], vz = [], vk1 = [], vk2 = [];
     if (evV) {
       for (const t of evV.dlazdice) {
         const tw = lonT(t.x), te = lonT(t.x + 1), tn = latT(t.y), ts = latT(t.y + 1);
@@ -2148,37 +2158,38 @@ const AnimaceNadMapou = (() => {
           const lon = lonT(t.x + d[i]), lat = latT(t.y + d[i + 1]);
           if (lon < w || lon > e || lat < s || lat > n) continue;
           vx.push((lon - c.lng) * kx); vy.push((lat - c.lat) * ky); vz.push(d[i + 2] * ex);
+          vk1.push(t.x * 7919 + t.y); vk2.push(i / 3);
         }
       }
     }
-    let krokV = Math.max(1, Math.ceil(vx.length / ODL_VODA_MAX));
+    const krokV = Math.max(1, Math.ceil(vx.length / ODL_VODA_MAX));
     const nV = Math.ceil(vx.length / krokV);
-    oV = nV ? { x: new Float32Array(nV), y: new Float32Array(nV), z: new Float32Array(nV), n: nV } : null;
-    for (let i = 0, j = 0; i < vx.length && j < nV; i += krokV, j++) { oV.x[j] = vx[i]; oV.y[j] = vy[i]; oV.z[j] = vz[i]; }
-    // kov: horní trubky kovových plotů, zábradlí, svodidla (válce podél úseku)
-    const kx_ = [], ky_ = [], kz_ = [], kwx = [], kwy = [];
+    oV = nV ? { x: new Float32Array(nV), y: new Float32Array(nV), z: new Float32Array(nV), kx: new Int32Array(nV), ky: new Int32Array(nV),
+                nx: new Float32Array(nV), ny: new Float32Array(nV), nz: new Float32Array(nV), n: nV } : null;
+    for (let i = 0, j = 0; i < vx.length && j < nV; i += krokV, j++) {
+      oV.x[j] = vx[i]; oV.y[j] = vy[i]; oV.z[j] = vz[i]; oV.kx[j] = vk1[i]; oV.ky[j] = vk2[i];
+    }
+    ploskyVln();
+    // kov: horní trubky kovových plotů, zábradlí, svodidla (válce podél úseku, konce úseku)
+    const K = [];
     if (evP) {
       for (const t of evP.dlazdice) {
         const tw = lonT(t.x), te = lonT(t.x + 1), tn = latT(t.y), ts = latT(t.y + 1);
         if (te < w || tw > e || tn < s || ts > n) continue;
         const d = t.d;
-        for (let i = 0; i + 7 < d.length; i += 8) {
+        for (let i = 0; i + 7 < d.length && K.length < ODL_KOV_MAX; i += 8) {
           const hK = ODL_TYP_VYSKA[d[i + 7]];
           if (!hK) continue;
-          const fx = (d[i] + d[i + 3]) / 2, fy = (d[i + 1] + d[i + 4]) / 2;
-          const lon = lonT(t.x + fx), lat = latT(t.y + fy);
-          if (lon < w || lon > e || lat < s || lat > n) continue;
-          let dE = d[i + 3] - d[i], dN = -(d[i + 4] - d[i + 1]);
-          const dl = Math.hypot(dE, dN) || 1;
-          kx_.push((lon - c.lng) * kx); ky_.push((lat - c.lat) * ky); kz_.push(((d[i + 2] + d[i + 5]) / 2) * ex + hK);
-          kwx.push(dE / dl); kwy.push(dN / dl);
-          if (kx_.length >= ODL_KOV_MAX) break;
+          const lonA = lonT(t.x + d[i]), latA = latT(t.y + d[i + 1]), lonB = lonT(t.x + d[i + 3]), latB = latT(t.y + d[i + 4]);
+          const lonM = (lonA + lonB) / 2, latM = (latA + latB) / 2;
+          if (lonM < w || lonM > e || latM < s || latM > n) continue;
+          K.push({ klic: 'k' + t.x + '/' + t.y + '/' + i,
+                   ax: (lonA - c.lng) * kx, ay: (latA - c.lat) * ky, az: d[i + 2] * ex + hK,
+                   bx: (lonB - c.lng) * kx, by: (latB - c.lat) * ky, bz: d[i + 5] * ex + hK });
         }
-        if (kx_.length >= ODL_KOV_MAX) break;
       }
     }
-    oK = kx_.length ? { x: Float32Array.from(kx_), y: Float32Array.from(ky_), z: Float32Array.from(kz_),
-                        wx: Float32Array.from(kwx), wy: Float32Array.from(kwy), n: kx_.length } : null;
+    oK = K.length ? K : null;
     // stožáry (příhradové VVN/ZVN a lanovky) a dráty (VN a výš)
     oS = []; oD = [];
     if (evE && evE.draty) {
@@ -2189,21 +2200,26 @@ const AnimaceNadMapou = (() => {
         if (mx < w || mx > e || my < s || my > n) continue;
         if (t >= 1) {
           const dE = (D[i + 2] - D[i]) * kx, dN = (D[i + 3] - D[i + 1]) * ky, dl = Math.hypot(dE, dN) || 1;
-          oD.push({ a: D[i], b: D[i + 1], c: D[i + 2], d: D[i + 3], ha: D[i + 4], hb: D[i + 5], t, wx: dE / dl, wy: dN / dl, L: dl,
-                    X: (mx - c.lng) * kx, Y: (my - c.lat) * ky });
+          const ix = Math.round(mx * 1e5), iy = Math.round(my * 1e5);
+          oD.push({ klic: 'd' + ix + ',' + iy, a: D[i], b: D[i + 1], c: D[i + 2], d: D[i + 3], ha: D[i + 4], hb: D[i + 5], t, L: dl,
+                    ax: (D[i] - c.lng) * kx, ay: (D[i + 1] - c.lat) * ky, bx: (D[i + 2] - c.lng) * kx, by: (D[i + 3] - c.lat) * ky,
+                    vod: Math.floor(h32(ix, iy, 21) * 64) });
         }
         if (t >= 2) {
           for (const [lon, lat, h] of [[D[i], D[i + 1], D[i + 4]], [D[i + 2], D[i + 3], D[i + 5]]]) {
-            const k = Math.round(lon * 1e5) + ',' + Math.round(lat * 1e5);
+            const ix = Math.round(lon * 1e5), iy = Math.round(lat * 1e5), k = ix + ',' + iy;
             if (vid.has(k)) continue;
             vid.add(k);
-            oS.push({ lon, lat, h, t });
+            // tři pevné plošky příhradové konstrukce na různých konzolách
+            const plosky = [0, 1, 2].map((f) => {
+              const az = 2 * Math.PI * h32(ix, iy, 31 + f), el = (h32(ix, iy, 41 + f) - 0.3) * 1.2;
+              return [Math.cos(el) * Math.sin(az), Math.cos(el) * Math.cos(az), Math.sin(el), h32(ix, iy, 51 + f)];
+            });
+            oS.push({ klic: 's' + k, lon, lat, h, t, X: (lon - c.lng) * kx, Y: (lat - c.lat) * ky, plosky });
           }
         }
       }
     }
-    oVahySig = '';
-    odlSestaveno = performance.now();
   }
   function kameraOdl() {
     try {
@@ -2211,64 +2227,121 @@ const AnimaceNadMapou = (() => {
       return [(cl.lng - oRef.lon) * oRef.kx, (cl.lat - oRef.lat) * oRef.ky, tr.getCameraAltitude()];
     } catch (e) { return null; }
   }
-  /// váhy míst (zrcadlový odraz ke kameře) – po změně kamery nejvýš jednou za 150 ms
-  function vahyOdlesku(L, t) {
+  const polovicni = (S, K, x, y, z, out) => {                     // H = normalize(S + V), V = k bodu → kamera
+    let vx = K[0] - x, vy = K[1] - y, vz = K[2] - z;
+    const vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
+    let hx = S[0] + vx / vl, hy = S[1] + vy / vl, hz = S[2] + vz / vl;
+    const hl = Math.sqrt(hx * hx + hy * hy + hz * hz) || 1;
+    out[0] = hx / hl; out[1] = hy / hl; out[2] = hz / hl;
+    return out;
+  };
+  const Htmp = [0, 0, 0], Htmp2 = [0, 0, 0];
+  /// které odlesky svítí – po změně kamery, slunce nebo větru (ne každý snímek); výsledek do `svit` (cíl jasu)
+  function sigKamery(L) {
     const c = mapa.getCenter();
-    const sig = c.lng.toFixed(6) + ',' + c.lat.toFixed(6) + ',' + mapa.getZoom().toFixed(3) + ',' + mapa.getBearing().toFixed(1) + ','
+    return c.lng.toFixed(6) + ',' + c.lat.toFixed(6) + ',' + mapa.getZoom().toFixed(3) + ',' + mapa.getBearing().toFixed(1) + ','
       + mapa.getPitch().toFixed(1) + ',' + L.S.map((v) => v.toFixed(3)).join(',') + ',' + odlSig;
-    if (sig === oVahySig || t - oVahyMs < 150) return;
-    oVahySig = sig; oVahyMs = t;
+  }
+  function prepoctiSvit(L, t) {
+    const sig = sigKamery(L);
+    if (sig === svitSig || t - svitMs < 120) return;
+    if (oV && Math.abs(vitrKmh() - oVitr) > 3) ploskyVln();
+    svitSig = sig; svitMs = t;
     const K = kameraOdl();
     if (!K) return;
-    const S = L.S;
-    const vit = (typeof Pocasi !== 'undefined' && Pocasi.vitr) ? Pocasi.vitr().kmh || 0 : 8;
-    const p = 25 + 400 * Math.exp(-vit / 5);                    // drsnost hladiny: klid ostrý odraz, vítr třpyt
-    const AMB = 0.006;
+    const S = L.S, kx = oRef.kx, ky = oRef.ky;
+    const rozsviceno = new Set();
+    const zapal = (klic, cil, data) => {
+      rozsviceno.add(klic);
+      let o = svit.get(klic);
+      if (!o) { o = Object.assign({ a: 0 }, data); svit.set(klic, o); }
+      o.cil = cil;
+    };
+    // voda: ploška zrcadlí slunce do kamery (ostrý odraz, exponent ~1600 ≈ 2°)
     if (oV) {
-      if (!oVahyV || oVahyV.length !== oV.n) oVahyV = new Float32Array(oV.n);
-      let sum = 0;
+      const kand = [];
       for (let i = 0; i < oV.n; i++) {
-        let vx = K[0] - oV.x[i], vy = K[1] - oV.y[i], vz = K[2] - oV.z[i];
-        const vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
-        const hx = S[0] + vx / vl, hy = S[1] + vy / vl, hz = S[2] + vz / vl;
-        const hl = Math.sqrt(hx * hx + hy * hy + hz * hz) || 1;
-        const d = hz / hl;
-        const w = AMB + (d > 0.8 ? Math.pow(d, p) : 0);
-        sum += w;
-        oVahyV[i] = sum;
+        polovicni(S, K, oV.x[i], oV.y[i], oV.z[i], Htmp);
+        const d = Htmp[0] * oV.nx[i] + Htmp[1] * oV.ny[i] + Htmp[2] * oV.nz[i];
+        if (d < 0.996) continue;
+        const I = Math.pow(d, 1600);
+        if (I > 0.03) kand.push(i, I);
       }
-      oSumaV = sum;
-    } else { oVahyV = null; oSumaV = 0; }
-    if (oK && L.kov) {
-      if (!oVahyK || oVahyK.length !== oK.n) oVahyK = new Float32Array(oK.n);
-      let sum = 0;
-      for (let i = 0; i < oK.n; i++) {
-        let vx = K[0] - oK.x[i], vy = K[1] - oK.y[i], vz = K[2] - oK.z[i];
-        const vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
-        const hx = S[0] + vx / vl, hy = S[1] + vy / vl, hz = S[2] + vz / vl;
-        const hl = Math.sqrt(hx * hx + hy * hy + hz * hz) || 1;
-        const hw = (hx * oK.wx[i] + hy * oK.wy[i]) / hl;          // válec: lesk, kde je H kolmé na osu
-        const w = 0.01 + Math.pow(Math.max(0, 1 - hw * hw), 30);
-        sum += w;
-        oVahyK[i] = sum;
+      const idx = [];
+      for (let j = 0; j < kand.length; j += 2) idx.push(j);
+      if (idx.length > ODL_SVIT_VODA) idx.sort((p, q) => kand[q + 1] - kand[p + 1]).length = ODL_SVIT_VODA;
+      for (const j of idx) {
+        const i = kand[j];
+        const kl = 'v' + oV.kx[i] + '/' + oV.ky[i];
+        zapal(kl, Math.min(1, 0.35 + kand[j + 1]), {
+          druh: 'voda', lon: oRef.lon + oV.x[i] / kx, lat: oRef.lat + oV.y[i] / ky, alt: oV.z[i],
+          velM: 0.9 + 1.7 * h32(oV.kx[i], oV.ky[i], 13), faze: 6.2832 * h32(oV.kx[i], oV.ky[i], 14),
+          omega: 6.2832 / (2.5 + 3 * h32(oV.kx[i], oV.ky[i], 15)) });
       }
-      oSumaK = sum;
-    } else { oVahyK = null; oSumaK = 0; }
-    // dráty: místo lesku na rozpětí (kde H ⟂ osa) – u středu rozpětí
-    for (const q of oD) {
-      let vx = K[0] - q.X, vy = K[1] - q.Y, vz = K[2] - 300;
-      const vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
-      const hx = S[0] + vx / vl, hy = S[1] + vy / vl, hz = S[2] + vz / vl;
-      const hl = Math.sqrt(hx * hx + hy * hy + hz * hz) || 1;
-      const hw = (hx * q.wx + hy * q.wy) / hl;
-      q.vaha = 0.02 + Math.pow(Math.max(0, 1 - hw * hw), 20);
     }
-  }
-  function vyberVahou(pole, suma) {                               // binární hledání v kumulativních vahách
-    const r = Math.random() * suma;
-    let lo = 0, hi = pole.length - 1;
-    while (lo < hi) { const mid = (lo + hi) >> 1; if (pole[mid] < r) lo = mid + 1; else hi = mid; }
-    return lo;
+    if (L.kov) {
+      // trubky a svodidla: přesné místo lesku na úseku, kde je H kolmé na osu (znaménko H·w se mezi konci otočí)
+      if (oK) {
+        const kand = [];
+        for (const q of oK) {
+          const wx = q.bx - q.ax, wy = q.by - q.ay, wl = Math.hypot(wx, wy) || 1;
+          const ux = wx / wl, uy = wy / wl;
+          polovicni(S, K, q.ax, q.ay, q.az, Htmp); polovicni(S, K, q.bx, q.by, q.bz, Htmp2);
+          const hA = Htmp[0] * ux + Htmp[1] * uy, hB = Htmp2[0] * ux + Htmp2[1] * uy;
+          let u = -1, I = 0;
+          if (hA * hB <= 0 && hA !== hB) { u = hA / (hA - hB); I = 1; }
+          else { const m = Math.min(Math.abs(hA), Math.abs(hB)); if (m < 0.1) { u = Math.abs(hA) < Math.abs(hB) ? 0 : 1; I = 1 - m / 0.1; } }
+          if (u < 0 || I < 0.15) continue;
+          kand.push({ q, u, I });
+        }
+        if (kand.length > ODL_SVIT_KOV) kand.sort((p, r) => r.I - p.I).length = ODL_SVIT_KOV;
+        for (const { q, u, I } of kand) {
+          const x = q.ax + (q.bx - q.ax) * u, y = q.ay + (q.by - q.ay) * u, z = q.az + (q.bz - q.az) * u;
+          const o = svit.get(q.klic);
+          zapal(q.klic, Math.min(1, 0.3 + 0.7 * I), { druh: 'kov', velM: 0.45 + 0.25 * Math.random() });
+          const oo = o || svit.get(q.klic);
+          oo.lon = oRef.lon + x / kx; oo.lat = oRef.lat + y / ky; oo.alt = z;     // místo lesku klouže s kamerou
+        }
+      }
+      // dráty: místo lesku na rozpětí (H ⟂ vodič), jeden pevný vodič na rozpětí
+      for (const q of oD) {
+        const V = window.__vedeniVodice && window.__vedeniVodice[q.t];
+        if (!V) continue;
+        const wx = q.bx - q.ax, wy = q.by - q.ay, wl = Math.hypot(wx, wy) || 1;
+        const ux = wx / wl, uy = wy / wl;
+        const zOdh = K[2] - 250;                                    // výška drátu jen pro směr (stačí odhad)
+        polovicni(S, K, q.ax, q.ay, zOdh, Htmp); polovicni(S, K, q.bx, q.by, zOdh, Htmp2);
+        const hA = Htmp[0] * ux + Htmp[1] * uy, hB = Htmp2[0] * ux + Htmp2[1] * uy;
+        if (!(hA * hB <= 0 && hA !== hB)) continue;
+        const u = Math.max(0.06, Math.min(0.94, hA / (hA - hB)));
+        const eA = vyskaPodpery(q.a, q.b), eB = vyskaPodpery(q.c, q.d);
+        if (eA === null || eB === null) continue;
+        const [hr, lr] = V[q.vod % V.length];
+        const h = q.ha + (q.hb - q.ha) * u, sag = 4 * PRUVES_DRATU[q.t] * q.L * u * (1 - u);
+        const o = svit.get(q.klic);
+        zapal(q.klic, 0.8, { druh: 'drat', velM: 0.55 });
+        const oo = o || svit.get(q.klic);
+        oo.lon = q.a + (q.c - q.a) * u; oo.lat = q.b + (q.d - q.b) * u; oo.el = eA + (eB - eA) * u;
+        oo.bx = lr * h; oo.by = hr * h - sag;
+      }
+      // příhradové stožáry: pevné plošky na konzolách
+      for (const q of oS) {
+        const V = window.__vedeniVodice && window.__vedeniVodice[q.t];
+        if (!V) continue;
+        polovicni(S, K, q.X, q.Y, K[2] - 250, Htmp);
+        for (let f = 0; f < 3; f++) {
+          const p = q.plosky[f];
+          const d = Math.abs(Htmp[0] * p[0] + Htmp[1] * p[1] + Htmp[2] * p[2]);
+          const I = Math.pow(d, 60);
+          if (I < 0.2) continue;
+          const el = vyskaPodpery(q.lon, q.lat);
+          if (el === null) continue;
+          const [hr, lr] = V[Math.floor(p[3] * V.length)];
+          zapal(q.klic + ':' + f, Math.min(1, I), { druh: 'stozar', lon: q.lon, lat: q.lat, el, bx: lr * q.h, by: hr * q.h, velM: 0.6 });
+        }
+      }
+    }
+    for (const [k, o] of svit) if (!rozsviceno.has(k)) o.cil = 0;          // zhasnout (plynule)
   }
   function vyskaPodpery(lon, lat) {
     const k = Math.round(lon * 1e5) + ',' + Math.round(lat * 1e5);
@@ -2281,87 +2354,35 @@ const AnimaceNadMapou = (() => {
     }
     return h;
   }
-  const poisson = (lam) => { let n = Math.floor(lam); if (Math.random() < lam - n) n++; return n; };
-  function krokOdlesky(t, dt, st) {
-    for (let i = odl.length - 1; i >= 0; i--) {                  // dožité zpět do bazénu (výměna s posledním)
-      if ((t - odl[i].t0) / 1000 <= odl[i].zivot) continue;
-      odlVolne.push(odl[i]); odl[i] = odl[odl.length - 1]; odl.pop();
-    }
-    if (necinny() || !oRef || mapa.getZoom() < 14.8) return;
+  /// náběh nebo dohasnutí ještě běží (doběhne i v nečinnosti)
+  function svitPrechod() {
+    for (const o of svit.values()) if (Math.abs(o.cil - o.a) > 0.01) return true;
+    return false;
+  }
+  /// odlesky na vodě jemně dýchají (jen při činnosti – v nečinnosti zůstanou stát nakreslené)
+  function svitDycha() {
+    for (const o of svit.values()) if (o.druh === 'voda' && o.a > 0.02) return true;
+    return false;
+  }
+  /// je potřeba přepočet? (odlesky možné a kamera/slunce jiné než při posledním výpočtu)
+  function odleskyPotrebuji(st) {
+    if (mapa.getZoom() < 14.8 || !(oV || oK || oS.length || oD.length)) return false;
     const L = svetloOdlesku(st);
-    if (!L || L.sila <= 0.02) return;
-    vahyOdlesku(L, t);
-    const kx = oRef.kx, ky = oRef.ky;
-    // voda
-    if (oV && oVahyV && oSumaV > 0) {
-      const k = Math.min(14, poisson(L.sila * oSumaV * 0.9 * dt));
-      for (let j = 0; j < k; j++) {
-        const i = vyberVahou(oVahyV, oSumaV);
-        const w = oVahyV[i] - (i ? oVahyV[i - 1] : 0);
-        const jx = (Math.random() - 0.5) * 5, jy = (Math.random() - 0.5) * 5;
-        novyOdl(t, 'voda', oRef.lon + (oV.x[i] + jx) / kx, oRef.lat + (oV.y[i] + jy) / ky, oV.z[i], 0, 0, 0,
-                0.22 + 0.36 * Math.random(), L.sila * Math.min(1, 0.3 + 1.1 * (w - 0.006)),
-                (1.1 + 1.9 * Math.random()) * (Math.random() < 0.12 ? 2.2 : 1), L.sprite, false);
-      }
-    }
-    // široký měkký LESK v nejsilnějším pásu odrazu (třpytivá stezka ke slunci má zářivý podklad), nejvýš 10 naráz
-    if (oV && oVahyV && oSumaV > 0 && Math.random() < 0.35) {
-      let leskuN = 0;
-      for (const o of odl) if (o.lesk) leskuN++;
-      if (leskuN < 10) {
-        const i = vyberVahou(oVahyV, oSumaV);
-        const w = oVahyV[i] - (i ? oVahyV[i - 1] : 0);
-        if (w > 0.35) {
-          novyOdl(t, 'voda', oRef.lon + oV.x[i] / kx, oRef.lat + oV.y[i] / ky, oV.z[i], 0, 0, 0,
-                  1.4 + 1.3 * Math.random(), L.sila * 0.15 * Math.min(1, w), 12 + 16 * Math.random(), L.sprite, true);
-        }
-      }
-    }
-    if (!L.kov) return;
-    // ploty, zábradlí, svodidla
-    if (oK && oVahyK && oSumaK > 0) {
-      const k = Math.min(4, poisson(L.sila * oSumaK * 0.35 * dt));
-      for (let j = 0; j < k; j++) {
-        const i = vyberVahou(oVahyK, oSumaK);
-        const w = oVahyK[i] - (i ? oVahyK[i - 1] : 0);
-        const u = (Math.random() - 0.5) * 6;                      // posun podél trubky (úsek ≤ 8 m)
-        novyOdl(t, 'kov', oRef.lon + (oK.x[i] + oK.wx[i] * u) / kx, oRef.lat + (oK.y[i] + oK.wy[i] * u) / ky, oK.z[i], 0, 0, 0,
-                0.3 + 0.4 * Math.random(), L.sila * Math.min(1, 0.25 + w), 0.35 + 0.35 * Math.random(), L.sprite, false);
-      }
-    }
-    // příhradové stožáry: konzoly a izolátory (billboard kresbičky)
-    if (oS.length && Math.random() < L.sila * oS.length * 0.08 * dt) {
-      const q = oS[Math.floor(Math.random() * oS.length)];
-      const V = window.__vedeniVodice && window.__vedeniVodice[q.t];
-      const el = vyskaPodpery(q.lon, q.lat);
-      if (V && el !== null) {
-        const [hr, lr] = V[Math.floor(Math.random() * V.length)];
-        novyOdl(t, 'stozar', q.lon, q.lat, 0, el, lr * q.h, hr * q.h, 0.3 + 0.4 * Math.random(),
-                L.sila * (0.5 + 0.5 * Math.random()), 0.5 + 0.5 * Math.random(), L.sprite, false);
-      }
-    }
-    // dráty: lesk tam, kde je poloviční vektor kolmý na vodič
-    if (oD.length) {
-      let suma = 0;
-      for (const q of oD) suma += q.vaha || 0;
-      const k = Math.min(2, poisson(L.sila * suma * 0.4 * dt));
-      for (let j = 0; j < k; j++) {
-        let r = Math.random() * suma, q = oD[0];
-        for (const x of oD) { r -= x.vaha || 0; if (r <= 0) { q = x; break; } }
-        const V = window.__vedeniVodice && window.__vedeniVodice[q.t];
-        const eA = vyskaPodpery(q.a, q.b), eB = vyskaPodpery(q.c, q.d);
-        if (!V || eA === null || eB === null) continue;
-        const [hr, lr] = V[Math.floor(Math.random() * V.length)];
-        const u = 0.12 + 0.76 * Math.random();
-        const sag = 4 * PRUVES_DRATU[q.t] * q.L * u * (1 - u);
-        const h = q.ha + (q.hb - q.ha) * u;
-        novyOdl(t, 'drat', q.a + (q.c - q.a) * u, q.b + (q.d - q.b) * u, 0, eA + (eB - eA) * u, lr * h, hr * h - sag,
-                0.25 + 0.35 * Math.random(), L.sila * Math.min(1, 0.3 + (q.vaha || 0)), 0.4 + 0.3 * Math.random(), L.sprite, false);
-      }
+    return !!L && sigKamery(L) !== svitSig;
+  }
+  function krokOdlesky(t, dt, st) {
+    const L = svetloOdlesku(st);
+    if (L) svitSvetlo = L;                                      // poslední platné světlo (dohasínání)
+    if (!L || L.sila <= 0.02 || !oRef || mapa.getZoom() < 14.8) { for (const o of svit.values()) o.cil = 0; }
+    else prepoctiSvit(L, t);
+    for (const [k, o] of svit) {
+      const tau = o.druh === 'voda' ? TAU_VODA : TAU_KOV;
+      o.a += (o.cil - o.a) * (1 - Math.exp(-dt / tau));
+      if (o.cil === 0 && o.a < 0.01) svit.delete(k);
     }
   }
   function kresliOdlesky(t) {
-    if (!odl.length) { vycistiO(); return 0; }
+    if (!svit.size || !svitSvetlo) { vycistiO(); return 0; }
     if (!zajistiPlatnoO()) return 0;
     velikostO();
     ctxO.setTransform(1, 0, 0, 1, 0, 0);
@@ -2373,11 +2394,11 @@ const AnimaceNadMapou = (() => {
     const zakl = 0.19686 * Math.pow(2, z - 13.25);
     const zplost = Math.max(0.3, Math.min(0.75, Math.cos(mapa.getPitch() * Math.PI / 180) + 0.1));
     const W = platnoO.width / hustota, H = platnoO.height / hustota;
+    const sprite = spriteOdl[svitSvetlo.sprite] || spriteOdl.slunce;
+    const ts = t / 1000;
     let n = 0;
-    for (const o of odl) {
-      const a = (t - o.t0) / 1000 / o.zivot;
-      if (a < 0 || a > 1) continue;
-      const obal = Math.sin(Math.PI * a);
+    for (const o of svit.values()) {
+      if (o.a < 0.01 || o.lon === undefined) continue;
       let x, y, pxM;
       const kxo = 111320 * Math.cos(o.lat * Math.PI / 180);
       if (o.druh === 'voda' || o.druh === 'kov') {
@@ -2392,11 +2413,11 @@ const AnimaceNadMapou = (() => {
         x = p0.x + o.bx * pxM; y = p0.y - o.by * pxM;
       }
       if (x < -30 || x > W + 30 || y < -30 || y > H + 30) continue;
-      // viditelné i zdálky: nejméně ~3 px záře (jiskra odlesku je jas, ne plocha), nahoře strop
-      const vel = o.lesk ? Math.min(90, o.velM * pxM) : Math.max(o.druh === 'voda' ? 2.6 : 2.2, Math.min(22, o.velM * pxM));
-      const sw = vel * 3, sh = o.druh === 'voda' ? sw * zplost * (o.lesk ? 0.8 : 1) : sw;
-      ctxO.globalAlpha = Math.min(1, o.sila * obal * 1.3);
-      ctxO.drawImage(spriteOdl[o.sprite] || spriteOdl.slunce, x - sw / 2, y - sh / 2, sw, sh);
+      const vel = Math.max(o.druh === 'voda' ? 2.6 : 2.2, Math.min(22, o.velM * pxM));
+      const sw = vel * 3, sh = o.druh === 'voda' ? sw * zplost : sw;
+      const dych = o.druh === 'voda' ? 0.72 + 0.28 * Math.sin(o.omega * ts + o.faze) : 1;
+      ctxO.globalAlpha = Math.min(1, svitSvetlo.sila * o.a * dych * 1.3);
+      ctxO.drawImage(sprite, x - sw / 2, y - sh / 2, sw, sh);
       n++;
     }
     ctxO.globalCompositeOperation = 'source-over';
@@ -2540,7 +2561,7 @@ const AnimaceNadMapou = (() => {
     kresliVodu(t, st);
     kresliKour(t, st);
     vrtuleNaPlatne = kresliVrtule(t, st, ton);
-    kresliOdlesky(t);
+    kresliOdlesky(t);                                        // stojí-li vše, plátno odlesků zůstane
     sovNaPlatne = kresliSedici(t, st, ton);
     kresliVitr(t);
     kresliPtaky(t, st, ton);
@@ -2649,8 +2670,7 @@ const AnimaceNadMapou = (() => {
                      krouzku: krouzky.length, lety: lety.map((l) => l.druh + '×' + l.ptaci.length).join(','),
                      sov: sedici.length, sovKresleno: sovNaPlatne, necinny: necinny(), ton: tonNoci(performance.now()),
                      vrtuli: vrtule.length, vrtuliKresleno: vrtuleNaPlatne,
-                     odlesku: odl.length, odlMista: { voda: oV ? oV.n : 0, kov: oK ? oK.n : 0, stozary: oS.length, draty: oD.length },
-                     odlSumy: [+oSumaV.toFixed(2), +oSumaK.toFixed(2)],
+                     odlesku: svit.size, odlMista: { voda: oV ? oV.n : 0, kov: oK ? oK.length : 0, stozary: oS.length, draty: oD.length },
                      uroven, cenaMs: +cenaEma.toFixed(2),
                      hustota, platno: platno ? platno.width + 'x' + platno.height : null }),
       // předskok 0–1 = kolik z cesty k cíli má let už za sebou (0,5 ≈ uprostřed obrazovky)

@@ -3188,6 +3188,17 @@ function zajistiVrstvuStinu() {
 /// mapy obarvená na barvu stínu (alfa × 0,85: listí propouští světlo). Keš
 /// podle id obrázku; při chybějícím spritu se kreslí záložní elipsa.
 const stinySiluety = new Map();
+/// ⭐ engine 359 (T 24. 9.: „Stíny sloupů občas působí matoucím dojmem“): u sloupů VN/NN a podpěr lanovek jen DŘÍK
+/// (bez konzoly a izolátorů – v protisvětle stín s příčníkem na konci vypadal jako převrácený sloup), stíny podpěr
+/// vedení světlejší (tenká konstrukce propouští světlo). `osa`/`pul` v px plátna @2.
+const SILUETA_UPRAVA = {
+  'deko-sloup-nn': { osa: 22, pul: 3.5, alfa: 0.5 },
+  'deko-stozar-vn': { osa: 32, pul: 3.8, alfa: 0.5 },
+  'deko-stozar-lan': { osa: 32, pul: 4, alfa: 0.5 },
+  'deko-stozar-vvn': { alfa: 0.55 },
+  'deko-stozar-zvn': { alfa: 0.55 },
+  'deko-vetrnik': { alfa: 0.6 },
+};
 function siluetaSpritu(ik) {
   if (stinySiluety.has(ik)) return stinySiluety.get(ik);
   let vysl = null;
@@ -3203,12 +3214,23 @@ function siluetaSpritu(ik) {
       const cx = c.getContext('2d');
       const out = cx.createImageData(w, h);
       const src = data.data, dst = out.data;
+      const up = SILUETA_UPRAVA[ik] || null;
+      const nas = up ? up.alfa : 0.85;
+      let dno = 0;
       for (let i = 0; i < src.length; i += 4) {
         const a = src[i + 3];
-        if (a > 24) { dst[i] = 42; dst[i + 1] = 29; dst[i + 2] = 16; dst[i + 3] = Math.min(255, a * 0.85); }
+        if (a <= 24) continue;
+        const p = i >> 2, xx = p % w;
+        if (up && up.osa !== undefined && Math.abs(xx + 0.5 - up.osa) > up.pul) continue;
+        dst[i] = 42; dst[i + 1] = 29; dst[i + 2] = 16; dst[i + 3] = Math.min(255, a * nas);
+        const yy = (p / w) | 0;
+        if (yy + 1 > dno) dno = yy + 1;
       }
       cx.putImageData(out, 0, 0);
-      vysl = { platno: c, w, h, px: dst };   // engine 334: px → worker kresby
+      // ⭐ engine 359 (T 24. 9.: „Občas to působí jako když objekty levitují“): `dno` = spodní neprůhledný řádek
+      // siluety – stín se kotví JÍM (ne spodkem plátna s průhledným okrajem): dřív se stín kreslil posunutý o okraj ×
+      // 1/tan(výška slunce) a v protisvětle se od paty keře či stromu odtrhl
+      vysl = { platno: c, w, h, px: dst, dno: dno || h };   // engine 334: px → worker kresby
     }
   } catch (e) { vysl = null; }
   if (vysl) stinySiluety.set(ik, vysl);   // bez spritu zkusit příště znovu

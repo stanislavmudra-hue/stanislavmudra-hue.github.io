@@ -131,8 +131,8 @@
           const A = (Hm / sil.h) * pxNaMetr;                  // px plátna na px spritu (do stran)
           const B = Math.min(A * tg, (zad.maxStinPx || Infinity) / sil.h);   // … na px výšky (engine 357: strop)
           ctx.setTransform(S * A * pX, S * A * pY, -S * B * dX, -S * B * dY,
-                           S * (tbx - (sil.w / 2) * A * pX + sil.h * B * dX),
-                           S * (tby - (sil.w / 2) * A * pY + sil.h * B * dY));
+                           S * (tbx - (sil.w / 2) * A * pX + (sil.dno || sil.h) * B * dX),   // engine 359: pata = dno
+                           S * (tby - (sil.w / 2) * A * pY + (sil.dno || sil.h) * B * dY));
           ctx.drawImage(sil.platno, 0, 0);
           ctx.setTransform(S, 0, 0, S, 0, 0);
           continue;
