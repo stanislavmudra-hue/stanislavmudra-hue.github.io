@@ -3670,10 +3670,10 @@ const Dekorace = (() => {
       if (bylo || wPloty.has(k)) wPlotyVerze++;
     }
     // ⭐ engine 358: místa odlesků na vodě (animace.js) – [fx, fy, e]… z dlaždic z15
-    if (z === 15 && 'voda' in ev) {
+    if (z === 15 && 'voda' in ev) {                  // engine 359: + zem (sníh, jinovatka) a cesty (led)
       const bylo = wVoda.has(k);
       wVoda.delete(k);
-      if (ev.voda && ev.voda.length) wVoda.set(k, { x, y, d: ev.voda });
+      if (ev.voda || ev.zem || ev.cesty) wVoda.set(k, { x, y, d: ev.voda || null, zem: ev.zem || null, cesty: ev.cesty || null });
       while (wVoda.size > 64) wVoda.delete(wVoda.keys().next().value);
       if (bylo || wVoda.has(k)) wVodaVerze++;
     }

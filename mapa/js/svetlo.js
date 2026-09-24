@@ -49,7 +49,8 @@ const Svetlo = (() => {
     // ubírají jen 40 %
     // engine 211 („chtělo by to zvýraznit stíny"): slunce 0,50 → 0,65 (plné
     // od výšky 20°), měsíc 0,22 → 0,35, mraky ubírají 30 % (bylo 40)
-    let celk = zdroj === 'slunce' ? 0.65 * Math.min(1, Math.max(0, el) / 20)
+    // engine 359: slunce 0,65 → 0,78 (strop krytí 0,62 v main.js – kontrastnější stíny i ve středním zoomu)
+    let celk = zdroj === 'slunce' ? 0.78 * Math.min(1, Math.max(0, el) / 20)
       : (zdroj === 'mesic' ? 0.5 * (st.mesicOsvit || 0.5) : 0);    // engine 264: lehké stíny od měsíce; 346: 0,42 → 0,5 (nad nočním překryvem)
     celk *= 1 - 0.3 * Math.min(1, st.oblacnost || 0);
     // engine 215: jeden geometrický stín (main.js) – síla a směr světla

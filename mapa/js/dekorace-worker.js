@@ -510,7 +510,7 @@ function postavIndex(z, zdrojove, defs, sirkaPxNaM) {
         for (const cast of geom) {
           for (let i = 2; i < cast.length; i += 2) {
             const ax = tx(cast[i - 2]), ay = ty(cast[i - 1]), bx = tx(cast[i]), by = ty(cast[i + 1]);
-            useky.push({ ax, ay, bx, by, w,
+            useky.push({ ax, ay, bx, by, w, c: f.vl.class,           // engine 359: třída (led jen na zpevněných)
                          x0: Math.min(ax, bx) - w, x1: Math.max(ax, bx) + w,
                          y0: Math.min(ay, by) - w, y1: Math.max(ay, by) + w });
           }
@@ -1164,16 +1164,17 @@ async function generuj(z, x, y) {
     }
   }
   // ⭐ engine 358 (T 24. 9.: „Ty ploty jsem myslel, že budou ve 3D.“): PLOTY A ZDI DTM ve 3D – úseky s výškou terénu
-  let ploty = null, voda = null;
+  let ploty = null, voda = null, zem = null, cesty = null;
   if (z === 15 && N.ploty) {
     let dem13 = null;
     try { dem13 = await demDlazdice(13, x >> 2, y >> 2); } catch (e) { dem13 = null; }
     if (zdrojove.dtmbody && zdrojove.dtmbody.vrstvy && zdrojove.dtmbody.vrstvy.cary) ploty = plotyZDlazdice(zdrojove.dtmbody, x, y, dem13);
-    voda = vodaZDlazdice(idx, x, y, dem13);          // engine 358: místa odlesků na hladinách
-    if (ploty || voda) {                              // jedna mřížka mlhy pro obojí
+    voda = mistaVPlochach(idx, x, y, dem13, ODL_VODA_IDS, 7, 6000, 71);   // engine 358: místa odlesků na hladinách
+    zem = mistaVPlochach(idx, x, y, dem13, ODL_ZEM_IDS, 12, 5000, 81);     // engine 359: sníh, jinovatka
+    cesty = mistaNaCestach(idx, x, y, dem13, 9, 3000);                     // engine 359: led na silnicích
+    if (ploty || voda || zem || cesty) {              // jedna mřížka mlhy pro vše
       const obj = new Uint8Array(PLOT_BUNEK * PLOT_BUNEK);
-      if (ploty) ploty.obj = obj;
-      if (voda) voda.obj = obj;
+      for (const Q of [ploty, voda, zem, cesty]) if (Q) Q.obj = obj;
     }
   }
   const pocetK = K.lon.length;
@@ -1188,7 +1189,7 @@ async function generuj(z, x, y) {
     uh: Float32Array.from(K.uh), mpx: mNaPx,           // engine 354: komíny (natočení, m na jednotku)
     draty: K.draty || null, vrtule: K.vrtule || null,  // engine 357: rozpětí vodičů a vrtule větrníků
     ploty,                                             // engine 358: 3D ploty (úseky + buňky mlhy)
-    voda,                                              // engine 358: místa odlesků na vodě
+    voda, zem, cesty,                                  // engine 358–359: místa odlesků (voda, sníh/jinovatka, led)
   };
   // výška terénu → velikost (vyskovyFaktor: 1 ve 400 m, ±1 % na 30 m)
   await doplnVysku(vysl, demP);
@@ -1229,27 +1230,32 @@ function vyskaDem13(dem, x, y, fx, fy) {
 // a záře)? Odlesky.“ → „Ty odlesky taky uděláš jako stíny? Aby se nemusely dopočítávat.“): MÍSTA ODLESKŮ NA VODĚ se
 // spočítají JEDNOU S DLAŽDICÍ z15 (jako stíny): mřížka ~7 m s rozptylem, jen uvnitř ploch `voda` indexu dlaždice,
 // výška z DEM z13. Animace (animace.js) z nich jen vybírá, kde se podle slunce a kamery zablýskne. [fx, fy, e]…
-const ODL_KROK_M = 7, ODL_MAX = 6000;
-function vodaZDlazdice(idx, x, y, dem) {
+// engine 359 (T: „Tyto odlesky budou v zimě i na sněhu a případně na silnici a podobně, pokud bude −°C“): stejná místa
+// i na OTEVŘENÉ ZEMI (pole, louky, zahrady, sady, parky – sníh a jinovatka, ~12 m) a na ZPEVNĚNÝCH SILNICÍCH (led, ~9 m,
+// v šířce vozovky). Počasí worker nezná – místa jsou vždy, animace je použije jen za sněhu/mrazu.
+const ODL_VODA_IDS = new Set(['voda']);
+const ODL_ZEM_IDS = new Set(['pole', 'louka', 'zahrada', 'sad', 'park', 'zelen']);
+const ODL_CESTY_TRIDY = new Set(['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'minor', 'service', 'busway']);
+function mistaVPlochach(idx, x, y, dem, ids, krokM, max, sul) {
   const pol = new Set();
-  for (const b of idx.mrizka) if (b) for (const p of b) if (p.id === 'voda') pol.add(p);
-  for (const p of idx.velke) if (p.id === 'voda') pol.add(p);
+  for (const b of idx.mrizka) if (b) for (const p of b) if (ids.has(p.id)) pol.add(p);
+  for (const p of idx.velke) if (ids.has(p.id)) pol.add(p);
   if (!pol.size || !dem) return null;
   const nZ = 32768;
   const latS = latZ((y + 0.5) / nZ);
   const mNaPxT = 40075016.686 * Math.cos(latS * Math.PI / 180) / (nZ * EXT);
-  const krok = ODL_KROK_M / mNaPxT;
+  const krok = krokM / mNaPxT;
   const G = Math.ceil(EXT / krok);
   const vzate = new Uint8Array(G * G);
   const bod = [], bunka = [];
   for (const p of pol) {
     const gx0 = Math.max(0, Math.floor(p.x0 / krok)), gx1 = Math.min(G - 1, Math.floor(p.x1 / krok));
     const gy0 = Math.max(0, Math.floor(p.y0 / krok)), gy1 = Math.min(G - 1, Math.floor(p.y1 / krok));
-    for (let gy = gy0; gy <= gy1 && bod.length < ODL_MAX * 3; gy++) {
+    for (let gy = gy0; gy <= gy1 && bod.length < max * 3; gy++) {
       for (let gx = gx0; gx <= gx1; gx++) {
         const i = gy * G + gx;
         if (vzate[i]) continue;
-        const px = (gx + 0.5 + (hash(gx, gy, 71) - 0.5) * 0.8) * krok, py = (gy + 0.5 + (hash(gx, gy, 72) - 0.5) * 0.8) * krok;
+        const px = (gx + 0.5 + (hash(gx, gy, sul) - 0.5) * 0.8) * krok, py = (gy + 0.5 + (hash(gx, gy, sul + 1) - 0.5) * 0.8) * krok;
         if (px < 0 || px >= EXT || py < 0 || py >= EXT || !vBodu(p, px, py)) continue;
         vzate[i] = 1;
         const fx = px / EXT, fy = py / EXT, e = vyskaDem13(dem, x, y, fx, fy);
@@ -1257,6 +1263,37 @@ function vodaZDlazdice(idx, x, y, dem) {
         bod.push(fx, fy, e);
         bunka.push(Math.min(PLOT_BUNEK - 1, Math.floor(fy * PLOT_BUNEK)) * PLOT_BUNEK + Math.min(PLOT_BUNEK - 1, Math.floor(fx * PLOT_BUNEK)));
       }
+    }
+  }
+  if (!bod.length) return null;
+  return { bod: Float32Array.from(bod), bunka: Uint16Array.from(bunka), n: bunka.length, obj: null, x, y };
+}
+function mistaNaCestach(idx, x, y, dem, krokM, max) {
+  if (!dem || !idx.mrizkaCar) return null;
+  const useky = new Set();
+  for (const b of idx.mrizkaCar) if (b) for (const u of b) if (ODL_CESTY_TRIDY.has(u.c)) useky.add(u);
+  if (!useky.size) return null;
+  const nZ = 32768;
+  const latS = latZ((y + 0.5) / nZ);
+  const mNaPxT = 40075016.686 * Math.cos(latS * Math.PI / 180) / (nZ * EXT);
+  const krok = krokM / mNaPxT;
+  const bod = [], bunka = [];
+  let j = 0;
+  for (const u of useky) {
+    const dx = u.bx - u.ax, dy = u.by - u.ay, L = Math.hypot(dx, dy);
+    if (L < 1) continue;
+    const nx = -dy / L, ny = dx / L;
+    const kroku = Math.max(1, Math.round(L / krok));
+    for (let k = 0; k < kroku && bod.length < max * 3; k++) {
+      j++;
+      const t = (k + 0.5 + (hash(j, kroku, 91) - 0.5) * 0.6) / kroku;
+      const bok = (hash(j, kroku, 92) - 0.5) * 0.8 * u.w;
+      const px = u.ax + dx * t + nx * bok, py = u.ay + dy * t + ny * bok;
+      if (px < 0 || px >= EXT || py < 0 || py >= EXT) continue;
+      const fx = px / EXT, fy = py / EXT, e = vyskaDem13(dem, x, y, fx, fy);
+      if (!isFinite(e)) continue;
+      bod.push(fx, fy, e);
+      bunka.push(Math.min(PLOT_BUNEK - 1, Math.floor(fy * PLOT_BUNEK)) * PLOT_BUNEK + Math.min(PLOT_BUNEK - 1, Math.floor(fx * PLOT_BUNEK)));
     }
   }
   if (!bod.length) return null;
@@ -1368,11 +1405,11 @@ async function doplnVysku(v, demP) {
 /// maska mlhy pro body, které ji ještě nemají jistou (1 = objeveno, navěky)
 const objevenoKes = new Set();      // 'lon,lat' objevených bodů (mlha jen roste)
 async function doplnMlhuPlotu(v) {
-  const P = v.ploty || v.voda;                        // obojí sdílí mřížku mlhy (obj, x, y)
+  const P = v.ploty || v.voda || v.zem || v.cesty;   // všechny sdílí mřížku mlhy (obj, x, y)
   if (!P || !P.obj) return false;
   const G = PLOT_BUNEK, nZ = 32768;
   const pouzite = new Set();
-  for (const Q of [v.ploty, v.voda]) {
+  for (const Q of [v.ploty, v.voda, v.zem, v.cesty]) {
     if (!Q) continue;
     for (let i = 0; i < Q.n; i++) if (!P.obj[Q.bunka[i]]) pouzite.add(Q.bunka[i]);
   }
@@ -1404,7 +1441,7 @@ async function doplnMlhuPlotu(v) {
   return zmena;
 }
 async function doplnMlhu(v) {
-  if (v.ploty || v.voda) await doplnMlhuPlotu(v);   // engine 358
+  if (v.ploty || v.voda || v.zem || v.cesty) await doplnMlhuPlotu(v);   // engine 358–359
   if (!v.n) { v.maska = new Uint8Array(0); return false; }
   if (!v.maska) v.maska = new Uint8Array(v.n);
   const kde = [];
@@ -1551,13 +1588,14 @@ function vystupDlazdice(v) {
     }
   }
   // engine 358: místa odlesků na vodě v odkrytých buňkách [fx, fy, e]… (null = bez vody; z15)
-  let voda = null;
-  if (v.voda && v.voda.obj) {
-    const Q = v.voda, o = [];
+  const odkryta = (Q) => {
+    if (!Q || !Q.obj) return null;
+    const o = [];
     for (let i = 0; i < Q.n; i++) if (Q.obj[Q.bunka[i]]) o.push(Q.bod[3 * i], Q.bod[3 * i + 1], Q.bod[3 * i + 2]);
-    if (o.length) voda = Float32Array.from(o);
-  }
-  return { data: zakodujMVT(body, kominy), ev: { sv, stromy: S, prvku: body.length, draty, vrtule, ploty, voda } };
+    return o.length ? Float32Array.from(o) : null;
+  };
+  const voda = odkryta(v.voda), zem = odkryta(v.zem), cesty = odkryta(v.cesty);    // engine 359: + sníh/jinovatka, led
+  return { data: zakodujMVT(body, kominy), ev: { sv, stromy: S, prvku: body.length, draty, vrtule, ploty, voda, zem, cesty } };
 }
 
 /// engine 357: vygenerovaná dlaždice dekorací (keš, jinak vyrobit + maska mlhy) – pro stíny stromů

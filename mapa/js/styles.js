@@ -907,10 +907,13 @@ function stylHerni(ctx) {
       // sama kotva světla nic viditelněho neudělá — zůstává jako
       // správnější výchozí stav pro chvíli, kdy se otáčení povolí.
       // Vidět je až ② síla a ③ druhá vrstva níž.
+      // ⭐ engine 359 (T 24. 9.: „Některé přechody působí zvláštně“ – snímek z17 se svahem): nad z16 DEM z13 (12 m) jen
+      // roztahuje, takže svah odvrácený od světla byl na z17 jedna velká tmavě tyrkysová plocha a terasy v ní světlé
+      // pruhy. Od z17 slabší (0,62, z18 0,5) – reliéf zůstává čitelný, stíny stromů a domů vyniknou; z11–z16 beze změny.
       { id: 'stinovani', type: 'hillshade', source: 'stinovani',
         paint: { 'hillshade-exaggeration':
                    ['interpolate', ['linear'], ['zoom'],
-                    7, 0.85, 11, 1.0, 14, 1.0, 16, 0.9],
+                    7, 0.85, 11, 1.0, 14, 1.0, 16, 0.9, 17, 0.62, 18, 0.5],
                  'hillshade-illumination-anchor': 'map',
                  'hillshade-illumination-direction': 335,
                  // engine 213: tmavší údolí, světlejší hřebeny – víc plastiky
@@ -930,11 +933,13 @@ function stylHerni(ctx) {
       // drátě ani do paměti — jen druhý průchod shaderu nad týmž DEM.
       // v1.599.1: protisvětlo jen do z14 — stojí ~2 ms/snímek (změřeno
       // 2. 9.) a při větším přiblížení už ho ulice a domy přebijí
+      // ⭐ engine 359 (T 24. 9.: „Některé přechody působí zvláštně“): s maxzoom 14 a silou 0,45 až do z14 protisvětlo
+      // při přiblížení přes z14 zmizelo v jednom snímku a reliéf poskočil – teď síla dojede k nule už na z14
       { id: 'stinovani-protisvetlo', type: 'hillshade',
         source: 'stinovani', maxzoom: 14,
         paint: { 'hillshade-exaggeration':
                    ['interpolate', ['linear'], ['zoom'],
-                    7, 0.3, 11, 0.45, 14, 0.45, 16, 0.35],
+                    7, 0.3, 11, 0.45, 13.1, 0.45, 13.95, 0],
                  'hillshade-illumination-anchor': 'map',
                  'hillshade-illumination-direction': 155,
                  'hillshade-shadow-color': '#3A5C46',

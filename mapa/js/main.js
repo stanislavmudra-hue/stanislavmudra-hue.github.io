@@ -2671,7 +2671,8 @@ let stinyRozsah = null;          // { x0, y0, x1, y1, z } v Mercatoru 0..1
 const STINY_ROZ = 1024;          // delší strana plátna (px); engine 218: 2048 → 1024 (měkčí, levnější)
 let stinyPlatnoTmp = null;
 let stinyPlatnoMale = null;   // engine 333: zmenšené plátno pro levné rozmazání       // pomocné plátno – tvary ostře, výsledek přes blur
-const STINY_KRYTI_MAX = 0.5;   // engine 217: „malinko utlumit" (0,6 → 0,5)
+const STINY_KRYTI_MAX = 0.62;  // engine 217: „malinko utlumit“ (0,6 → 0,5); engine 359 (T: „stíny domů jsou vidět až
+                               // z velké blízkosti“ + „více plastické, kontrastní“): 0,5 → 0,62
 const STINY_MAX_PRSTENCU = 4000;
 // ⭐ engine 333 (výtka T 22. 9.: „stíny nabíhají až při větším přiblížení;
 // při posunu jsou vidět a po zastavení zmizí“): 3D domy herního stylu jsou

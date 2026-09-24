@@ -228,30 +228,44 @@
     const ex = sv.ex || 1;
     const px = new Uint8Array(Gm * Gm * 4);
     let veStinu = 0;
+    // ⭐ engine 359 (T 24. 9.: „Některé přechody působí zvláštně“): stín kopce byl ANO/NE po buňkách 12 m a výška
+    // z nejbližšího pixelu DEM – po roztažení na z17–18 (buňka = 30–60 px) hranaté kostky s rovnými okraji a světlé
+    // pruhy mezi nimi. Teď výška BILINEÁRNĚ (pixel i na poloze i, jako terén MapLibre) a stín MĚKKÝ: podle toho, o kolik
+    // terén paprsek převýší (±půl výšky paprsku na krok = hrana přes zhruba jednu buňku) → hladké obrysy i po zvětšení.
+    const vyska = (x, y) => {
+      const ix = x | 0, iy = y | 0;
+      if (x < 0 || y < 0 || ix + 1 >= S || iy + 1 >= V) return -10000;
+      const i = iy * S + ix, a = data[i], b = data[i + 1], c = data[i + S], d = data[i + S + 1];
+      if (a < -9000 || b < -9000 || c < -9000 || d < -9000) return -10000;
+      const tx = x - ix, ty = y - iy;
+      return (a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty;
+    };
+    const mez = Math.max(0.6, 0.5 * st0);
+    const ALFA_KOPCE = 165;                                // engine 359: 140 → 165 (kreslí se MAX, neskládá se se stromy)
     for (let gy = 0; gy < Gm; gy++) {
       const fy0 = cy0 + (gy + 0.5) * cdy;
       for (let gx = 0; gx < Gm; gx++) {
         const fx0 = cx0 + (gx + 0.5) * cdx;
-        let ix = fx0 | 0, iy = fy0 | 0;
-        if (ix < 0 || iy < 0 || ix >= S || iy >= V) continue;
-        const h0 = data[iy * S + ix];
+        const h0 = vyska(fx0, fy0);
         if (h0 < -9000) continue;
         let fx = fx0, fy = fy0, ray = h0 * ex + 0.8;
-        let stin = 0, sx = dpx0, sy = dpy0, st = st0;
+        let maxE = -1e9, sx = dpx0, sy = dpy0, st = st0;
         for (let k = 1; k <= KB + KD; k++) {
           if (k === KB + 1) { sx *= HR; sy *= HR; st *= HR; }
           fx += sx; fy += sy; ray += st;
-          ix = fx | 0; iy = fy | 0;
-          if (ix < 0 || iy < 0 || ix >= S || iy >= V) break;
-          const h = data[iy * S + ix];
+          const h = vyska(fx, fy);
           if (h < -9000) break;
-          if (h * ex > ray) { stin = 1; break; }
+          const e = h * ex - ray;
+          if (e > maxE) { maxE = e; if (maxE >= mez) break; }
         }
-        if (stin) {
-          const i = (gy * Gm + gx) * 4;
-          px[i] = 42; px[i + 1] = 29; px[i + 2] = 16; px[i + 3] = 140;   // alfa 0,55 (= dřív)
-          veStinu++;
-        }
+        if (maxE <= -mez) continue;
+        let s = maxE >= mez ? 1 : (maxE + mez) / (2 * mez);
+        s = s * s * (3 - 2 * s);
+        const a = Math.round(ALFA_KOPCE * s);
+        if (a < 3) continue;
+        const i = (gy * Gm + gx) * 4;
+        px[i] = 42; px[i + 1] = 29; px[i + 2] = 16; px[i + 3] = a;        // barva stálá (2D záloha bere RGBA nepremultipl.)
+        veStinu++;
       }
     }
     if (!veStinu) return null;
@@ -287,7 +301,10 @@
     const t0 = performance.now();
     const n = Math.pow(2, z);
     const T = { x0: x / n, y0: y / n, x1: (x + 1) / n, y1: (y + 1) / n };
-    const D = z >= 16 ? 256 : 512;
+    // ⭐ engine 359 (T 24. 9.: „jako by se ty stíny vykreslily až z blízkosti“): z16 a z17 měly jen 256 px (1,5 m/px na z16)
+    // – mezi z15,5 a z16,5 (dlaždice z16) se stín domu roztáhl 3–6× a rozplizl do šedé skvrny, ostřejší byl až od z17.
+    // Teď 512 px až do z17 (zvětšení všude 1,4–2,8×), z18+ zůstává 256 (stín je na obrazovce velký).
+    const D = z >= 18 ? 256 : 512;
     const tw = 1 / n;
     const latS = latZ((y + 0.5) / n);
     const mNaMerc = 40075016.686 * Math.cos(latS * Math.PI / 180);

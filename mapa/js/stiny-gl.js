@@ -383,15 +383,6 @@ void main() { o = texture(uTex, vUV) * uK; }`;
       kryt.n = 0;
       kryt.tri(-4, -4, Wp + 4, -4, -4, Hp + 4);
       kryt.tri(Wp + 4, -4, Wp + 4, Hp + 4, -4, Hp + 4);
-      // 1) stíny kopců (maska G×G) pod vším
-      const t = zad.teren;
-      if (t && teren && teren.id === t.id) {
-        kvadr.n = 0;
-        kvadr.v(t.dx, t.dy, 0, 0); kvadr.v(t.dx + t.dw, t.dy, 1, 0); kvadr.v(t.dx, t.dy + t.dh, 0, 1);
-        kvadr.v(t.dx + t.dw, t.dy, 1, 0); kvadr.v(t.dx + t.dw, t.dy + t.dh, 1, 1); kvadr.v(t.dx, t.dy + t.dh, 0, 1);
-        nahraj(vboTex, kvadr);
-        texturou(teren.tex, 0, 6, M);
-      }
       // 2) domy (neprůhledně)
       stencilem(stin, M, C[0], C[1], C[2], 1);
       // 3) stromy: siluety po texturách, elipsy a kmeny naráz (alfa 0,8)
@@ -400,6 +391,18 @@ void main() { o = texture(uTex, vUV) * uK; }`;
         for (const r of rozsahyTex) texturou(r.tex, r.od, r.n, M);
       }
       barvou(stromy, M, C[0] * 0.8, C[1] * 0.8, C[2] * 0.8, 0.8);
+      // 3b) stíny kopců (maska G×G) – ⭐ engine 359: až PO domech a stromech a přes MAX, ne „source-over“: ve stínu kopce
+      // už přímé slunce není, takže stín stromu ani domu v něm nesmí ztmavnout dvakrát (dřív 1 − 0,45 · 0,2 = 0,91)
+      const t = zad.teren;
+      if (t && teren && teren.id === t.id) {
+        kvadr.n = 0;
+        kvadr.v(t.dx, t.dy, 0, 0); kvadr.v(t.dx + t.dw, t.dy, 1, 0); kvadr.v(t.dx, t.dy + t.dh, 0, 1);
+        kvadr.v(t.dx + t.dw, t.dy, 1, 0); kvadr.v(t.dx + t.dw, t.dy + t.dh, 1, 1); kvadr.v(t.dx, t.dy + t.dh, 0, 1);
+        nahraj(vboTex, kvadr);
+        gl.blendEquation(gl.MAX);
+        texturou(teren.tex, 0, 6, M);
+        gl.blendEquation(gl.FUNC_ADD);
+      }
       // 4) půdorysy ven (stín neleží na střeše)
       gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
       stencilem(pudorys, M, 0, 0, 0, 1);
