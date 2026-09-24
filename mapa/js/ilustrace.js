@@ -1550,10 +1550,15 @@ const Ilustrace = (() => {
   /// Featury jednoho umístěného místa. Klíče: o (obrázek), s0 (stužka
   /// pod obrázkem), s1 (samotná stužka), z (odznak +N). properties.pd =
   /// diskriminátor do podpisu (věci neměnné za čistého zoomu).
+  // engine 374 (T: „název měst, vesnic a jiných míst … všechno vypadá podobně a při oddálené mapě se to tluče“):
+  // kresba MĚSTA nese podpis se stejným jménem jako popisek sídla (Teplice tučně + pod kresbou Teplice znovu) –
+  // podpis u kategorie `mesta` proto odpadá, jméno nese popisek obce. Výjimka: kresby, které sídlo nejsou.
+  const MESTA_S_PODPISEM = new Set(['Komorní hůrka']);
   function vyrobFeatury(pl, z, sw, clenove) {
     const it = pl.it;
     const p = it.p;
     const vysledek = {};
+    const podpis = !(p.d === 'mesta' && !MESTA_S_PODPISEM.has(p.n));
     // engine 353: barva podpisu – navštívená kresba je barevná (stav bez `#bw`/`#sil`)
     const navstivena = !String(it.stav || '').includes('#');
     if (pl.obrazek) {
@@ -1597,7 +1602,7 @@ const Ilustrace = (() => {
         },
         geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
       };
-      if (it.nb) {
+      if (it.nb && podpis) {
         // KOTVA DLE FÁZE: v růstové fázi zeměpisně na spodní hraně
         // území (drží za zoomu samospádem); v klamp fázích (58 px /
         // strop) je kreslená velikost KONSTANTNÍ, takže drží konstantní
@@ -1634,7 +1639,7 @@ const Ilustrace = (() => {
           geometry: { type: 'Point', coordinates: geometrie },
         };
       }
-    } else {
+    } else if (podpis) {
       vysledek.s1 = {
         type: 'Feature', id: idFeatury(it.slug, 's1'),
         properties: {

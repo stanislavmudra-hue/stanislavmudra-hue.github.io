@@ -10842,7 +10842,10 @@ const SHLUK_SEZNAM_MAX = 8;
 // z ≥ 13,7 stahoval spolu s názvy pod kresby a obrázky → „erby nevidím
 // vůbec". Erby se už NIKDY nestahují – drží se navrchu; přesouvají se jen
 // názvy sídel.
-const NAZVY_NAHORU = ['ink-mesta', 'ink-mestyse', 'ink-vesnice', 'ink-obce'];
+// ⛔⛔ engine 374: POŘADÍ = PŘEDNOST. MapLibre rozmisťuje od HORNÍ vrstvy dolů, a `moveLayer(id)` bez cíle dává
+// vrstvu úplně nahoru → poslední v seznamu skončí nejvýš a vyhrává kolize. Dřív tu byla města první, takže
+// navrchu byly samoty a vesnice vytlačovaly města. Teď samoty první (dole), města poslední (nahoře).
+const NAZVY_NAHORU = ['ink-obce', 'ink-vesnice', 'ink-mestyse', 'ink-mesta'];
 // engine 204: 13,3/13,7 → 15,3/15,7 – uživatel se na vesnici dívá při
 // z14–16 a název byl pořád pod obrázky
 const NAZVY_Z_NAHORU = 15.3;
@@ -11105,7 +11108,13 @@ function poradiNazvuObci() {
       poradi = mapa.style._order || poradi;
     }
     // názvy: nezávisle na erbech (web bez erbů je dřív nikdy nepřesunul)
-    const iMista = poradi.indexOf('okolnik-mista-ikona');
+    // ⛔⛔ engine 374: „nahoře“ = nad VŠEMI vrstvami kreseb a obrázků míst. Dřív se porovnávalo jen
+    // s `okolnik-mista-ikona`; kresby Kroniky (`ink-ilustrace*`) ležely nad názvy, a protože názvy byly nad
+    // obrázky míst, stav se tvářil jako „nahoře“ a nic se nepřesunulo → otazník kresby zakryl „Teplice“.
+    let iMista = -1;
+    for (const id of ['okolnik-mista-ikona', 'ink-ilustrace-stuhy', 'ink-ilustrace', 'ink-ilustrace-odznaky']) {
+      iMista = Math.max(iMista, poradi.indexOf(id));
+    }
     if (iMista < 0) return;
     let iRef = -1;
     for (const id of NAZVY_NAHORU) {

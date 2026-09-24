@@ -408,32 +408,35 @@ function stylTuristicka(ctx) {
       // samota na všech úrovních.
       // Řez a barva nesou druh, `minzoom` (ne filtr se `['zoom']`) řídí
       // hustotu a reaguje okamžitě při oddálení.
-      { id: 'mesta', type: 'symbol', source: 'omt', 'source-layer': 'place',
-        filter: ['==', ['get', 'class'], 'city'],
-        layout: { 'text-field': NAZEV, 'text-font': FONT_B, 'text-size': 16,
-                  'text-transform': 'uppercase', 'text-letter-spacing': 0.08 },
-        paint: { 'text-color': '#333029', 'text-halo-color': '#f4efe3',
+      // ⛔⛔ engine 374: MapLibre rozmisťuje od HORNÍ vrstvy – samoty dole, města nahoře (dřív obráceně)
+      { id: 'obce', type: 'symbol', source: 'omt', 'source-layer': 'place',
+        minzoom: 12 + POSUN_POPISKU,
+        filter: ['==', ['get', 'class'], 'hamlet'],
+        layout: { 'text-field': NAZEV, 'text-font': FONT, 'text-size': 10.5, 'symbol-sort-key': POVAHA_RANK },
+        paint: { 'text-color': '#6B665A', 'text-halo-color': '#f4efe3',
+                 'text-halo-width': 1.6 } },
+      { id: 'vesnice', type: 'symbol', source: 'omt', 'source-layer': 'place',
+        minzoom: 10 + POSUN_POPISKU,
+        filter: ['==', ['get', 'class'], 'village'],
+        // engine 279: 10,5 → 12,5 (větší názvy obcí i mimo hru)
+        layout: { 'text-field': NAZEV, 'text-font': FONT, 'text-size': 12.5, 'symbol-sort-key': POVAHA_RANK,
+                  'text-padding': ['interpolate', ['linear'], ['zoom'], 10, 10, 12, 6, 14, 2] },
+        paint: { 'text-color': '#4A463C', 'text-halo-color': '#f4efe3',
                  'text-halo-width': 1.6 } },
       { id: 'mestyse', type: 'symbol', source: 'omt', 'source-layer': 'place',
         filter: ['==', ['get', 'class'], 'town'],
         // ⭐ 12. 8.: town TUČNĚ 14 — třída `city` je v ČR jen pár velkoměst,
         // takže v běžném výřezu byla město/vesnice k nerozeznání (13 vs 10,5
         // týmž řezem). Tučné patro dělá hierarchii viditelnou všude.
-        layout: { 'text-field': NAZEV, 'text-font': FONT_B, 'text-size': 15 },
+        layout: { 'text-field': NAZEV, 'text-font': FONT_B, 'text-size': 15, 'symbol-sort-key': POVAHA_RANK },
         paint: { 'text-color': '#333029', 'text-halo-color': '#f4efe3',
                  'text-halo-width': 1.6 } },
-      { id: 'vesnice', type: 'symbol', source: 'omt', 'source-layer': 'place',
-        minzoom: 10 + POSUN_POPISKU,
-        filter: ['==', ['get', 'class'], 'village'],
-        // engine 279: 10,5 → 12,5 (větší názvy obcí i mimo hru)
-        layout: { 'text-field': NAZEV, 'text-font': FONT, 'text-size': 12.5 },
-        paint: { 'text-color': '#4A463C', 'text-halo-color': '#f4efe3',
-                 'text-halo-width': 1.6 } },
-      { id: 'obce', type: 'symbol', source: 'omt', 'source-layer': 'place',
-        minzoom: 12 + POSUN_POPISKU,
-        filter: ['==', ['get', 'class'], 'hamlet'],
-        layout: { 'text-field': NAZEV, 'text-font': FONT, 'text-size': 10.5 },
-        paint: { 'text-color': '#6B665A', 'text-halo-color': '#f4efe3',
+      { id: 'mesta', type: 'symbol', source: 'omt', 'source-layer': 'place',
+        filter: ['==', ['get', 'class'], 'city'],
+        layout: { 'text-field': NAZEV, 'text-font': FONT_B, 'text-size': 16,
+                  'text-transform': 'uppercase', 'text-letter-spacing': 0.08,
+                  'symbol-sort-key': POVAHA_RANK },
+        paint: { 'text-color': '#333029', 'text-halo-color': '#f4efe3',
                  'text-halo-width': 1.6 } },
     ],
   };
@@ -494,6 +497,8 @@ const obceLayout = (font, velikost, verzalky) => ({
   'text-transform': verzalky ? 'uppercase' : 'none',
   'text-letter-spacing': verzalky ? 0.08 : 0,
 });
+// engine 374: přednost uvnitř třídy podle `rank` dat (nižší = významnější: Praha 3, krajská města 7, městyse 11–13)
+const POVAHA_RANK = ['coalesce', ['get', 'rank'], 30];
 const obcePaint = (barva) => ({
   'text-color': barva, 'text-halo-color': KRONIKA.halo,
   'text-halo-width': 1.8,
@@ -1254,43 +1259,27 @@ function stylHerni(ctx) {
           'circle-stroke-color': '#FDF6E3', 'circle-stroke-width': 1.6 } },
       // ⭐⭐⭐ JMÉNA SÍDEL PO TŘÍDÁCH, KAŽDÁ VLASTNÍ VRSTVA S `minzoom`
       // (10. 8. 2026 — výtka „při oddalování zůstanou názvy vesniček
-      // z předchozí úrovně a chvíli trvá, než zmizí; vytváří to chvilkové
-      // přehlcení").
+      // z předchozí úrovně a chvíli trvá, než zmizí"). Prahy ve FILTRU
+      // (`['>=', ['zoom'], 10]`) počítá MapLibre podle zoomu DLAŽDICE, a staré
+      // jemnější dlaždice je při oddálení nesly ještě vteřinu; `minzoom` VRSTVY
+      // se porovnává s aktuálním zoomem mapy → reakce okamžitá.
       //
-      // PROČ SE TO DĚLO: prahy byly ve FILTRU (`['>=', ['zoom'], 10]`).
-      // Jenže `['zoom']` ve filtru vyhodnocuje MapLibre podle **zoomu
-      // dlaždice**, ne podle aktuálního zoomu mapy — a při oddalování se
-      // ještě chvíli kreslí staré, jemnější dlaždice, které si to
-      // rozhodnutí nesou s sebou. Jména proto zmizela až s příchodem
-      // hrubších dlaždic, tedy o vteřinu či dvě později.
-      //
-      // `minzoom` VRSTVY se naproti tomu porovnává s aktuálním zoomem
-      // mapy, takže reakce je okamžitá. Prahy zůstávají tytéž, co byly
-      // (vesnice 10, samoty 12) — mění se jen to, KDY se uplatní.
-      //
-      // ⚠️ Pořadí vrstev = pořadí rozmisťování symbolů: první vyhrává
-      // kolize. Města tedy musí být PRVNÍ, ať je nevytlačí vesnička.
-      // ⚠️ Pořadí = pořadí rozmisťování: první vyhrává kolize, proto
-      // města nahoře. `minzoom` (ne filtr se `['zoom']`) proto, aby při
-      // oddálení jména mizela OKAMŽITĚ — viz poznámka o zoomu dlaždice.
-      // engine 204 („název obce je malý"): písmo podle zoomu – po oddálení
-      // větší, v detailu menší (vesnice 10,5 → 13/11,5, osady 9 → 11/9,5)
-      { id: 'ink-mesta', type: 'symbol', source: 'omt', 'source-layer': 'place',
-        filter: ['==', ['get', 'class'], 'city'],
-        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 18, 16, 17], true),
-        paint: obcePaint(KRONIKA.inkTmava) },
-      { id: 'ink-mestyse', type: 'symbol', source: 'omt', 'source-layer': 'place',
-        filter: ['==', ['get', 'class'], 'town'],
-        // ⭐ 12. 8.: tučně 14 — viz poznámka u `mestyse` v turistické
-        // engine 279 („větší názvy obcí"): z11–13 o 1,5 px větší
-        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 16.5, 13, 16, 15, 14.5, 17, 15.5], false),
-        paint: obcePaint(KRONIKA.inkTmava) },
-      { id: 'ink-vesnice', type: 'symbol', source: 'omt', 'source-layer': 'place',
-        minzoom: 10 + POSUN_POPISKU,
-        filter: ['==', ['get', 'class'], 'village'],
-        // engine 279 („název obce nejde přečíst", z11–13): 13 → 14,5
-        layout: obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 11, 14.5, 13, 14, 15, 12.5, 17, 14, 19, 15.5], false),
-        paint: obcePaint(KRONIKA.ink) },
+      // ⭐⭐ engine 374 (T 24. 9.: „Mrkni na popis / název měst, vesnic a jiných
+      // míst. Všechno to vypadá podobně a při oddálené mapě se to tluče. Chtělo by
+      // to řád.“) – DVĚ PŘÍČINY:
+      // 1) ⛔⛔ PŘEDNOST BYLA OBRÁCENĚ. MapLibre rozmisťuje symboly od HORNÍ vrstvy
+      //    dolů (`_currentPlacementIndex--` v PauseablePlacement) – vyhrává vrstva
+      //    VÝŠ v zásobníku, ne první v seznamu. Pořadí města → městyse → vesnice →
+      //    samoty dávalo přednost samotám a vesnicím, města se rozmisťovala poslední.
+      //    Teď samoty DOLE, města NAHOŘE (i v `NAZVY_NAHORU`, main.js) a uvnitř
+      //    třídy rozhoduje `rank` dat (Praha 3, krajská města 7, městyse 11–13).
+      // 2) Hierarchie se ztratila: „větší názvy obcí“ (engine 204, 279) udělaly
+      //    vesnice TUČNÉ a po oddálení větší (14,5 px) než v detailu – skoro jako
+      //    městyse (16,5). Teď každá třída jiným znakem: města VERZÁLKY tučně,
+      //    městyse tučně, vesnice obyčejným řezem, samoty obyčejně, menší a světlejší;
+      //    skoky velikosti ~1,2× na každém zoomu, po oddálení menší, ne větší.
+      //    Vesnice a samoty mají na přehledu víc místa kolem sebe (`text-padding`)
+      //    – ukáže se jich méně, zato bez tlačenice.
       { id: 'ink-obce', type: 'symbol', source: 'omt', 'source-layer': 'place',
         // engine 228/229: od z15,5 kreslí názvy hamletů `okolnik-sidla-popisky`
         // (main.js) u domů – uzel OSM/RÚIAN bývá na kraji sídla; maxzoom 15,5
@@ -1298,9 +1287,28 @@ function stylHerni(ctx) {
         // querySourceFeatures nic nevrátil, zůstanou popisky OSM)
         minzoom: 12 + POSUN_POPISKU,
         filter: ['==', ['get', 'class'], 'hamlet'],
-        // engine 228: od z15 zase roste – při chůzi (z17+) bylo 9,5 px nečitelné
-        layout: obceLayout(FONT, ['interpolate', ['linear'], ['zoom'], 11, 12, 13, 11.5, 15, 10.5, 17, 12.5, 19, 14], false),
+        layout: Object.assign(obceLayout(FONT, ['interpolate', ['linear'], ['zoom'], 12, 11, 14, 11.5, 17, 12.5, 19, 14], false),
+                              { 'symbol-sort-key': POVAHA_RANK,
+                                'text-padding': ['interpolate', ['linear'], ['zoom'], 12, 8, 14, 3] }),
         paint: obcePaint(KRONIKA.inkSvetla) },
+      { id: 'ink-vesnice', type: 'symbol', source: 'omt', 'source-layer': 'place',
+        minzoom: 10 + POSUN_POPISKU,
+        filter: ['==', ['get', 'class'], 'village'],
+        layout: Object.assign(obceLayout(FONT, ['interpolate', ['linear'], ['zoom'], 10, 12.5, 12, 13.5, 15, 13, 17, 14, 19, 15.5], false),
+                              { 'symbol-sort-key': POVAHA_RANK,
+                                'text-padding': ['interpolate', ['linear'], ['zoom'], 10, 10, 12, 6, 14, 2] }),
+        paint: obcePaint(KRONIKA.ink) },
+      { id: 'ink-mestyse', type: 'symbol', source: 'omt', 'source-layer': 'place',
+        filter: ['==', ['get', 'class'], 'town'],
+        layout: Object.assign(obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 8, 13, 10, 14.5, 12, 16, 15, 15, 17, 16], false),
+                              { 'symbol-sort-key': POVAHA_RANK,
+                                'text-padding': ['interpolate', ['linear'], ['zoom'], 8, 6, 12, 3] }),
+        paint: obcePaint(KRONIKA.inkTmava) },
+      { id: 'ink-mesta', type: 'symbol', source: 'omt', 'source-layer': 'place',
+        filter: ['==', ['get', 'class'], 'city'],
+        layout: Object.assign(obceLayout(FONT_B, ['interpolate', ['linear'], ['zoom'], 7, 14, 10, 17, 12, 19, 16, 18], true),
+                              { 'symbol-sort-key': POVAHA_RANK }),
+        paint: Object.assign(obcePaint(KRONIKA.inkTmava), { 'text-halo-width': 2.1 }) },
       // engine 218 (ZABAGED v4, „stačilo by to na mapě pojmenovat"): náměstí
       // jako popisek (2 645) a brody na tocích (5 089) – bez míst v DB a filtrů
       { id: 'zab-namesti', type: 'symbol', source: 'krajina', 'source-layer': 'body',
