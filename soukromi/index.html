@@ -48,7 +48,7 @@
 
 <main class="uzky">
 <h1>Zásady ochrany soukromí – aplikace Okolník</h1>
-<p style="color:#55605d;margin-top:-2px">Platné od 5. 9. 2026</p>
+<p style="color:#55605d;margin-top:-2px">Platné od 25. 9. 2026</p>
 <p>Aplikace <strong>Okolník – vyhledávač míst v okolí</strong> (dále „aplikace") respektuje
 vaše soukromí. Tento dokument popisuje, jaké údaje aplikace zpracovává, proč
 a jaká máte práva. Zpracování probíhá v souladu s nařízením (EU) 2016/679
@@ -297,6 +297,11 @@ instalace, počty použití funkcí a počty pádů. Zapisují se pouze jako sou
 počítadla („dnes +1"); neodesílá se žádné jméno, identifikátor, poloha ani
 obsah, takže je nelze přiřadit ke konkrétní osobě. Sběr lze kdykoli vypnout
 v nastavení aplikace (přepínač „Anonymní statistiky používání").</p>
+<p>Stejně souhrnně aplikace počítá návštěvnost <strong>stránek ověřených podniků</strong>:
+otevření stránky a klepnutí na Trasa, Volat, Web a Sdílet se připočtou k měsíčnímu počítadlu
+podniku („září +1“, z jednoho telefonu nejvýš jednou denně). Neodesílá se žádný identifikátor
+zařízení ani účtu a majitel podniku vidí jen měsíční součty. I tyto počty vypíná přepínač
+„Anonymní statistiky používání“.</p>
 <h2>Hlášení chyb a pádů</h2>
 <p>Když aplikace spadne nebo přestane reagovat, vytvoří o tom technický záznam
 a při dalším spuštění ho odešle vývojáři, aby šlo chybu opravit. Takové
@@ -341,6 +346,10 @@ Google – správce nemá přístup k údajům o platební kartě a od Googlu ob
 pouze informaci, zda je nákup aktivní, a token nákupu (ten se u žádosti
 o zvýraznění podniku nebo o vlastní místo uloží do Firestore, dokud správce
 žádost nevyřídí; slouží ke kontrole platby a případnému vrácení peněz).</p>
+<p>Objednávka zvýraznění podniku se váže na <strong>přihlášený účet</strong>: k žádosti se uloží
+identifikátor účtu a číslo objednávky Google Play, aby majitel mohl na okolnik.cz/firmy spravovat
+stránku podniku. Co na stránku podniku zadá (otevírací doba, kontakty, texty, fotky), je veřejné
+a vidí to všichni uživatelé; texty a fotky před zveřejněním schvaluje správce.</p>
 <p>Máte-li přihlášený účet, aplikace k němu zapíše příznak, zda je Premium
 aktivní (bez částek a údajů o platbě). Podle něj web okolnik.cz skryje
 reklamy a povolí zakládání soutěží v Dobyvateli.</p>
