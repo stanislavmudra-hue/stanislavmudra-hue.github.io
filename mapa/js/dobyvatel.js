@@ -33,6 +33,9 @@ window.Dobyvatel = (function () {
   let bojeTikac = null;     // vteřinové překreslení časomíry
   let vlastniPole = [];     // vlastní místa soutěže (Etapa 4)
   let vlastniDosah = 150;   // poloměr kruhového území (m)
+  // engine 375: VÝBĚR MÍST soutěže – bitmapa (bit i = standardní vlajka i
+  // hraje, nejnižší bit bajtu první; stejně jako web a rozhodčí), null = hrají všechna
+  let maskaBity = null;
   // převod z webu (28. 8.): turistické trasy + informativní místa
   let trasyZap = false;     // přepínač z aplikace (Dobyvatel.trasy)
   let trasyFC = null;       // {r: FC, b: FC, g: FC, y: FC}
@@ -59,7 +62,7 @@ window.Dobyvatel = (function () {
           features: vl.vlajky.map((v, i) => ({
             type: 'Feature', id: i,
             properties: { i: i, n: v.n, h: v.h, k: v.k,
-                          t: t0[i] || '0' },
+                          t: t0[i] || '0', a: 1 },
             geometry: { type: 'Point', coordinates: [v.lon, v.lat] },
           })),
         };
@@ -67,13 +70,15 @@ window.Dobyvatel = (function () {
         for (const f of obl.features) {
           f.properties.t = t0[f.id] || '0';
           f.properties.nad = '0';
+          f.properties.a = 1;
         }
         data = { body: body, oblasti: obl, tymy: tj.tymy,
-                 nStd: vl.vlajky.length,
+                 nStd: vl.vlajky.length, vl: vl.vlajky,
                  // okres vlajky + [klíč, kraj] okresů — pro dobyté
                  // nadoblasti (vlastnost `nad`)
                  okresVlajky: vl.vlajky.map((v) => v.o),
                  okresy: vl.okresy };
+        if (maskaBity) zapracujMasku(false);
         if (vlastniPole.length) zapracujVlastni();
         return data;
       })();
@@ -105,11 +110,11 @@ window.Dobyvatel = (function () {
       const idx = n + j;
       data.body.features.push({ type: 'Feature', id: idx,
         properties: { i: idx, n: v.n, h: v.h || 2, k: 'vlastni',
-                      p: 4, t: t0[idx] || '0' },
+                      p: 4, t: t0[idx] || '0', a: 1 },
         geometry: { type: 'Point',
                     coordinates: [v.lon, v.lat] } });
       data.oblasti.features.push({ type: 'Feature', id: idx,
-        properties: { t: t0[idx] || '0', nad: '0' },
+        properties: { t: t0[idx] || '0', nad: '0', a: 1 },
         geometry: kruhVlastniho(v.lat, v.lon, vlastniDosah) });
     });
     try {
@@ -126,6 +131,52 @@ window.Dobyvatel = (function () {
     vlastniPole = Array.isArray(pole) ? pole : [];
     vlastniDosah = Number(dosahM) || 150;
     zapracujVlastni();
+  }
+
+  /// Hraje standardní vlajka `i` v aktivní soutěži? (vlastní místa vždy)
+  function hraje(i) {
+    if (!maskaBity || !data || i >= data.nStd) return true;
+    return !!((maskaBity[i >> 3] || 0) & (1 << (i & 7)));
+  }
+
+  /// Promítne výběr míst do vlastnosti `a` (1 hraje / 0 ne) a přepočítá pásma
+  /// odkrývání jen z hrajících míst (web totéž dělá v spocitejPasma).
+  function zapracujMasku(obnovZdroje) {
+    if (!data) return;
+    const n = data.nStd;
+    const fb = data.body.features;
+    const fo = data.oblasti.features;
+    for (let i = 0; i < n; i++) {
+      const a = hraje(i) ? 1 : 0;
+      if (fb[i]) fb[i].properties.a = a;
+      if (fo[i]) fo[i].properties.a = a;
+    }
+    spocitejPasmaDob(data.vl, fb, maskaBity ? hraje : null);
+    if (obnovZdroje === false) return;
+    try {
+      const b = mapa.getSource('dob-body');
+      const o = mapa.getSource('dob-oblasti');
+      if (b) b.setData(data.body);
+      if (o) o.setData(data.oblasti);
+    } catch (e) { /* vrstvy ještě nestojí */ }
+  }
+
+  /// Aplikace posílá `maska` z dokumentu soutěže (base64; '' = hrají všechna).
+  let maskaPosledni = null;
+  function maska(b64) {
+    const klic = typeof b64 === 'string' ? b64 : '';
+    if (klic === maskaPosledni) return;       // beze změny se na zdroje nesahá
+    maskaPosledni = klic;
+    let bity = null;
+    if (klic.length) {
+      try {
+        const bin = atob(klic);
+        bity = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bity[i] = bin.charCodeAt(i);
+      } catch (e) { bity = null; }
+    }
+    maskaBity = bity;
+    zapracujMasku(true);
   }
 
   function barvaTymu() {
@@ -213,9 +264,12 @@ window.Dobyvatel = (function () {
 
   /// Pásma odkrývání PO DRUZÍCH se stropem kvót (tatáž logika jako
   /// web — jinak by zdaleka byly „samé vrcholy").
-  function spocitejPasmaDob(vl, feats) {
+  function spocitejPasmaDob(vl, feats, hrajeFn) {
     const dle = {};
-    vl.forEach((v, i) => { (dle[v.k] = dle[v.k] || []).push(i); });
+    vl.forEach((v, i) => {
+      if (hrajeFn && !hrajeFn(i)) { feats[i].properties.p = 0; return; }   // engine 375: mimo výběr
+      (dle[v.k] = dle[v.k] || []).push(i);
+    });
     Object.keys(dle).forEach((k) => {
       const idx = dle[k];
       // SLAVNÁ místa (s ilustrací, pole `s`) přednostně (28. 8.)
@@ -486,8 +540,9 @@ window.Dobyvatel = (function () {
         { type: 'geojson', data: data.oblasti });
 
     // území: neutrální jen tichá síť, držené v barvě týmu
+    const HRAJE = ['!=', ['coalesce', ['get', 'a'], 1], 0];              // engine 375
     mapa.addLayer({ id: 'dob-uzemi', type: 'fill',
-      source: 'dob-oblasti', minzoom: 8,
+      source: 'dob-oblasti', minzoom: 8, filter: HRAJE,
       paint: {
         'fill-color': barvaTymu(),
         'fill-opacity': ['case', ['==', ['get', 't'], '0'], 0.05, 0.24],
@@ -504,7 +559,7 @@ window.Dobyvatel = (function () {
       } });
     // výrazněji — hranice se pletly s kresbou mapy (výtka 29. 8.)
     mapa.addLayer({ id: 'dob-hranice', type: 'line',
-      source: 'dob-oblasti', minzoom: 9.5,
+      source: 'dob-oblasti', minzoom: 9.5, filter: HRAJE,
       paint: {
         'line-color': ['case', ['==', ['get', 't'], '0'],
                        '#6d6350', barvaTymu()],
@@ -556,7 +611,7 @@ window.Dobyvatel = (function () {
     // noci z main.js (aplikujNoc → Dobyvatel.noc). Nahrazuje můry,
     // netopýry i světla oken, které z bojiště zmizely.
     mapa.addLayer({ id: 'dob-zare', type: 'circle',
-      source: 'dob-body', minzoom: 11,
+      source: 'dob-body', minzoom: 11, filter: HRAJE,
       paint: {
         'circle-color': '#FFB347',
         'circle-blur': 0.9,
@@ -741,6 +796,8 @@ window.Dobyvatel = (function () {
     const kindF = (filtrDruhu && filtrDruhu.length)
       ? ['in', ['get', 'k'], ['literal', filtrDruhu]]
       : null;
+    // engine 375: místa mimo výběr soutěže se neukazují vůbec (pásma mají p = 0)
+    const hrajeF = ['!=', ['coalesce', ['get', 'a'], 1], 0];
     try {
       [4, 3, 2, 1].forEach((p) => {
         const zaklad = [['==', ['get', 'p'], p]];
@@ -748,8 +805,8 @@ window.Dobyvatel = (function () {
           ? ['all'].concat(zaklad).concat([kindF])
           : ['all'].concat(zaklad));
       });
-      mapa.setFilter('dob-ik-vse', kindF);
-      mapa.setFilter('dob-jmena', kindF);
+      mapa.setFilter('dob-ik-vse', kindF ? ['all', hrajeF, kindF] : hrajeF);
+      mapa.setFilter('dob-jmena', kindF ? ['all', hrajeF, kindF] : hrajeF);
     } catch (e) { /* vrstvy ještě nestojí */ }
   }
 
@@ -975,6 +1032,6 @@ window.Dobyvatel = (function () {
   }
 
   return { zapni, vypni, stav, zahajeni, hlidejStyl, spolklKlik,
-           vlastni, filtr, trasy, cyklo, noc,
+           vlastni, maska, filtr, trasy, cyklo, noc,
            jeAktivni: () => aktivni };
 })();

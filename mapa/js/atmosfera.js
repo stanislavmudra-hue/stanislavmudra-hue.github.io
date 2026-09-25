@@ -1338,7 +1338,7 @@ void main() { o = texture(uTex, vUV); }`;
   /// klid: plátno (KlidovyTakt ~5 Hz a po dojezdu)
   function kresliPlatno(duvod, bezSrazek) {
     const t0 = performance.now();
-    if (!kPlatno) return;
+    if (!kPlatno) { try { mapa.triggerRepaint(); } catch (e) { /* nic */ } return; }   // engine 375: kreslí spion do mapy
     const el = mapa.getContainer();
     const w = Math.max(1, Math.round(el.clientWidth * MERITKO)), h = Math.max(1, Math.round(el.clientHeight * MERITKO));
     if (platno.width !== w) platno.width = w;
@@ -1388,7 +1388,9 @@ void main() { o = texture(uTex, vUV); }`;
     render(g, args) {
       const m = args && args.defaultProjectionData && args.defaultProjectionData.mainMatrix;
       if (m) { if (!M) M = new Float64Array(16); for (let i = 0; i < 16; i++) M[i] = m[i]; mCas = performance.now(); }
-      if (rezim === 'pohyb' && pripojeno) { try { kresliDoMapy(g); } catch (e) { chyba = 'pohyb: ' + String(e && e.message || e); } }
+      // engine 375: bez kontextu klidového plátna (ztracen – slabší GPU pod tlakem paměti) kreslí atmosféra do snímku
+      // mapy i v klidu; jinak by mraky a mlha byly vidět jen za posunu a po zastavení zmizely (problikávání)
+      if ((rezim === 'pohyb' || (rezim === 'klid' && !kPlatno)) && pripojeno) { try { kresliDoMapy(g); } catch (e) { chyba = 'pohyb: ' + String(e && e.message || e); } }
     },
   };
   function zajistiSpiona() {

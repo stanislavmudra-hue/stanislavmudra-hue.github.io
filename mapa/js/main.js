@@ -2545,7 +2545,9 @@ function nasadBudovyHerni() {
       // šikmém pohledu nevěděla, která je blíž, a kreslila je po proužcích –
       // to jsou ty „deformace" (moaré a pruh střešní barvy přes zeď).
       paint: { 'fill-extrusion-color': ['case', ODK, '#EAD9B6', PRUHLEDNA],
-               'fill-extrusion-height': ['case', ODK, ['-', H, 0.6], SKRYTO],
+               // engine 375: výška na cm + id % 97 v desetinách mm = semínko domu pro okna v shaderu (neviditelné)
+               'fill-extrusion-height': ['case', ODK, ['+', ['/', ['round', ['*', ['-', H, 0.6], 100]], 100],
+                 ['*', ['%', ['to-number', ['coalesce', ['id'], 0], 0], 97], 0.0001]], SKRYTO],
                'fill-extrusion-base': ['case', ODK, B, SKRYTO],
                'fill-extrusion-opacity': nastup } }, pred);
     mapa.addLayer({ id: 'okolnik-budovy-herni-strecha', type: 'fill-extrusion',
@@ -3952,6 +3954,44 @@ function prepoctiSidlaPopisky() {
 /// Shader (procedurální okna ve fill-extrusion) by byl zadarmo a pro všechny
 /// zoomy, ale znamená patch DVOU vendorovaných bundlů (5.24 appka, v6 web)
 /// a uniform na dlaždici – proto nejdřív geometrie.
+/// ⭐⭐ engine 375 (T 25. 9.: „okna jsou vidět až při velkém přiblížení … mám pocit, že tento způsob je zbytečně
+/// náročný“): OKNA KRESLÍ SHADER ZDÍ – záplata vendorovaného MapLibre 6.1 (`#define OKOLNIK_OKNA` jen pro vrstvu
+/// `okolnik-budovy-herni-zdi`, háček `__okolnikOkna`). Buchta extruze nese u každé zdi její délku (normal.z = −délka)
+/// a vzdálenost od začátku zdi; shader rozloží okna po zdi jako dřív geometrie (rozestup 4,4 m, šířka 1,5 m,
+/// patra po 3 m od 1 m, strop 1 m pod střechou) a pod ~2 px je rozpustí do průměrného tónu (žádné moaré).
+/// V noci svítí patra podle hashe domu: semínko = id % 97 v desetinách milimetru výšky zdi + výška v cm (výraz
+/// výšky zdí níž) a časový krok 4 s → dům svítí s 25 %, patro s 35 %, každé patro se přelosuje po 64 s v jiné fázi.
+/// Žádná geometrie a žádný přepočet po posunu – okna jsou od nástupu 3D domů (z14,5 − dohled). JS počítá už jen
+/// ZÁŘE svítících oken v noci (sprite u paty zdi jako od engine 266) se STEJNÝM hashem (`oknaPatroSviti`).
+const OKNA_SHADER = { zap: true, sila: 1, noc: 0, krok: 0 };
+function oknaKrok() { return Math.floor(Date.now() / 4000) % 65536; }
+window.__okolnikOkna = function (id, d) {
+  if (id !== 'okolnik-budovy-herni-zdi' || !OKNA_SHADER.zap || window.__oknaShaderVyp) return null;
+  const c = d.canonical, n2 = Math.pow(2, c.z);
+  const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (c.y + 0.5) / n2)));
+  return [40075016.686 * Math.cos(lat) / n2 / 8192, OKNA_SHADER.sila, OKNA_SHADER.noc, OKNA_SHADER.krok];
+};
+// ⚠️ přesně tatáž čísla jako shader (uint32: Math.imul + >>> 0)
+function oknaHas(x) {
+  x = x >>> 0;
+  x ^= x >>> 16; x = Math.imul(x, 0x7feb352d) >>> 0;
+  x ^= x >>> 15; x = Math.imul(x, 0x846ca68b) >>> 0;
+  x ^= x >>> 16;
+  return x >>> 0;
+}
+function oknaHf(x) { return (oknaHas(x) >>> 8) / 16777216; }
+/// semínko domu = `v_okno_dum` shaderu (výška zdi nese id % 97, viz výraz výšky v nasadBudovyHerni)
+function oknaSemeno(id, H) {
+  const idN = Number(id);
+  return ((isFinite(idN) ? idN : 0) % 97) + 97 * Math.round((H - 0.6) * 100);
+}
+function oknaDumSviti(dum) { return oknaHf((Math.imul(dum, 3) + 1) >>> 0) < 0.25; }
+function oknaPatroSviti(dum, f, krok) {
+  if (!oknaDumSviti(dum)) return false;
+  const faze = oknaHas((Math.imul(dum, 131) + Math.imul(f, 7) + 5) >>> 0) % 16;
+  const k = Math.floor((krok + faze) / 16);
+  return oknaHf((Math.imul(dum, 977) + Math.imul(f, 31) + Math.imul(k, 7919)) >>> 0) < 0.35;
+}
 let oknaCasovac = null;
 let oknaPodpis = '';
 // engine 282 („okna z dálky nejsou vidět"): od z16,2 (bylo 16,8), okna
@@ -3990,8 +4030,8 @@ const OKNA_DUM_PRAH = 25;   // engine 282: 40 → 25 % domů
 const OKNA_ZARE_ODSTUP_M = 1.0;          // bod záře před zdí
 const OKNA_ZARE_KRYTI = 0.75;
 const OKNA_ZARE_IKONA = 'svetlo-zare-0';
-const OKNA_ZARE_SVITI = ['any', ['==', ['feature-state', 'sv'], 1],
-  ['all', ['!=', ['feature-state', 'sv'], 0], ['<', ['coalesce', ['get', 'r'], 50], OKNA_SVITI_PRAH]]];
+// engine 375: stav patra počítá oknaPatroSviti (tentýž hash jako shader) – `s` při setData, změny feature-state `sv`
+const OKNA_ZARE_SVITI = ['==', ['coalesce', ['feature-state', 'sv'], ['get', 's']], 1];
 function vyrazKrytiZare(noc) {
   return noc ? ['case', OKNA_ZARE_SVITI, OKNA_ZARE_KRYTI, 0] : 0;
 }
@@ -4046,27 +4086,30 @@ window.bezPrerozmisteniSymbolu = bezPrerozmisteniSymbolu;
 let oknaBlikaniCasovac = null;
 function nastavBlikaniOken(noc) {
   if (oknaBlikaniCasovac) { clearInterval(oknaBlikaniCasovac); oknaBlikaniCasovac = null; }
+  OKNA_SHADER.krok = oknaKrok();
   if (!noc) return;
+  // engine 375: každé 4 s nový krok → shader přelosuje patra, jejichž fáze vyšla (jeden snímek, žádná geometrie);
+  // záře (sprite) dostanou nový stav jen tam, kde se změnil
   oknaBlikaniCasovac = setInterval(() => {
     try {
-      if (!mapa || !mapa.getSource('okna-3d') || !mapa.getLayer('okolnik-okna-3d')) return;
-      // engine 265: blikat až po 1,5 s klidu kamery (každý stav = přestavba bufferů zdroje)
-      if (performance.now() - (window.__posledniPohybMs || 0) < 1500) return;
-      const n = (window.__casy && window.__casy.oknaN) || 0;
-      if (!n) return;
-      // pár oken za tik: ve městě to je „tu zhaslo, tam se rozsvítilo"
-      const kolik = Math.max(1, Math.min(6, Math.round(n / 500)));
-      for (let i = 0; i < kolik; i++) {
-        const id = Math.floor(Math.random() * n);
-        const sv = Math.random() < 0.45 ? 1 : 0;
-        // engine 268: tmavý dům (r ≥ 100) se blikáním nikdy nerozsvítí
-        if (sv === 1 && window.__oknaR && window.__oknaR[id] >= 100) continue;
-        mapa.setFeatureState({ source: 'okna-3d', id }, { sv });
-        mapa.setFeatureState({ source: 'okna-3d', id: id + n }, { sv });       // záře okna (engine 266: sprite)
+      if (!mapa) return;
+      if (performance.now() - (window.__posledniPohybMs || 0) < 1500) return;   // engine 265: až po klidu kamery
+      const krok = oknaKrok();
+      if (krok === OKNA_SHADER.krok) return;
+      OKNA_SHADER.krok = krok;
+      mapa.triggerRepaint();
+      const zare = window.__oknaZare;
+      if (!zare || !zare.length || !mapa.getSource('okna-3d')) return;
+      for (let i = 0; i < zare.length; i++) {
+        const z = zare[i];
+        const sv = oknaPatroSviti(z.d, z.f, krok) ? 1 : 0;
+        if (sv === z.sv) continue;
+        z.sv = sv;
+        mapa.setFeatureState({ source: 'okna-3d', id: i }, { sv });
       }
       bezPrerozmisteniSymbolu();   // engine 333: jen krytí → bez nového rozmístění
     } catch (e) { /* zdroj se zrovna mění */ }
-  }, 4000);
+  }, 1000);
 }
 const OKNA_PRAZDNE = { type: 'FeatureCollection', features: [] };
 // engine 279 („okna lezou přes obrázky míst"): záře oken je symbol s 3D
@@ -4122,24 +4165,14 @@ function nasadOkna3d() {
   if (!mapa || !mapa.getLayer('okolnik-budovy-herni-zdi')) return false;
   try {
     if (!mapa.getSource('okna-3d')) {
-      // generateId: každé okno dostane id → svícení se přepíná feature-state
+      // generateId: každá záře patra dostane id → svícení se přepíná feature-state
       mapa.addSource('okna-3d', { type: 'geojson', data: OKNA_PRAZDNE, generateId: true });
     }
-    if (!mapa.getLayer('okolnik-okna-3d')) {
-      // engine 325: bez stromů aspoň před vrstvy míst/kreseb (viz srovnejZariOken)
-      const pred = mapa.getLayer('akvarel-dekorace') ? 'akvarel-dekorace' : (predZariOken() || undefined);
-      mapa.addLayer({ id: 'okolnik-okna-3d', type: 'fill-extrusion', source: 'okna-3d', minzoom: OKNA_OD_Z,
-        filter: ['!', ['has', 'z']],                     // engine 264: aury mají z: 1
-        paint: { 'fill-extrusion-color': vyrazBarvyOken(typeof krokNoci === 'number' && krokNoci >= 2),
-                 'fill-extrusion-height': ['get', 'h'],
-                 'fill-extrusion-base': ['get', 'b'],
-                 'fill-extrusion-opacity': 1,
-                 'fill-extrusion-vertical-gradient': false } }, pred);
-    }
+    // engine 375: kvádry oken `okolnik-okna-3d` ZRUŠENY – okna kreslí shader zdí (viz OKNA_SHADER)
+    if (mapa.getLayer('okolnik-okna-3d')) mapa.removeLayer('okolnik-okna-3d');
     // engine 266: záře = symbol se spritem světel vesnic; vzniká, až když sprite je
     // (dekorace.js ho peče při načtení herního stylu), jinak příště
-    if (!mapa.getLayer('okolnik-okna-zare') && mapa.getLayer('okolnik-okna-3d')
-        && mapa.hasImage && mapa.hasImage(OKNA_ZARE_IKONA)) {
+    if (!mapa.getLayer('okolnik-okna-zare') && mapa.hasImage && mapa.hasImage(OKNA_ZARE_IKONA)) {
       const noc = typeof krokNoci === 'number' && krokNoci >= 2;
       mapa.addLayer({ id: 'okolnik-okna-zare', type: 'symbol', source: 'okna-3d', minzoom: OKNA_OD_Z,
         filter: ['==', ['get', 'z'], 1],
@@ -4164,25 +4197,21 @@ function prepoctiOkna3d() {
   if (!nasadOkna3d()) return;
   const zdroj = mapa.getSource('okna-3d');
   if (!zdroj) return;
-  if (!NASTAVENI_MAPY.objekty3d) {   // engine 268: 3D objekty vypnuté – okna se nepočítají
-    if (oknaPodpis) { oknaPodpis = ''; pohledPodpisOkna = ''; try { zdroj.setData(OKNA_PRAZDNE); } catch (e) { /* nic */ } }
-    return;
-  }
+  const vycisti = () => {
+    if (oknaPodpis) {
+      oknaPodpis = ''; pohledPodpisOkna = ''; window.__oknaZare = [];
+      try { zdroj.setData(OKNA_PRAZDNE); } catch (e) { /* nic */ }
+    }
+  };
+  // engine 375: okna kreslí shader; JS počítá jen noční ZÁŘE (ve dne nic – dřív tisíce kvádrů po každém posunu)
+  if (!NASTAVENI_MAPY.objekty3d || !OKNA_SHADER.noc) { vycisti(); return; }
   const z = mapa.getZoom();
-  if (z < OKNA_OD_Z - 0.3) {
-    if (oknaPodpis) { oknaPodpis = ''; pohledPodpisOkna = ''; try { zdroj.setData(OKNA_PRAZDNE); } catch (e) { /* nic */ } }
-    return;
-  }
+  if (z < OKNA_OD_Z - 0.3) { vycisti(); return; }
   const prvky = budovyVPohledu();
   const pp = podpisPohledu() + '|' + prvky.length + '|' + budovyHerniStav.size;
   if (pp === pohledPodpisOkna) return;             // engine 232: v klidu nic
   pohledPodpisOkna = pp;
   const t0 = performance.now();
-  const teren = mapa.getTerrain && mapa.getTerrain();
-  const vyska = (b) => {
-    if (!teren || !mapa.queryTerrainElevation) return 0;
-    try { const v = mapa.queryTerrainElevation(b); return v == null ? null : v; } catch (e) { return null; }
-  };
   const stred = mapa.getCenter();
   const kxM = 111320 * Math.cos(stred.lat * Math.PI / 180), kyM = 110574;
   let hr;
@@ -4193,6 +4222,10 @@ function prepoctiOkna3d() {
   for (const f of prvky) {
     const id = f.id;
     if (id == null || budovyHerniStav.get(id) !== true) continue;   // jen odkryté (vytažené) domy
+    const p = f.properties || {};
+    const H = p.render_height != null ? +p.render_height : 6;      // týž coalesce jako výraz výšky zdí
+    const dum = oknaSemeno(id, H);
+    if (!oknaDumSviti(dum)) continue;                // tmavý dům nesvítí nikdy – záře netřeba
     const g = f.geometry;
     if (!g) continue;
     const polys = g.type === 'Polygon' ? [g.coordinates] : (g.type === 'MultiPolygon' ? g.coordinates : []);
@@ -4206,50 +4239,44 @@ function prepoctiOkna3d() {
       if (cx < W || cx > Ee || cy < S || cy > N) continue;
       const dx = (cx - stred.lng) * kxM, dy = (cy - stred.lat) * kyM;
       const d = dx * dx + dy * dy;
-      if (d > OKNA_DOSAH_M * OKNA_DOSAH_M) continue;   // dál od středu okna nejsou vidět (3 px na z17)
+      if (d > OKNA_DOSAH_M * OKNA_DOSAH_M) continue;
       const klic = id + '|' + ring.length + '|' + ring[0][0].toFixed(6) + '|' + ring[0][1].toFixed(6);
-      domy.push({ klic, ring, cx, cy, p: f.properties || {}, d });
+      domy.push({ klic, ring, cx, cy, p, d, dum, H });
     }
   }
   domy.sort((a, b) => a.d - b.d);
   const features = [];
-  const zare = [];                                  // záře oken (za okny; engine 266 body)
+  const zare = [];
   const klice = [];
   let budov = 0, spocitano = 0;
+  const krok = OKNA_SHADER.krok;
   for (const dm of domy) {
     if (features.length >= OKNA_MAX) break;
-    let okna = oknaKes.get(dm.klic);
-    if (!okna) {
-      okna = spocitejOknaDomu(dm, vyska, kxM, kyM);
-      if (okna === null) continue;                   // terén u domu ještě není – příště
-      if (oknaKes.size > 12000) oknaKes.clear();   // engine 329: 4000 → 12000 (los domu ať drží)
-      oknaKes.set(dm.klic, okna);
+    let patra = oknaKes.get(dm.klic);
+    if (!patra) {
+      patra = spocitejOknaDomu(dm, kxM, kyM);
+      if (oknaKes.size > 12000) oknaKes.clear();
+      oknaKes.set(dm.klic, patra);
       spocitano++;
     }
-    if (!okna.length) continue;
+    if (!patra.length) continue;
     budov++;
     klice.push(dm.klic);
-    for (let i = 0; i < okna.length; i++) {
-      const o = okna[i];
-      if (o.properties.z) continue;                 // záře přijde v páru s oknem
-      features.push(o);
-      const g = okna[i + 1];
-      zare.push(g && g.properties.z === 1 ? g : o);        // vždy stejný počet (záloha = okno samo)
+    for (const pz of patra) {
+      const sv = oknaPatroSviti(dm.dum, pz.f, krok) ? 1 : 0;
+      features.push({ type: 'Feature', properties: { z: 1, s: sv },
+                      geometry: { type: 'MultiPoint', coordinates: pz.body } });
+      zare.push({ d: dm.dum, f: pz.f, sv });
       if (features.length >= OKNA_MAX) break;
     }
   }
   const nov = features.length + '|' + klice.join(';');
   if (nov === oknaPodpis) return;
   oknaPodpis = nov;
-  try { window.__oknaR = features.map((f) => f.properties.r); } catch (e) { /* nic */ }   // engine 268: pro blikání
-  // ⛔ engine 329 („v noci se při každém posunu přepočítávají světla domů"):
-  // okna dostávají id podle POŘADÍ v setData (generateId) a stav blikání
-  // (`sv` ve feature-state) zůstával přilepený na ČÍSLA – po posunu mapy se
-  // pořadí domů změnilo a rozsvícená okna přeskočila na cizí domy, takže
-  // celá vesnice „přeblikla“. Stav blikání se proto před novými daty smaže;
-  // základní vzor světel drží `r` v keši domu (oknaKes), ten posun nemění.
+  window.__oknaZare = zare;
+  // ⛔ engine 329: id z generateId = POŘADÍ v setData → stav blikání před novými daty smazat
   try { mapa.removeFeatureState({ source: 'okna-3d' }); } catch (e) { /* nic */ }
-  try { zdroj.setData(features.length ? { type: 'FeatureCollection', features: features.concat(zare) } : OKNA_PRAZDNE); }
+  try { zdroj.setData(features.length ? { type: 'FeatureCollection', features } : OKNA_PRAZDNE); }
   catch (e) { /* zdroj se zrovna mění */ }
   try {
     window.__casy = window.__casy || {};
@@ -4257,17 +4284,19 @@ function prepoctiOkna3d() {
     window.__casy.oknaMs = Math.round(performance.now() - t0);
   } catch (e) { /* nic */ }
 }
-/// Okna jednoho domu (kusu půdorysu): pole prvků {b, h, polygon}; null = terén
-/// pod domem ještě není (nepamatovat). Terén zdi jen u dlouhých stěn.
-function spocitejOknaDomu(dm, vyska, kxM, kyM) {
-  const H = +dm.p.render_height || 6, B = +dm.p.render_min_height || 0;
-  const pater = Math.min(12, Math.floor((H - B - 1.3) / OKNA_PATRO_M) + 1);   // okno 1,0–2,4 m nad patrem, strop 0,3 m pod střechou
-  if (pater < 1) return [];
-  const eDum = vyska([dm.cx, dm.cy]);
-  if (eDum === null) return null;
-  const out = [];
-  const patra = [];               // engine 259: okna po PATRECH, ne po kusech
-  const patraZare = [];           // engine 266: body záře (MultiPoint) po patrech
+/// Záře oken jednoho domu po PATRECH: [{f, body: [[lng, lat] …]}] – bod 1 m před středem každého okna u paty zdi.
+/// Rozložení oken PŘESNĚ jako shader: zeď ≥ 2,6 m, n = max(1, ⌊L / 4,4⌋) oken ve středech (k + 0,5)·L/n,
+/// patra od 1 m po 3 m, okno 1,6 m vysoké a jeho vršek aspoň 1 m pod střechou (H − B − 1).
+function spocitejOknaDomu(dm, kxM, kyM) {
+  const H = dm.H, B = +dm.p.render_min_height || 0;
+  const hw = Math.round((H - 0.6) * 100) / 100 - B;     // výška zdi jako v shaderu (okH0 − okB0)
+  const pater = [];
+  for (let f = 0; f < 12; f++) {
+    if (f * 3.0 + 2.4 > hw - 0.4) break;
+    pater.push(f);
+  }
+  if (!pater.length) return [];
+  const body = [];
   const ring = dm.ring;
   const n = ring.length - 1;
   let plocha = 0;
@@ -4277,68 +4306,19 @@ function spocitejOknaDomu(dm, vyska, kxM, kyM) {
     const P = ring[i], Q = ring[i + 1];
     const ex = (Q[0] - P[0]) * kxM, ey = (Q[1] - P[1]) * kyM;
     const L = Math.hypot(ex, ey);
-    if (L < 2.6) continue;
+    if (L <= 2.6) continue;
     if (L > 12 && (Math.abs(Q[0] - P[0]) < 1e-7 || Math.abs(Q[1] - P[1]) < 1e-7)) continue;   // řez dlaždice
     const ux = ex / L, uy = ey / L;
     const nx = ven * uy, ny = -ven * ux;            // vnější normála (m)
-    // ⛔ engine 236: TERÉN JEN JEDNOU ZA ZEĎ. Engine 235 se ptal pro KAŽDÉ
-    // okno a `queryTerrainElevation` stojí ~0,1 ms – při 3 000 oknech to bylo
-    // 240 ms na přepočet (změřeno). Zeď je nejvýš pár desítek metrů, takže
-    // střed zdi stačí; u krátkých zdí stačí střed domu.
-    // ⛔⛔⛔ engine 259: ŽÁDNÁ KOREKCE TERÉNU. Okna jednoho patra jsou JEDEN
-    // prvek (viz konec funkce), takže mají SPOLEČNÉ těžiště uprostřed domu –
-    // tam, kde má těžiště zeď – a zvednou se přesně s ní. Dopočítávat rozdíl
-    // terénu (engine 235–258) byl boj s vlastním ocasem: každé okno bylo
-    // vlastní prvek a MapLibre ho zvedal o terén v JEHO těžišti.
-    const pocet = Math.max(1, Math.floor(L / OKNA_ROZESTUP_M));
-    const sirka = L < 4 ? 1.1 : 1.5;   // engine 282: širší okna
-    // ⛔⛔ engine 235: KOREKCE MUSÍ BÝT MALÁ A OKNO SE MUSÍ VEJÍT POD STŘECHU.
-    // MapLibre zvedá extruzi o terén ve středu prvku, takže okno je potřeba
-    // posunout o rozdíl terénu (dům vs. okno) – jenže při velkém rozdílu
-    // (svah, chybějící DEM) okno vylezlo NA STŘECHU (výtka „okna se z
-    // několika úhlů bugují"). Korekce je proto do ±2 m a strop se počítá
-    // ZE ZKORIGOVANÉ výšky.
+    const pocet = Math.max(1, Math.floor(L / 4.4));
     for (let k = 0; k < pocet; k++) {
       const t = (k + 0.5) / pocet;
       const cxo = P[0] + (Q[0] - P[0]) * t, cyo = P[1] + (Q[1] - P[1]) * t;
-      const r = [];
-      // ⛔ engine 235: PŘESAH JEN 4 cm. Okno je krabička před zdí; s přesahem
-      // 15–27 cm se její VRŠEK při pohledu shora promítl na střechu jako tmavý
-      // čtvereček (výtka „okna se z několika úhlů bugují"). Ze strany je vidět
-      // čelo okna pořád stejně, shora už 6 cm hluboká krabička zanikne.
-      for (const [a, d] of [[-0.5, 0.04], [0.5, 0.04], [0.5, 0.10], [-0.5, 0.10]]) {
-        r.push([cxo + (ux * a * sirka + nx * d) / kxM, cyo + (uy * a * sirka + ny * d) / kyM]);
-      }
-      r.push(r[0]);
-      // engine 266: bod záře na zemi OKNA_ZARE_ODSTUP_M před zdí (sprite stoupá po fasádě)
-      const bz = [cxo + (nx * OKNA_ZARE_ODSTUP_M) / kxM, cyo + (ny * OKNA_ZARE_ODSTUP_M) / kyM];
-      for (let f = 0; f < pater; f++) {
-        const zb = B + 1.0 + f * OKNA_PATRO_M;
-        if (zb + 1.4 > H - 0.75 - 0.25) break;   // pod SPODNÍ hranou střechy
-        if (zb < B) continue;                    // ani pod základnu domu
-        (patra[f] || (patra[f] = [])).push([r]);
-        (patraZare[f] || (patraZare[f] = [])).push(bz);
-      }
+      body.push([cxo + (nx * OKNA_ZARE_ODSTUP_M) / kxM, cyo + (ny * OKNA_ZARE_ODSTUP_M) / kyM]);
     }
   }
-  // ⭐ engine 259: jedno patro = JEDEN prvek (MultiPolygon všech jeho oken).
-  // Společné těžiště leží uprostřed domu, takže se okna zvednou s ním.
-  const domSviti = Math.random() * 100 < OKNA_DUM_PRAH;   // engine 268: los domu
-  for (let f = 0; f < patra.length; f++) {
-    const kusy = patra[f];
-    if (!kusy || !kusy.length) continue;
-    const zb = B + 1.0 + f * OKNA_PATRO_M;
-    const rnd = Math.floor(Math.random() * 100) + (domSviti ? 0 : 100);
-    out.push({ type: 'Feature',
-               properties: { b: +zb.toFixed(2), h: +(zb + 1.6).toFixed(2), r: rnd },
-               geometry: { type: 'MultiPolygon', coordinates: kusy } });
-    // engine 266: záře patra hned za oknem (prepoctiOkna3d je řadí za všechna okna);
-    // body na zemi před okny – symbolová vrstva, hloubka kotvy přes záplatu bundlu
-    out.push({ type: 'Feature',
-               properties: { z: 1, r: rnd },
-               geometry: { type: 'MultiPoint', coordinates: patraZare[f] } });
-  }
-  return out;
+  if (!body.length) return [];
+  return pater.map((f) => ({ f, body }));
 }
 
 /// ⭐ engine 232: KEŠ MAPOVÁNÍ DLAŽDIC NA TERÉN (runtime záplata MapLibre v6).
@@ -6230,8 +6210,11 @@ const NOCNI_KRESBA = [
     ['interpolate', ['exponential', 1.4], ['zoom'], 12, 1.2, 17, 2.3],
     ['interpolate', ['exponential', 1.4], ['zoom'], 12, 1.3, 17, 2.5],
     ['interpolate', ['exponential', 1.4], ['zoom'], 12, 1.4, 17, 2.7]]],
+  // engine 375: účelové komunikace šedé s lemem (jako silnice); cesty ze ZABAGED v noci světlají jako cesty z OSM
   ['silnice-servisni', 'line-color',
-   ['#A98F63', '#C4AE87', '#DFD1B2', '#F3ECDA']],
+   ['#ADA698', '#BDB6A9', '#D6D0C4', '#EDE8DE']],
+  ['zab-cesty', 'line-color', ['#9A845E', '#A9946F', '#C7B597', '#E2D5BD']],
+  ['zab-pesiny', 'line-color', ['#A08A63', '#AE9974', '#CBBA9B', '#E5D8C0']],
   ['silnice-mistni', 'line-color',
    ['#8C6C39', '#B39C6A', '#D9CBA6', '#F2EAD6']],
   ['silnice-hlavni', 'line-color',
@@ -6672,7 +6655,11 @@ function aplikujNoc() {
           mapa.setPaintProperty('okolnik-okna-3d', 'fill-extrusion-color', vyrazBarvyOken(krok >= 2, krok));
         }
         nastavZariOken(krok >= 2);                  // engine 264
+        // engine 375: okna v shaderu zdí – noc, krok blikání, záře nově (ve dne zmizí)
+        OKNA_SHADER.noc = krok >= 2 ? 1 : 0;
         nastavBlikaniOken(krok >= 2);
+        pohledPodpisOkna = ''; naplanujOkna3d(60);
+        try { mapa.triggerRepaint(); } catch (eR) { /* nic */ }
         prebarviDomyNoci(krok);
         nastavZabarveniDekoraci(krok);
         // ⛔ NE `__mostyPrebarvi()` – ten čte `krokNoci`, který je tady ještě

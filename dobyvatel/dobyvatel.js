@@ -2238,6 +2238,7 @@ function stavSouteze() {
         }
       }
       vykresliSpravu();
+      vykresliKod();
       vykresliPridani();
       vypisSkoreZnovu();
     }).catch(function () {
@@ -2252,6 +2253,74 @@ function stavSouteze() {
 var posledniSkore = null;
 function vypisSkoreZnovu() {
   if (posledniSkore && tymy.length) vypisSkore(posledniSkore);
+}
+
+/* ⭐ 25. 9. 2026: KÓD SOUTĚŽE VIDITELNĚ (T: „kde najdu ten kód pro účast
+   v soutěži?“). Kód = id soutěže z adresy (?s=…): při založení ho web skládá
+   z názvu a 4 náhodných znaků a databáze založení pustí jen tehdy, když
+   takové id ještě neexistuje (precondition exists=false) – je tedy unikátní. */
+function zkopiruj(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise(function (hotovo) {
+    var t = document.createElement('textarea');
+    t.value = text;
+    document.body.appendChild(t);
+    t.select();
+    try { document.execCommand('copy'); } catch (e) { /* nic */ }
+    t.remove();
+    hotovo();
+  });
+}
+
+function prvekKodu(sid, nazev) {
+  var box = document.createElement('div');
+  box.appendChild(document.createTextNode('Kód soutěže do aplikace: '));
+  var b = document.createElement('b');
+  b.textContent = sid;
+  b.style.cssText = 'font-family:ui-monospace,Consolas,monospace;'
+    + 'font-size:1.05em;user-select:all;background:#efe7d2;'
+    + 'padding:1px 6px;border-radius:6px';
+  box.appendChild(b);
+  var kop = document.createElement('button');
+  kop.textContent = 'Kopírovat';
+  kop.style.marginLeft = '8px';
+  kop.onclick = function () {
+    zkopiruj(sid).then(function () { kop.textContent = 'Zkopírováno ✓'; });
+  };
+  box.appendChild(kop);
+  var odkaz = 'https://okolnik.cz/dobyvatel/?s=' + encodeURIComponent(sid);
+  var sd = document.createElement('button');
+  sd.textContent = 'Sdílet odkaz';
+  sd.style.marginLeft = '6px';
+  sd.onclick = function () {
+    var text = 'Přidej se do soutěže „' + (nazev || sid)
+      + '“ v Okolníku – kód ' + sid;
+    if (navigator.share) {
+      navigator.share({ title: nazev || 'Dobyvatel', text: text, url: odkaz })
+        .catch(function () { });
+    } else {
+      zkopiruj(text + ' – ' + odkaz).then(function () {
+        sd.textContent = 'Odkaz zkopírován ✓';
+      });
+    }
+  };
+  box.appendChild(sd);
+  var pozn = document.createElement('div');
+  pozn.style.cssText = 'color:#6b6455;margin-top:2px';
+  pozn.textContent = 'V aplikaci Okolník: režim Dobyvatel → tlačítko soutěže nahoře (🏆) → „Zadat kód soutěže“.';
+  box.appendChild(pozn);
+  return box;
+}
+
+function vykresliKod() {
+  var box = el('kodBox');
+  if (!box) return;
+  box.textContent = '';
+  if (!vlastniSoutez() || !soutezDoc) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  box.appendChild(prvekKodu(SOUTEZ, soutezDoc.nazev));
 }
 
 /* „Přidat se" — jen u vlastních soutěží (v republikovém kole dává
@@ -2298,7 +2367,7 @@ function vykresliPridani() {
           tymZmena: new Date(),
         }).then(function () {
           box.textContent = 'Hraješ za tým ' + jmenoTymu(vyber.value)
-            + '. Vyraž do terénu s aplikací Okolník!';
+            + '. Vyraž do terénu s aplikací Okolník! ' + 'V aplikaci Okolník: režim Dobyvatel → tlačítko soutěže nahoře (🏆) → „Zadat kód soutěže“.';
         }).catch(function () {
           tl.disabled = false;
           alert('Přidání se nepovedlo — zkuste to znovu.');
@@ -2713,6 +2782,7 @@ function renderSprava(sid, d, box) {
     stavR.appendChild(konec);
   }
   box.appendChild(stavR);
+  if (jeVlastniS) box.appendChild(prvekKodu(sid, d.nazev));
 
   // lhůta změny týmu
   var lhutaR = document.createElement('p');
