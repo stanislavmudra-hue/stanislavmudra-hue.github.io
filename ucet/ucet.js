@@ -220,6 +220,32 @@ function zapis(cesta, telo) {
   });
 }
 
+/** Firestore runQuery: kolekce WHERE pole == hodnota (řetězec). */
+function dotaz(kolekce, pole, hodnota) {
+  return token().then(function (t) {
+    return sit(ZAKLAD + ':runQuery', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + t,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ structuredQuery: {
+        from: [{ collectionId: kolekce }],
+        where: { fieldFilter: { field: { fieldPath: pole }, op: 'EQUAL',
+          value: { stringValue: hodnota } } },
+        limit: 300,
+      } }),
+    });
+  }).then(function (r) {
+    if (r.status === 403) throw new Error('PERMISSION_DENIED');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function (v) {
+    return (Array.isArray(v) ? v : []).filter(function (x) { return x && x.document; })
+      .map(function (x) { return dokumentNaObjekt(x.document); });
+  });
+}
+
 function smaz(cesta) {
   return token().then(function (t) {
     return sit(ZAKLAD + '/' + cesta, {
@@ -573,12 +599,92 @@ function vypisVysledky(hrac, mesic, obdobi) {
 }
 
 /* ---------------------------------------------------------------------
+   Vykreslení: 4) přátelé (26. 9. 2026)
+   ---------------------------------------------------------------------
+   Přátelství je dokument pratelstvi/{a}_{b} (a < b), číst ho smí jen
+   ti dva – proto dva dotazy (a == já, b == já). Přítel = stav
+   'prijato', jméno je vždy to druhé strany; žádosti ('zadost') se jen
+   počítají. Přidávat a přijímat přátele jde v aplikaci.
+--------------------------------------------------------------------- */
+function vykresliPratele() {
+  var karta = el('kartaPratele');
+  var box = el('pratele');
+  if (!karta || !box) return;
+  karta.hidden = !relace;
+  if (karta.hidden) return;
+
+  box.textContent = '';
+  var stav = prvek('div', 'stav');
+  stav.appendChild(prvek('div', 'tocka'));
+  stav.appendChild(prvek('p', null, 'Načítám přátele…'));
+  box.appendChild(stav);
+
+  var uid = relace.uid;
+  Promise.all([
+    dotaz('pratelstvi', 'a', uid),
+    dotaz('pratelstvi', 'b', uid),
+  ]).then(function (v) {
+    vypisPratele(v[0].concat(v[1]), uid);
+  }).catch(function () {
+    box.textContent = '';
+    box.appendChild(stavovaKarta('Přátele se nepovedlo načíst',
+      'Zkuste stránku za chvíli obnovit.'));
+  });
+}
+
+function vypisPratele(dokumenty, uid) {
+  var box = el('pratele');
+  if (!box) return;
+  box.textContent = '';
+
+  var videno = {}, pratele = [], kMne = 0, odeMne = 0;
+  dokumenty.forEach(function (d) {
+    if (!d || typeof d.a !== 'string' || typeof d.b !== 'string') return;
+    if (d.a !== uid && d.b !== uid) return;
+    var klic = d.a + '_' + d.b;
+    if (videno[klic]) return;
+    videno[klic] = true;
+    if (d.stav === 'prijato') {
+      pratele.push(ocisti(d.a === uid ? d.jmenoB : d.jmenoA, 20) || 'Přítel');
+    } else if (d.stav === 'zadost') {
+      if (d.od === uid) odeMne++; else kMne++;
+    }
+  });
+  pratele.sort(function (x, y) { return x.localeCompare(y, 'cs'); });
+
+  if (pratele.length) {
+    var ul = prvek('ul', 'seznam');
+    pratele.forEach(function (jmeno) {
+      ul.appendChild(prvek('li', null, jmeno));
+    });
+    box.appendChild(ul);
+  } else {
+    box.appendChild(prvek('p', null, 'Zatím nemáte žádné přátele.'));
+  }
+
+  var tvar = function (n) { return n === 1 ? 'žádost' : (n >= 2 && n <= 4 ? 'žádosti' : 'žádostí'); };
+  if (kMne) {
+    box.appendChild(prvek('p', null,
+      'Na vaše přijetí ' + (n2(kMne) ? 'čekají ' : 'čeká ') + kMne + ' ' + tvar(kMne) + ' o přátelství.'));
+  }
+  if (odeMne) {
+    box.appendChild(prvek('p', null, odeMne === 1
+      ? 'Vaše žádost o přátelství čeká na druhou stranu.'
+      : 'Vaše žádosti o přátelství (' + odeMne + ') čekají na druhou stranu.'));
+  }
+  box.appendChild(prvek('p', 'poznamka', 'Přátele přidáte v aplikaci (Více → Přátelé).'));
+}
+
+function n2(n) { return n >= 2 && n <= 4; }   // 2–4 → „čekají“, jinak „čeká“
+
+/* ---------------------------------------------------------------------
    Sešití dohromady
 --------------------------------------------------------------------- */
 function vykresli() {
   vykresliPrihlaseni();
   vykresliParovani();
   vykresliVysledky();
+  vykresliPratele();
 }
 
 function start() {

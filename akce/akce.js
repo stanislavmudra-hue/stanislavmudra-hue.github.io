@@ -1,5 +1,5 @@
 /* Okolník – HRA NA MÍRU: založení, správa a výsledky AKCÍ na webu (26. 9. 2026).
-   Návrh: Sarcher/NAVRH-HRA-NA-MIRU.md (kap. 2, 3, 5, 7). Data ve Firestore, pravidla v20:
+   Návrh: Sarcher/NAVRH-HRA-NA-MIRU.md (kap. 2, 3, 5, 7). Data ve Firestore, pravidla v22:
      akce/{kod}                   nastavení akce (kód = ID dokumentu, 8 znaků bez zaměnitelných)
      akce/{kod}/ucastnici/{uid}   přezdívka, tým, role, stav (ceka|ok|zamitnut), sdiliPolohu – zapisuje aplikace
      akce/{kod}/poloha/{uid}      poslední poloha účastníka (aplikace)
@@ -15,7 +15,11 @@
      /akce/?k=KOD&upravit=1  úprava nastavení (týž průvodce)
      /akce/?k=KOD&vysledky=1 výsledky: trasy, km, CSV
      /akce/?k=KOD&nahled=1   pozvánka očima účastníka (i pro organizátora)
+     /akce/?pozvat=SID       zakladatel soutěže Dobyvatele: pozvat přátele (v22)
      …&ukazka=1              smyšlená data v paměti, na Firestore se vůbec nesahá (test bez účtu)
+   v22 (26. 9. 2026): /akce/ má i VEŘEJNÝ ADRESÁŘ (soutěže a akce s verejna == true A schvaleno == true, čte ho i
+     nepřihlášený) a „Moje pozvánky“ (pozvanky/{aid}_{pro}, kde pro == já). Organizátor zve přátele (pratelstvi) nebo
+     hráče podle kódu přítele (kody/{KOD}) ve správě akce a na ?pozvat=SID; správce Okolníku schvaluje veřejné akce na ?k=KOD.
    Přihlášení sdílí s Můj Okolník (localStorage okolnikUcet1), jako firmy.js. */
 (function () {
   'use strict';
@@ -40,6 +44,10 @@
   // ⚠️ Výpravy a hry s polohou (kolekce akce/) zapnout, AŽ je umí vydaná aplikace – do té doby web zakládá jen
   // Dobývání vlajek (soutěže, které aplikace umí). Interní náhled všeho: &vse=1.
   var AKCE_V_APPCE = /[?&]vse=1(&|$)/.test(location.search);
+  var ADMIN_MAIL = 'stanislavmudra@gmail.com';   // správce Okolníku – stejná kontrola jako na /dobyvatel (pravidla: isAdmin)
+  var NARODNI_SOUTEZ = 'cesko-2026';              // republikové kolo – do adresáře nepatří (jako seznam na /dobyvatel)
+  var POZVANI_JMENA = 'okolnikPozvani1';          // uid → přezdívka hráčů pozvaných kódem (pozvánka jméno pozvaného nenese)
+  var TYP_AKCE = { vyprava: 'Výprava', body: 'Kontrolní body', vlajky: 'Hra s vlajkami' };
   var NBSP = '\u00a0';
 
   var STAVY = { priprava: 'Připravuje se', bezi: 'Běží', konec: 'Skončila' };
@@ -356,7 +364,7 @@
       polohaOrg: d.polohaOrg !== false, polohaPovinna: d.polohaPovinna !== false, schvalovani: d.schvalovani === true,
       stopy: text(d.stopy, 20) || 'ne', tymy: tymy, tymyVyber: text(d.tymyVyber, 20) || 'hraci', pole: pole, sraz: sraz,
       max: Math.round(jeCislo(d.max) ? d.max : MAX_UCASTNIKU), uchovatDni: Math.round(jeCislo(d.uchovatDni) ? d.uchovatDni : 30),
-      verejna: d.verejna === true, vytvoreno: platneDatum(d.vytvoreno) ? d.vytvoreno : null,
+      verejna: d.verejna === true, schvaleno: d.schvaleno === true, vytvoreno: platneDatum(d.vytvoreno) ? d.vytvoreno : null,
       souhlasVerze: Math.round(jeCislo(d.souhlasVerze) ? d.souhlasVerze : 1),
       vzhled: d.vzhled && typeof d.vzhled === 'object' ? d.vzhled : {}, spoluorg: Array.isArray(d.spoluorg) ? d.spoluorg : [],
     };
@@ -371,7 +379,7 @@
       tymyVyber: S(a.tymyVyber),
       pole: a.pole ? M({ typ: S('kruh'), lat: D(a.pole.lat), lon: D(a.pole.lon), r: I(a.pole.r) }) : NUL,
       sraz: a.sraz ? M({ n: S(a.sraz.n), lat: D(a.sraz.lat), lon: D(a.sraz.lon) }) : NUL,
-      max: I(a.max), uchovatDni: I(a.uchovatDni), verejna: B(false), souhlasVerze: I(a.souhlasVerze || SOUHLAS_VERZE),
+      max: I(a.max), uchovatDni: I(a.uchovatDni), verejna: B(a.verejna === true), souhlasVerze: I(a.souhlasVerze || SOUHLAS_VERZE),
       pravidla: M({}), vzhled: M(a.vzhled && a.vzhled.uvitani ? { uvitani: S(a.vzhled.uvitani) } : {}),
     };
     if (platneDatum(a.vytvoreno)) f.vytvoreno = T(a.vytvoreno);
@@ -385,6 +393,8 @@
     return f;
   }
   function rovno(pole, hodnota) { return { fieldFilter: { field: { fieldPath: pole }, op: 'EQUAL', value: { stringValue: hodnota } } }; }
+  function rovnoAno(pole) { return { fieldFilter: { field: { fieldPath: pole }, op: 'EQUAL', value: { booleanValue: true } } }; }
+  function zaroven(filtry) { return { compositeFilter: { op: 'AND', filters: filtry } }; }
   function seradBody(b) { return b.slice().sort(function (x, y) { return (x.poradi || 999) - (y.poradi || 999) || String(x._id).localeCompare(String(y._id)); }); }
   function podleId(seznam) { var m = {}; (seznam || []).forEach(function (d) { m[d._id] = d; }); return m; }
 
@@ -533,6 +543,45 @@
     mojeSouteze: function () {   // pravidla výpis pustí jen s filtrem zakladatel == já
       return platnyToken().then(function (t) { return fsQuery('', { from: [{ collectionId: 'souteze' }], where: rovno('zakladatel', relace.uid), limit: 50 }, t); });
     },
+    // v22: veřejný adresář – pravidla výpis pustí jen s filtrem verejna == true A schvaleno == true (i bez přihlášení)
+    verejneSouteze: function () {
+      return fsQuery('', { from: [{ collectionId: 'souteze' }], where: zaroven([rovnoAno('verejna'), rovnoAno('schvaleno')]), limit: 200 }, null);
+    },
+    verejneAkce: function () {
+      return fsQuery('', { from: [{ collectionId: 'akce' }], where: zaroven([rovnoAno('verejna'), rovnoAno('schvaleno')]), limit: 200 }, null)
+        .then(function (d) { return d.map(naAkci); });
+    },
+    // pozvánky čte a maže jen pozvaný (pro) nebo odesílatel (od) → dotaz vždy s filtrem na jedno z nich
+    pozvankyPro: function () {
+      return platnyToken().then(function (t) { return fsQuery('', { from: [{ collectionId: 'pozvanky' }], where: rovno('pro', relace.uid), limit: 100 }, t); });
+    },
+    pozvankyOd: function (aid) {
+      return platnyToken().then(function (t) {
+        return fsQuery('', { from: [{ collectionId: 'pozvanky' }], where: zaroven([rovno('od', relace.uid), rovno('aid', aid)]), limit: 300 }, t);
+      });
+    },
+    pozvanka: function (aid) {   // moje pozvánka do akce; chybějící dokument pravidla odmítnou (403) – volající chybu bere jako „není“
+      return platnyToken().then(function (t) { return fsGet('pozvanky/' + encodeURIComponent(aid + '_' + relace.uid), t); });
+    },
+    pozvankaZaloz: function (pid, pole) { return fsPatch('pozvanky/' + encodeURIComponent(pid), pole, { novy: true }); },
+    pozvankaSmaz: function (pid) { return fsDelete('pozvanky/' + encodeURIComponent(pid)); },
+    // přátelé: dokument {a}_{b} čtou jen ti dva → dva dotazy (a == já, b == já)
+    pratele: function () {
+      return platnyToken().then(function (t) {
+        var q = function (pole) { return fsQuery('', { from: [{ collectionId: 'pratelstvi' }], where: rovno(pole, relace.uid), limit: 300 }, t); };
+        return Promise.all([q('a'), q('b')]);
+      }).then(function (v) { return zpracujPratelstvi(v[0].concat(v[1]), relace.uid); });
+    },
+    kodPritele: function (kod) { return platnyToken().then(function (t) { return fsGet('kody/' + encodeURIComponent(kod), t); }); },   // jen podle kódu, výpis pravidla zakazují
+    schvalit: function (aid, ano) { return fsPatch('akce/' + encodeURIComponent(aid), { schvaleno: B(ano) }, { maska: ['schvaleno'], existuje: true }); },   // jen správce (isAdmin)
+    // v23: správce vypíše i veřejné akce čekající na schválení (list s isAdmin) – jediný filtr verejna == true
+    cekajiciAkce: function () {
+      return platnyToken().then(function (t) { return fsQuery('', { from: [{ collectionId: 'akce' }], where: rovnoAno('verejna'), limit: 300 }, t); })
+        .then(function (d) { return d.map(naAkci); });
+    },
+    cekajiciSouteze: function () {   // soutěže s verejna == true smí vypsat každý
+      return platnyToken().then(function (t) { return fsQuery('', { from: [{ collectionId: 'souteze' }], where: rovnoAno('verejna'), limit: 300 }, t); });
+    },
   };
 
   /* ================================================================ UKÁZKA (?ukazka=1) – data v paměti, žádná síť */
@@ -592,7 +641,7 @@
       pole: { typ: 'kruh', lat: letna.lat, lon: letna.lon, r: 800 }, sraz: { n: 'Hřiště na Letné', lat: letna.lat, lon: letna.lon },
       max: 12, uchovatDni: 7, vytvoreno: new Date(t - 3 * 3600000), souhlasVerze: SOUHLAS_VERZE, vzhled: {},
     };
-    DEMO = { relace: { uid: uid, mail: 'organizator@example.cz', jmeno: 'Ukázkový organizátor' }, hrac: { premium: true }, akce: {}, pod: {}, cesty: {} };
+    DEMO = { relace: { uid: uid, mail: 'organizator@example.cz', jmeno: 'Ukázkový organizátor' }, hrac: { premium: true, prezdivka: 'Ukázkový organizátor' }, akce: {}, pod: {}, cesty: {} };
     DEMO.akce.demo1234 = { name: JMENO + 'akce/demo1234', fields: akceNaPole(a1) };
     DEMO.akce.demo5678 = { name: JMENO + 'akce/demo5678', fields: akceNaPole(a2) };
     // soutěž Dobyvatele (šablona Dobývání vlajek) + registr kvóty – 1 z 5 obsazená
@@ -626,6 +675,70 @@
     DEMO.pod.demo5678 = { ucastnici: [], body: b2.map(function (b, i) {
       return { _id: 'b' + (i + 1), _cesta: JMENO + 'akce/demo5678/body/b' + (i + 1), n: b[0], lat: b[1], lon: b[2], h: 1, r: 30, poradi: i + 1 };
     }) };
+    demoInitV22(t, uid, dnesD);
+  }
+  /* v22: veřejné soutěže a akce jiných organizátorů, přátelé, kódy přátel, pozvánky (smyšlené; místa jen veřejná v Praze) */
+  function demoInitV22(t, uid, dnesD) {
+    DEMO.spravce = /[?&]spravce=1(&|$)/.test(location.search);   // ukázka pohledu správce Okolníku (schvalování veřejných akcí)
+    var soutez = function (sid, nazev, stav, zakladatel, od, dO, schvaleno) {
+      var f = { nazev: venDob(nazev), stav: venDob(stav), zakladatel: venDob(zakladatel), verejna: venDob(true),
+        pravidla: venDob({ obsazeniMin: 10, neutralizaceMin: 10, zabraniDenne: 40, dosahM: 150, zmenaTymuDni: 30, prahNadoblasti: 0.5,
+          zacatek: pridejDny(dnesD, od) + 'T00:00:00Z', konec: pridejDny(dnesD, dO) + 'T23:59:59Z' }),
+        tymyPoradi: venDob(['praha', 'stredocesky']), tymyNazvy: venDob({ praha: 'Červení', stredocesky: 'Modří' }), vytvoreno: venDob(new Date(t - 10 * DEN)) };
+      if (schvaleno) f.schvaleno = B(true);
+      DEMO.souteze[sid] = { name: JMENO + 'souteze/' + sid, fields: f };
+    };
+    soutez('prazske-parky-q4n7', 'Pražské parky', 'bezi', 'jiny-organizator-01', -5, 20, true);
+    soutez('podzimni-liga-brno-h2m9', 'Podzimní liga Brno', 'priprava', 'jiny-organizator-03', 3, 30, true);
+    soutez('skolni-vyzva-olomouc-z8k1', 'Školní výzva Olomouc', 'priprava', 'jiny-organizator-04', 15, 45, true);
+    soutez('ceka-na-schvaleni-w3r5', 'Soutěž čekající na schválení', 'priprava', 'jiny-organizator-05', 2, 12, false);   // do adresáře ne
+    soutez('letni-dobyvani-t6y2', 'Letní dobývání', 'konec', 'jiny-organizator-01', -60, -2, true);                 // skončená – ne
+    // veřejné akce (adresář je ukáže jen s &vse=1) a moje veřejná akce, která čeká na schválení správcem
+    var akce = function (aid, a, schvaleno) {
+      var f = akceNaPole(a);
+      if (schvaleno) f.schvaleno = B(true);
+      DEMO.akce[aid] = { name: JMENO + 'akce/' + aid, fields: f };
+      DEMO.pod[aid] = { ucastnici: [], body: [] };
+    };
+    var zaklad = function (o) {
+      return Object.assign({ popis: '', stav: 'priprava', rezim: 'vyprava', poloha: 'organizator', polohaOrg: true, polohaPovinna: true, schvalovani: true,
+        stopy: 'organizator', tymy: [], tymyVyber: 'hraci', pole: null, sraz: null, max: 15, uchovatDni: 7, verejna: true,
+        vytvoreno: new Date(t - 5 * DEN), souhlasVerze: SOUHLAS_VERZE, vzhled: {} }, o);
+    };
+    var zaDni = function (d, hod) { var x = new Date(t + d * DEN); x.setHours(hod, 0, 0, 0); return x; };
+    akce('pk7m2xqa', zaklad({ nazev: 'Sobotní výprava na Petřín', vlastnik: 'jiny-organizator-02', stav: 'bezi', od: new Date(t - 30 * 60000),
+      do: new Date(t + 3 * 3600000), sraz: { n: 'Petřínská rozhledna', lat: 50.0835, lon: 14.3951 } }), true);
+    akce('tr4vn8ke', zaklad({ nazev: 'Orientační hra ve Stromovce', vlastnik: 'jiny-organizator-03', rezim: 'body', od: zaDni(3, 10), do: zaDni(3, 13),
+      sraz: { n: 'Stromovka', lat: 50.1055, lon: 14.4225 } }), true);
+    akce('hz9w3cfd', zaklad({ nazev: 'Podzimní pochod Trojou', vlastnik: 'jiny-organizator-04', od: zaDni(20, 9), do: zaDni(20, 15) }), true);
+    akce('mv6q8ybe', zaklad({ nazev: 'Veřejná procházka Letnou', vlastnik: uid, od: zaDni(2, 14), do: zaDni(2, 16),
+      sraz: { n: 'Letenská pláň', lat: 50.0975, lon: 14.4230 } }), false);
+    akce('qn3r7tkd', zaklad({ nazev: 'Noční výprava Divokou Šárkou', vlastnik: 'jiny-organizator-06', od: zaDni(5, 19), do: zaDni(5, 22),
+      sraz: { n: 'Divoká Šárka', lat: 50.0943, lon: 14.3269 } }), false);   // čeká na schválení (ukázka správce)
+    // přátelé (dokument {a}_{b}, a < b – jednou jsem „a“, jindy „b“) a kódy přátel
+    var ja = uid, JA = 'Organizátor';
+    var pratelstvi = function (druhy, jmeno, stav, odeMne) {
+      var a = druhy < ja ? druhy : ja, b = druhy < ja ? ja : druhy;
+      return { name: JMENO + 'pratelstvi/' + a + '_' + b, fields: { a: S(a), b: S(b), od: S(odeMne ? ja : druhy), stav: S(stav),
+        kdy: T(new Date(t - 20 * DEN)), jmenoA: S(a === ja ? JA : jmeno), jmenoB: S(b === ja ? JA : jmeno) } };
+    };
+    DEMO.pratelstvi = [pratelstvi('pritel-adela-01', 'Adéla', 'prijato'), pratelstvi('pritel-filip-02', 'Filip', 'prijato'),
+      pratelstvi('pritel-honza-03', 'Honza', 'prijato'), pratelstvi('zz-pritel-magda-04', 'Magda', 'prijato'),
+      pratelstvi('pritel-kuba-05', 'Kuba', 'zadost', false), pratelstvi('pritel-lida-06', 'Lída', 'zadost', true)];
+    DEMO.kody = { MAREK2: { uid: 'hrac-marek-kod1', prezdivka: 'Marek' }, ADELA5: { uid: 'pritel-adela-01', prezdivka: 'Adéla' }, ORGAN9: { uid: ja, prezdivka: JA } };
+    DEMO.jmenaPozvanych = { 'hrac-marek-kod1': 'Marek' };
+    // pozvánky: dvě pro mě, dvě ode mě (id = aid + '_' + pro)
+    DEMO.pozvanky = {};
+    var pozvanka = function (aid, typ, nazev, od, odJmeno, pro, kdy, dO) {
+      var f = { aid: S(aid), typ: S(typ), nazev: S(nazev), od: S(od), odJmeno: S(odJmeno), pro: S(pro), kdy: T(kdy) };
+      if (dO) f.do = T(dO);
+      DEMO.pozvanky[aid + '_' + pro] = { name: JMENO + 'pozvanky/' + aid + '_' + pro, fields: f };
+    };
+    pozvanka('pk7m2xqa', 'akce', 'Sobotní výprava na Petřín', 'jiny-organizator-02', 'Tomáš', ja, new Date(t - 3 * 3600000), new Date(t + 3 * 3600000));
+    pozvanka('prazske-parky-q4n7', 'soutez', 'Pražské parky', 'pritel-filip-02', 'Filip', ja, new Date(t - 26 * 3600000),
+      new Date(Date.parse(pridejDny(dnesD, 20) + 'T23:59:59Z')));
+    pozvanka('demo1234', 'akce', 'Podzimní výprava oddílu', ja, JA, 'pritel-honza-03', new Date(t - 50 * 60000), null);
+    pozvanka('rodinne-dobyvani-x7k2', 'soutez', 'Rodinné dobývání', ja, JA, 'hrac-marek-kod1', new Date(t - 2 * DEN), null);
   }
   function demoAkce(aid) { return DEMO.akce[aid] ? naAkci(dokument(DEMO.akce[aid])) : null; }
   /* poloha a stopy ukázkové akce se počítají z času – na živé mapě se účastníci opravdu hýbou */
@@ -674,14 +787,14 @@
   }
   var KLICE_AKCE = ['nazev', 'popis', 'vlastnik', 'stav', 'od', 'do', 'rezim', 'poloha', 'polohaOrg', 'polohaPovinna', 'schvalovani',
     'stopy', 'tymy', 'tymyVyber', 'pole', 'sraz', 'max', 'uchovatDni', 'verejna', 'vytvoreno', 'souhlasVerze', 'pravidla', 'vzhled'];
-  /* kopie podmínek pravidel v20 (nastaveniAkceOk + create/update) nad typovanými poli */
+  /* kopie podmínek pravidel v22 (nastaveniAkceOk + create/update) nad typovanými poli */
   function demoPravidla(f, stare, aid) {
     var ch = [];
     var s = function (k) { return f[k] && typeof f[k].stringValue === 'string' ? f[k].stringValue : null; };
     var c = function (k) { return f[k] && f[k].timestampValue ? Date.parse(f[k].timestampValue) : NaN; };
     var i = function (k) { return f[k] && f[k].integerValue !== undefined ? Number(f[k].integerValue) : NaN; };
     var b = function (k) { return !(k in f) || (f[k] && typeof f[k].booleanValue === 'boolean'); };
-    Object.keys(f).forEach(function (k) { if (KLICE_AKCE.indexOf(k) < 0 && !(stare && k === 'spoluorg')) ch.push('pole ' + k); });
+    Object.keys(f).forEach(function (k) { if (KLICE_AKCE.indexOf(k) < 0 && !(stare && (k === 'spoluorg' || k === 'schvaleno'))) ch.push('pole ' + k); });
     var n = s('nazev'); if (n === null || n.length < 3 || n.length > 60) ch.push('nazev');
     if ('popis' in f && (s('popis') === null || s('popis').length > 1000)) ch.push('popis');
     var od = c('od'), dO = c('do'); if (isNaN(od) || isNaN(dO) || !(dO > od) || dO - od > MAX_DNU * DEN) ch.push('od/do');
@@ -693,7 +806,8 @@
     if (['hraci', 'organizator', 'nahodne'].indexOf(s('tymyVyber')) < 0) ch.push('tymyVyber');
     var max = i('max'); if (!(max >= 2 && max <= MAX_UCASTNIKU)) ch.push('max');
     var u = i('uchovatDni'); if (!(u >= 0 && u <= 90)) ch.push('uchovatDni');
-    if (!f.verejna || f.verejna.booleanValue !== false) ch.push('verejna');
+    if (!f.verejna || typeof f.verejna.booleanValue !== 'boolean') ch.push('verejna');
+    else if (f.verejna.booleanValue === true && !(f.schvalovani && f.schvalovani.booleanValue === true)) ch.push('veřejná jen se schvalováním');   // v22
     if (isNaN(i('souhlasVerze'))) ch.push('souhlasVerze');
     if (!stare) {
       if (!/^[a-hj-np-z2-9]{8}$/.test(aid)) ch.push('kód');
@@ -765,6 +879,7 @@
         var nove = kopie(d.fields);
         demoMaska(nove, pole, maska);
         var ch = demoPravidla(nove, d.fields, aid).concat(demoZuzeni(d.fields, nove));
+        if (JSON.stringify(nove.schvaleno || null) !== JSON.stringify(d.fields.schvaleno || null)) ch.push('schvaleno mění jen správce');   // v22
         if (ch.length) throw demoOdmitni(ch);
         d.fields = nove;
       });
@@ -852,6 +967,71 @@
           .filter(function (s) { return s.zakladatel === DEMO.relace.uid; });
       });
     },
+    // v22 – kopie pravidel: adresář (verejna A schvaleno), pozvánky, přátelé, kódy přátel, schválení správcem
+    verejneSouteze: function () {
+      return pockej(160).then(function () {
+        return Object.keys(DEMO.souteze).map(function (k) { return dokument(kopie(DEMO.souteze[k])); })
+          .filter(function (s) { return s.verejna === true && s.schvaleno === true; });
+      });
+    },
+    verejneAkce: function () {
+      return pockej(160).then(function () { return Object.keys(DEMO.akce).map(demoAkce).filter(function (a) { return a.verejna && a.schvaleno; }); });
+    },
+    pozvankyPro: function () { return pockej(140).then(function () { return demoPozvanky(function (p) { return p.pro === DEMO.relace.uid; }); }); },
+    pozvankyOd: function (aid) {
+      return pockej(140).then(function () { return demoPozvanky(function (p) { return p.od === DEMO.relace.uid && p.aid === aid; }); });
+    },
+    pozvanka: function (aid) {
+      return pockej(90).then(function () {
+        var d = DEMO.pozvanky[aid + '_' + DEMO.relace.uid];
+        if (!d) throw chyba('HTTP 403 (pravidla: pozvánka neexistuje)', 403);   // jako server: resource == null → odmítnuto
+        return dokument(kopie(d));
+      });
+    },
+    pozvankaZaloz: function (pid, pole) {
+      return pockej(160).then(function () {
+        if (DEMO.pozvanky[pid]) throw chyba('HTTP 409', 409, 'ALREADY_EXISTS');
+        var ch = demoPravidlaPozvanky(pid, pole);
+        if (ch.length) throw demoOdmitni(ch);
+        DEMO.pozvanky[pid] = { name: JMENO + 'pozvanky/' + pid, fields: kopie(pole) };
+      });
+    },
+    pozvankaSmaz: function (pid) {
+      return pockej(110).then(function () {
+        var d = DEMO.pozvanky[pid];
+        if (!d) return;
+        var p = dokument(d);
+        if (p.pro !== DEMO.relace.uid && p.od !== DEMO.relace.uid) throw demoOdmitni(['pozvánku maže jen pozvaný nebo odesílatel']);
+        delete DEMO.pozvanky[pid];
+      });
+    },
+    pratele: function () {
+      return pockej(150).then(function () {
+        var ja = DEMO.relace.uid;
+        return zpracujPratelstvi(DEMO.pratelstvi.map(function (d) { return dokument(kopie(d)); })
+          .filter(function (d) { return d.a === ja || d.b === ja; }), ja);
+      });
+    },
+    kodPritele: function (kod) { return pockej(120).then(function () { return DEMO.kody[kod] ? kopie(DEMO.kody[kod]) : null; }); },
+    schvalit: function (aid, ano) {
+      return pockej(160).then(function () {
+        var d = DEMO.akce[aid];
+        if (!d) throw chyba('HTTP 404', 404);
+        if (!DEMO.spravce) throw demoOdmitni(['schvaleno mění jen správce Okolníku']);
+        d.fields.schvaleno = B(ano);
+      });
+    },
+    cekajiciAkce: function () {
+      return pockej(160).then(function () {
+        if (!DEMO.spravce) throw demoOdmitni(['výpis akcí jen s verejna A schvaleno – samotné verejna smí jen správce']);
+        return Object.keys(DEMO.akce).map(demoAkce).filter(function (a) { return a.verejna === true; });
+      });
+    },
+    cekajiciSouteze: function () {
+      return pockej(160).then(function () {
+        return Object.keys(DEMO.souteze).map(function (k) { return dokument(kopie(DEMO.souteze[k])); }).filter(function (s) { return s.verejna === true; });
+      });
+    },
   };
   /* kopie podmínek `allow create` u souteze/{sid} (pravidla v18+) nad typovanými poli */
   function demoPravidlaSouteze(sid, f) {
@@ -869,6 +1049,30 @@
     var v = f.vytvoreno && f.vytvoreno.timestampValue ? Date.parse(f.vytvoreno.timestampValue) : NaN;
     if (isNaN(v) || Math.abs(v - Date.now()) > 5 * 60000) ch.push('vytvoreno');
     if (!DEMO.zalozene || (DEMO.zalozene.sids || []).indexOf(sid) < 0) ch.push('sid v zalozene');
+    return ch;
+  }
+  function demoPozvanky(fn) { return Object.keys(DEMO.pozvanky).map(function (k) { return dokument(kopie(DEMO.pozvanky[k])); }).filter(fn); }
+  /* kopie `allow create` u pozvanky/{pid} (pravidla v22) nad typovanými poli */
+  function demoPravidlaPozvanky(pid, f) {
+    var ch = [], povolene = ['aid', 'typ', 'nazev', 'od', 'odJmeno', 'pro', 'kdy', 'do'], ja = DEMO.relace.uid;
+    var s = function (k) { return f[k] && typeof f[k].stringValue === 'string' ? f[k].stringValue : null; };
+    Object.keys(f).forEach(function (k) { if (povolene.indexOf(k) < 0) ch.push('pole ' + k + ' (hasOnly)'); });
+    var typ = s('typ'), aid = s('aid'), pro = s('pro');
+    if (['akce', 'soutez'].indexOf(typ) < 0) ch.push('typ');
+    if (aid === null || aid.length > 40) ch.push('aid');
+    if (s('od') !== ja) ch.push('od');
+    if (pro === null || pro.length < 10 || pro.length > 128) ch.push('pro');
+    if (pro === ja) ch.push('pro není já');
+    if (pid !== aid + '_' + pro) ch.push('id = aid_pro');
+    if (s('nazev') === null || s('nazev').length > 60) ch.push('nazev');
+    if (s('odJmeno') === null || s('odJmeno').length > 30) ch.push('odJmeno');
+    var kdy = f.kdy && f.kdy.timestampValue ? Date.parse(f.kdy.timestampValue) : NaN;
+    if (isNaN(kdy) || Math.abs(kdy - Date.now()) > 5 * 60000) ch.push('kdy');
+    if ('do' in f && !(f.do && f.do.timestampValue)) ch.push('do');
+    var org = false;
+    if (typ === 'akce' && DEMO.akce[aid]) { var a = demoAkce(aid); org = a.vlastnik === ja || (a.spoluorg || []).indexOf(ja) >= 0; }
+    if (typ === 'soutez' && DEMO.souteze[aid]) org = dokument(DEMO.souteze[aid]).zakladatel === ja;
+    if (!org) ch.push('pozvat smí jen organizátor');
     return ch;
   }
 
@@ -1183,7 +1387,9 @@
     if (p.vysledky) q.push('vysledky=1');
     if (p.nahled) q.push('nahled=1');
     if (p.zalozeno) q.push('zalozeno=1');
+    if (p.pozvat) q.push('pozvat=' + encodeURIComponent(p.pozvat));
     if (UKAZKA) q.push('ukazka=1');
+    if (UKAZKA && DEMO && DEMO.spravce) q.push('spravce=1');
     if (AKCE_V_APPCE && /[?&]vse=1(&|$)/.test(location.search)) q.push('vse=1');   // interní náhled nese dál
     return '/akce/' + (q.length ? '?' + q.join('&') : '');
   }
@@ -1212,6 +1418,7 @@
       detail(k, { vysledky: p.get('vysledky') === '1', nahled: p.get('nahled') === '1', zalozeno: p.get('zalozeno') === '1' });
       return;
     }
+    if (p.has('pozvat')) { pozvatDoSouteze(String(p.get('pozvat') || '').trim().toLowerCase()); return; }
     if (p.get('novy') === '1') { pruvodce(null, p.get('sablona')); return; }
     domov();
   }
@@ -1220,7 +1427,8 @@
   function polozkaAkce(a) {
     var st = stavAkce(a);
     return '<li><a class="akce-polozka" data-jdi href="' + esc(odkaz({ k: a._id })) + '">'
-      + '<span class="ap-hlava"><strong>' + esc(a.nazev) + '</strong>' + stitekStavu(st) + '</span>'
+      + '<span class="ap-hlava"><strong>' + esc(a.nazev) + '</strong>' + stitekStavu(st)
+      + (a.verejna ? '<span class="mini-stitek">' + (a.schvaleno ? 'veřejná' : 'veřejná – čeká na schválení') + '</span>' : '') + '</span>'
       + '<span class="ap-info">' + esc(fmtRozsah(a.od, a.do)) + ' · ' + esc(REZIMY[a.rezim] || a.rezim)
       + '<span data-pocet="' + esc(a._id) + '"></span></span></a></li>';
   }
@@ -1237,24 +1445,36 @@
     var uvod = '<span class="nadtitul">Skupinové akce v terénu</span><h1>Hra na míru</h1>';
     if (!relace) {
       el('obsah').innerHTML = horni() + uvod
-        + '<p class="podtitul">Výprava nebo hra pro partu, firmu, školu či oslavu – s aplikací Okolník.</p>'
-        + '<p>Naplánujte společnou výpravu nebo hru v terénu pro firmu, školu, oddíl i oslavu. Sami určíte, kdo koho uvidí na mapě '
-        + 'a jestli se budou zaznamenávat trasy. Účastníci se připojí kódem v aplikaci Okolník, vy sledujete živou mapu '
-        + 'a po skončení dostanete výsledky s mapou tras.</p>'
-        + '<ul class="stitky akce-stitky"><li>Kdo koho vidí na mapě</li><li>Záznam tras</li><li>Týmy i jednotlivci</li><li>Kontrolní body</li><li>Výsledky a CSV</li></ul>'
+        + (AKCE_V_APPCE
+          ? '<p class="podtitul">Výprava nebo hra pro partu, firmu, školu či oslavu – s aplikací Okolník.</p>'
+            + '<p>Naplánujte společnou výpravu nebo hru v terénu pro firmu, školu, oddíl i oslavu. Sami určíte, kdo koho uvidí na mapě '
+            + 'a jestli se budou zaznamenávat trasy. Účastníci se připojí kódem v aplikaci Okolník, vy sledujete živou mapu '
+            + 'a po skončení dostanete výsledky s mapou tras.</p>'
+            + '<ul class="stitky akce-stitky"><li>Kdo koho vidí na mapě</li><li>Záznam tras</li><li>Týmy i jednotlivci</li><li>Kontrolní body</li><li>Výsledky a CSV</li></ul>'
+          : '<p class="podtitul">Vlastní dobývání vlajek pro partu, firmu, školu či obec – s aplikací Okolník.</p>'
+            + '<p>Na mapě vyberete místa, která mají hrát, pojmenujete týmy a nastavíte pravidla. Hráči obsazují vlajky v aplikaci Okolník, '
+            + 'skóre a mapa soutěže jsou i na webu. Výpravy a hry se sdílenou polohou přidáme s další verzí aplikace.</p>')
         + '<p><a class="tlacitko" href="/ucet/">Přihlásit se</a></p>'
-        + '<p class="drobne">Zakládání akcí je součást Okolník Premium (akce až pro 15 lidí). Po přihlášení na stránce Můj Okolník se sem vraťte.</p>'
-        + formularKodu();
+        + '<p class="drobne">' + (AKCE_V_APPCE ? 'Zakládání akcí je součást Okolník Premium (akce až pro 15 lidí).' : 'Zakládání soutěží je součást Okolník Premium.')
+        + ' Po přihlášení na stránce Můj Okolník se sem vraťte.</p>'
+        + adresarHtml() + formularKodu();
       napojFormularKodu();
+      nactiAdresar(id);
       return;
     }
     el('obsah').innerHTML = horni() + uvod
       + '<p class="podtitul">' + (AKCE_V_APPCE ? 'Založte výpravu nebo hru, pošlete účastníkům kód a sledujte akci na živé mapě.'
         : 'Založte vlastní dobývání vlajek – vyberete místa na mapě, týmy a pravidla. Výpravy a hry se sdílenou polohou přidáme s další verzí aplikace.') + '</p>'
       + '<div id="zalozitBox" class="zalozit-box"><p class="drobne">Ověřuji předplatné…</p></div>'
+      + pozvankyHtml()
       + '<h2>Moje akce</h2><div id="mojeAkce"><div class="stav"><div class="tocka"></div>Načítám vaše akce…</div></div>'
+      + (jeSpravce() ? cekajiciHtml() : '')
+      + adresarHtml()
       + formularKodu('Máte kód cizí akce?');
     napojFormularKodu();
+    nactiPozvanky(id);
+    nactiAdresar(id);
+    if (jeSpravce()) nactiCekajici(id);
     api.hrac().then(function (h) { return !!(h && h.premium === true); }, function (e) { return { chyba: e }; }).then(function (p) {
       if (id !== pohled) return;
       var tl = '<a class="tlacitko" data-jdi href="' + esc(odkaz({ novy: true })) + '">' + (AKCE_V_APPCE ? '+ Založit akci' : '+ Založit soutěž') + '</a>';
@@ -1326,7 +1546,8 @@
     if (org) h += '<p class="nahled-pruh">Takhle akci vidí účastníci a lidé s odkazem. <a data-jdi href="' + esc(odkaz({ k: a._id })) + '">Zpět do správy akce</a></p>';
     if (vysledkyOdmitnuty) h += '<p class="hlaska">Výsledky akce zatím vidí jen organizátor.</p>';
     h += '<span class="nadtitul">Pozvánka na akci</span><h1>' + esc(a.nazev) + '</h1>'
-      + '<p class="podtitul">' + esc(fmtRozsah(a.od, a.do)) + ' ' + stitekStavu(st) + '</p>';
+      + '<p class="podtitul">' + esc(fmtRozsah(a.od, a.do)) + ' ' + stitekStavu(st) + '</p>'
+      + '<div id="mojePozvankaBox"></div><div id="spravceBox"></div>';
     if (a.vzhled && a.vzhled.uvitani) h += '<div class="uvitani">' + esc(a.vzhled.uvitani) + '</div>';
     if (a.popis) h += '<p class="popis-akce">' + esc(a.popis) + '</p>';
     h += '<dl class="souhrn"><dt>Režim</dt><dd>' + esc(REZIMY[a.rezim] || a.rezim) + '</dd>'
@@ -1344,6 +1565,13 @@
     }
     if (a.sraz || a.pole) h += '<h2>Místo</h2>' + mapaHtml('pozvankaMapa', 'mala');
     el('obsah').innerHTML = h;
+    vykresliSpravce(a);
+    if (relace && !org && st !== 'konec') {   // v22: pozvaný se v aplikaci připojí rovnou (bez čekání na schválení)
+      api.pozvanka(a._id).then(function (p) {
+        if (id !== pohled || !p || !el('mojePozvankaBox')) return;
+        el('mojePozvankaBox').innerHTML = '<p class="hlaska">Zve vás ' + esc(text(p.odJmeno, 30) || 'organizátor') + ' – v aplikaci se připojíte bez čekání na schválení.</p>';
+      }).catch(function () { /* bez pozvánky */ });
+    }
     if (!a.sraz && !a.pole) return;
     var kont = el('pozvankaMapa');
     vytvorMapu(kont, {}).then(function (m) {
@@ -1381,7 +1609,7 @@
     if (zalozeno) h += hotovoHtml(a);
     h += '<div class="jen-normalne"><span class="nadtitul">Správa akce</span><div id="spravaHlava"></div>'
       + (zalozeno ? '' : kodKartaHtml(a))
-      + '<div class="ovladani" id="spravaOvladani"></div><p class="zprava" id="spravaZprava" role="status"></p></div>'
+      + '<div class="ovladani" id="spravaOvladani"></div><p class="zprava" id="spravaZprava" role="status"></p><div id="spravceBox"></div></div>'
       + '<section class="ziva-plocha" aria-label="Živá mapa akce">'
       + '<div class="velka-hlava"><div class="vh-nazev"><strong id="vhNazev"></strong><span id="vhOdpocet"></span></div>'
       + '<div class="vh-kod">Kód <strong>' + esc(a._id) + '</strong> · okolnik.cz/akce</div>'
@@ -1394,13 +1622,15 @@
       + '<span><button type="button" class="odkaz-tl" id="obnovit">Obnovit</button><button type="button" class="odkaz-tl" id="zobrazitVse">Zobrazit vše</button></span>'
       + '<span id="legenda" class="legenda"></span></div></section>'
       + '<section class="jen-normalne sekce-ucastnici"><h2 id="ucastniciNadpis">Účastníci</h2><div id="ucastniciBox"><div class="stav"><div class="tocka"></div>Načítám účastníky…</div></div>'
-      + '<div id="rozdelitBox"></div></section>';
+      + '<div id="rozdelitBox"></div></section>'
+      + '<section class="jen-normalne">' + pozvaniHtml() + '</section>';
     el('obsah').innerHTML = h;
     napojKopirovani(el('obsah'), a);
     el('obnovit').onclick = function () { obnov(true); };
     el('zobrazitVse').onclick = function () { if (Z && Z.mapa) Z.mapa.prizpusob(vsechnyBody()); };
     el('vhZavrit').onclick = function () { velkaObrazovka(false); };
     vykresliHlavickuSpravy();
+    napojPozvani({ typ: 'akce', aid: a._id, nazev: a.nazev, do: a.do, skoncila: stavAkce(a) === 'konec' });
     api.pod(a._id, 'body').then(function (b) { if (id !== pohled || !Z) return; Z.body = seradBody(b); vykresliZivouMapu(); }).catch(function () { /* body jsou doplněk */ });
     var kont = el('zivaMapa');
     vytvorMapu(kont, {}).then(function (m) {
@@ -1487,7 +1717,7 @@
   }
   function vykresliHlavickuSpravy() {
     var a = Z.akce, st = stavAkce(a);
-    var podpis = [a.nazev, +a.od, +a.do, st, a.rezim, a.stav].join('|');
+    var podpis = [a.nazev, +a.od, +a.do, st, a.rezim, a.stav, a.verejna, a.schvaleno].join('|');
     if (podpis === Z.podpisHlavy) return;
     Z.podpisHlavy = podpis;
     document.title = a.nazev + ' – správa akce – Okolník';
@@ -1496,7 +1726,10 @@
       : st === 'bezi' ? 'Akce běží, skončí ' + fmtCas(a.do) + '.'
         : 'Akce skončila ' + fmtCas(a.do) + '.' + smazaniText(a);
     el('spravaHlava').innerHTML = '<h1>' + esc(a.nazev) + '</h1><p class="podtitul">' + esc(fmtRozsah(a.od, a.do)) + ' · '
-      + esc(REZIMY[a.rezim] || a.rezim) + ' ' + stitekStavu(st) + '</p><p class="drobne">' + esc(pozn) + '</p>';
+      + esc(REZIMY[a.rezim] || a.rezim) + ' ' + stitekStavu(st) + '</p><p class="drobne">' + esc(pozn) + '</p>'
+      + (a.verejna ? '<p class="drobne">' + (a.schvaleno ? 'Veřejná akce – je ve veřejném seznamu na webu.'
+        : 'Veřejná akce – čeká na schválení správcem Okolníku, pak se objeví ve veřejném seznamu.') + '</p>' : '');
+    vykresliSpravce(a);
     var b = [];
     if (st === 'priprava') b.push('<button type="button" class="tlacitko zelene" id="btnSpustit">Spustit teď</button>');
     if (st === 'bezi') b.push('<button type="button" class="tlacitko" id="btnUkoncit">Ukončit akci</button>');
@@ -1963,6 +2196,421 @@
     }).catch(function (e) { if (id === pohled) chybaMapy(kont, e); });
   }
 
+  /* ================================================================ v22: VEŘEJNÝ ADRESÁŘ, POZVÁNKY, PŘÁTELÉ, SCHVÁLENÍ SPRÁVCEM
+     Pravidla v22: veřejný výpis jen s filtrem verejna == true A schvaleno == true (soutěže i akce, čte i nepřihlášený);
+     schvaleno mění jen správce Okolníku. Pozvánka pozvanky/{aid}_{pro}: zakládá organizátor (akce: vlastník nebo
+     spoluorganizátor, soutěž: zakladatel), čte a maže jen pozvaný (pro) nebo odesílatel (od), měnit ji nejde; pozvaný se
+     k akci připojí rovnou (stav 'ok'). Přátelé pratelstvi/{a}_{b}: dva dotazy (a == já, b == já), přítel = stav 'prijato'.
+     Kód přítele kody/{KOD} jde jen přečíst podle kódu; registr přezdívek čitelný není → zvát jde jen přátele a podle kódu. */
+  function jeSpravce() { return UKAZKA ? !!(DEMO && DEMO.spravce) : !!(relace && relace.mail === ADMIN_MAIL); }
+  function zpracujPratelstvi(docs, uid) {
+    var videno = {}, out = { pratele: [], cekajiNaMe: 0, mojeZadosti: 0, mojeJmeno: '' };
+    docs.forEach(function (d) {
+      if (!d || typeof d.a !== 'string' || typeof d.b !== 'string' || (d.a !== uid && d.b !== uid)) return;
+      var klic = d.a + '_' + d.b;
+      if (videno[klic]) return;
+      videno[klic] = 1;
+      var jaA = d.a === uid, moje = text(jaA ? d.jmenoA : d.jmenoB, 30).trim();
+      if (moje && !out.mojeJmeno) out.mojeJmeno = moje;
+      if (d.stav === 'prijato') out.pratele.push({ uid: jaA ? d.b : d.a, jmeno: text(jaA ? d.jmenoB : d.jmenoA, 20).trim() || 'Přítel' });
+      else if (d.stav === 'zadost') { if (d.od === uid) out.mojeZadosti++; else out.cekajiNaMe++; }
+    });
+    out.pratele.sort(function (x, y) { return x.jmeno.localeCompare(y.jmeno, 'cs'); });
+    return out;
+  }
+  function jmenaPozvanych(nova) {   // uid → přezdívka hráčů pozvaných kódem; jen v tomto prohlížeči (v ukázce v paměti)
+    var m;
+    if (UKAZKA) m = DEMO.jmenaPozvanych || (DEMO.jmenaPozvanych = {});
+    else { try { m = JSON.parse(localStorage.getItem(POZVANI_JMENA) || '{}'); } catch (e) { m = null; } }
+    if (!m || typeof m !== 'object') m = {};
+    if (nova && Object.keys(nova).length) {
+      Object.keys(nova).forEach(function (k) { m[k] = nova[k]; });
+      if (!UKAZKA) { try { localStorage.setItem(POZVANI_JMENA, JSON.stringify(m)); } catch (e) { /* nic */ } }
+    }
+    return m;
+  }
+
+  /* ---------------------------------------------------------------- veřejný adresář (i bez přihlášení) */
+  function adresarHtml() {
+    var cip = function (skupina, hodnota, textik, vybrano) {
+      return '<button type="button" class="cip" data-' + skupina + '="' + hodnota + '" aria-pressed="' + vybrano + '">' + textik + '</button>';
+    };
+    return '<section class="adresar" aria-labelledby="adresarNadpis"><h2 id="adresarNadpis">Veřejné akce a soutěže</h2>'
+      + '<p class="drobne">' + (AKCE_V_APPCE ? 'Soutěže a akce, které organizátoři zveřejnili a správce Okolníku schválil.'
+        : 'Soutěže Dobývání vlajek, které organizátoři zveřejnili a správce Okolníku schválil. Přidat se může každý.') + '</p>'
+      + '<div class="adresar-ovladani"><label class="sr" for="adresarHledat">Hledat v seznamu</label>'
+      + '<input class="vstup" id="adresarHledat" type="search" autocomplete="off" spellcheck="false" placeholder="Hledat název nebo kód">'
+      + '<div class="cipy" role="group" aria-label="Kdy">' + cip('adr-kdy', 'bezi', 'Běží teď', false) + cip('adr-kdy', 'tyden', 'Začíná do týdne', false)
+      + cip('adr-kdy', 'vse', 'Všechny', true) + '</div>'
+      + (AKCE_V_APPCE ? '<div class="cipy" role="group" aria-label="Druh">' + cip('adr-typ', 'vse', 'Vše', true) + cip('adr-typ', 'soutez', 'Dobývání', false)
+        + cip('adr-typ', 'akce', 'Výpravy', false) + '</div>' : '')
+      + '</div><div id="adresarSeznam"><div class="stav"><div class="tocka"></div>Načítám veřejné soutěže…</div></div></section>';
+  }
+  function polozkyAdresare(souteze, akce) {
+    var t = ted(), out = [];
+    (souteze || []).forEach(function (s) {
+      if (!s || s._id === NARODNI_SOUTEZ || s.verejna !== true || s.schvaleno !== true || s.stav === 'konec') return;
+      var p = s.pravidla || {}, kon = Date.parse(p.konec || ''), od = zDatumu(String(p.zacatek || '').slice(0, 10));
+      if (!isNaN(kon) && kon < t) return;   // po konci, i když stav ještě nikdo nepřepnul
+      out.push({ typ: 'soutez', id: s._id, nazev: text(s.nazev, 60) || s._id, st: s.stav === 'bezi' ? 'bezi' : 'priprava', od: od ? +od : 0,
+        html: polozkaAdresareSouteze(s) });
+    });
+    (akce || []).forEach(function (a) {
+      if (!a || a.verejna !== true || a.schvaleno !== true) return;
+      var st = stavAkce(a);
+      if (st === 'konec') return;
+      out.push({ typ: 'akce', id: a._id, nazev: a.nazev, st: st, od: +a.od || 0, html: polozkaAdresareAkce(a) });
+    });
+    return out.sort(function (x, y) { return (x.st === 'bezi' ? 0 : 1) - (y.st === 'bezi' ? 0 : 1) || x.od - y.od || x.nazev.localeCompare(y.nazev, 'cs'); });
+  }
+  function polozkaAdresareSouteze(s) {
+    var p = s.pravidla || {};
+    return '<li><a class="akce-polozka" href="/dobyvatel/?s=' + encodeURIComponent(s._id) + '">'
+      + '<span class="ap-hlava"><strong>' + esc(text(s.nazev, 60) || s._id) + '</strong>' + stitekStavu(s.stav === 'bezi' ? 'bezi' : 'priprava')
+      + '<span class="mini-stitek">Dobývání vlajek</span></span>'
+      + '<span class="ap-info">' + esc(fmtRozsahDnu(String(p.zacatek || '').slice(0, 10), String(p.konec || '').slice(0, 10))) + ' · kód ' + esc(s._id) + '</span></a></li>';
+  }
+  function polozkaAdresareAkce(a) {
+    return '<li><a class="akce-polozka" data-jdi href="' + esc(odkaz({ k: a._id })) + '">'
+      + '<span class="ap-hlava"><strong>' + esc(a.nazev) + '</strong>' + stitekStavu(stavAkce(a)) + '<span class="mini-stitek">' + esc(TYP_AKCE[a.rezim] || 'Akce') + '</span></span>'
+      + '<span class="ap-info">' + esc(fmtRozsah(a.od, a.do)) + ' · kód ' + esc(a._id) + ' · účast schvaluje organizátor</span></a></li>';
+  }
+  function nactiAdresar(id) {
+    var box = el('adresarSeznam'), koren = box && box.closest('.adresar');
+    if (!box || !koren) return;
+    var stisk = function (skupina) { var b = koren.querySelector('[data-' + skupina + '][aria-pressed="true"]'); return b ? b.getAttribute('data-' + skupina) : 'vse'; };
+    var A = { polozky: null, kdy: stisk('adr-kdy'), typ: stisk('adr-typ'), q: el('adresarHledat') ? el('adresarHledat').value : '', chybaAkci: '' };
+    function seznam() {
+      if (!A.polozky || id !== pohled) return;
+      var t = ted(), q = bezDiakritiky(A.q).trim(), m = /[?&](?:s|k)=([a-z0-9-]+)/.exec(q);   // i vložený odkaz
+      if (m) q = m[1];
+      var kod = q.replace(/\s+/g, '');
+      var vysl = A.polozky.filter(function (x) {
+        if (A.kdy === 'bezi' && x.st !== 'bezi') return false;
+        if (A.kdy === 'tyden' && !(x.st === 'priprava' && x.od && x.od - t <= 7 * DEN)) return false;
+        if (A.typ !== 'vse' && x.typ !== A.typ) return false;
+        return !q || bezDiakritiky(x.nazev).indexOf(q) >= 0 || (kod && x.id.indexOf(kod) >= 0);
+      });
+      var h = A.chybaAkci ? '<p class="drobne">Veřejné akce se nepodařilo načíst (' + esc(A.chybaAkci) + ').</p>' : '';
+      if (!A.polozky.length) h += '<p class="drobne">' + (AKCE_V_APPCE ? 'Zatím tu není žádná veřejná akce ani soutěž.' : 'Zatím tu není žádná veřejná soutěž.') + '</p>';
+      else if (!vysl.length) {
+        h += '<p class="drobne">' + (q ? 'Hledání nic nenašlo. Soukromou soutěž nebo akci otevřete odkazem nebo kódem od organizátora.'
+          : A.kdy === 'bezi' ? 'Teď žádná neběží.' : A.kdy === 'tyden' ? 'Během příštího týdne žádná nezačíná.' : 'Nic neodpovídá výběru.') + '</p>';
+      } else h += '<ul class="seznam-akci">' + vysl.map(function (x) { return x.html; }).join('') + '</ul>';
+      box.innerHTML = h;
+    }
+    ['adr-kdy', 'adr-typ'].forEach(function (skupina) {
+      koren.querySelectorAll('[data-' + skupina + ']').forEach(function (b) {
+        b.onclick = function () {
+          A[skupina === 'adr-kdy' ? 'kdy' : 'typ'] = b.getAttribute('data-' + skupina);
+          koren.querySelectorAll('[data-' + skupina + ']').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+          seznam();
+        };
+      });
+    });
+    if (el('adresarHledat')) el('adresarHledat').oninput = function () { A.q = this.value; seznam(); };
+    Promise.all([
+      api.verejneSouteze(),
+      AKCE_V_APPCE ? api.verejneAkce().catch(function (e) { A.chybaAkci = chybaText(e); return []; }) : Promise.resolve([]),
+    ]).then(function (v) {
+      if (id !== pohled) return;
+      A.polozky = polozkyAdresare(v[0], v[1]);
+      seznam();
+    }).catch(function (e) {
+      if (id !== pohled) return;
+      box.innerHTML = '<p class="chyba">Veřejné soutěže se nepodařilo načíst: ' + esc(chybaText(e)) + '</p>'
+        + '<p><button type="button" class="tlacitko male obrys" id="adresarZnovu">Zkusit znovu</button></p>';
+      el('adresarZnovu').onclick = function () { box.innerHTML = '<div class="stav"><div class="tocka"></div>Načítám veřejné soutěže…</div>'; nactiAdresar(id); };
+    });
+  }
+
+  /* ---------------------------------------------------------------- správce: veřejné akce a soutěže čekající na schválení (v23) */
+  function cekajiciHtml() {
+    return '<section class="spravce-sekce" aria-labelledby="cekajiciNadpis"><h2 id="cekajiciNadpis">Čekají na schválení (správce)</h2>'
+      + '<p class="drobne">Veřejné akce a soutěže, které ještě nejsou ve veřejném seznamu. Schválíte je na jejich stránce.</p>'
+      + '<div id="cekajiciSeznam"><div class="stav"><div class="tocka"></div>Načítám…</div></div></section>';
+  }
+  function nactiCekajici(id) {
+    var box = el('cekajiciSeznam');
+    if (!box) return;
+    Promise.all([
+      api.cekajiciAkce().catch(function (e) { return { chyba: e }; }),
+      api.cekajiciSouteze().catch(function (e) { return { chyba: e }; }),
+    ]).then(function (v) {
+      if (id !== pohled) return;
+      var t = ted(), polozky = [], chyby = [];
+      if (v[0].chyba) chyby.push('akce (' + chybaText(v[0].chyba) + ')');
+      else v[0].forEach(function (a) {
+        if (!a || a.verejna !== true || a.schvaleno === true || stavAkce(a) === 'konec') return;
+        polozky.push({ od: +a.od || 0, html: '<li><a class="akce-polozka" data-jdi href="' + esc(odkaz({ k: a._id })) + '">'
+          + '<span class="ap-hlava"><strong>' + esc(a.nazev) + '</strong>' + stitekStavu(stavAkce(a)) + '<span class="mini-stitek">' + esc(TYP_AKCE[a.rezim] || 'Akce') + '</span></span>'
+          + '<span class="ap-info">' + esc(fmtRozsah(a.od, a.do)) + ' · kód ' + esc(a._id) + '</span></a></li>' });
+      });
+      if (v[1].chyba) chyby.push('soutěže (' + chybaText(v[1].chyba) + ')');
+      else v[1].forEach(function (s) {
+        if (!s || s.verejna !== true || s.schvaleno === true || s.stav === 'konec' || s._id === NARODNI_SOUTEZ) return;
+        var p = s.pravidla || {}, kon = Date.parse(p.konec || ''), od = zDatumu(String(p.zacatek || '').slice(0, 10));
+        if (!isNaN(kon) && kon < t) return;
+        polozky.push({ od: od ? +od : 0, html: polozkaAdresareSouteze(s) });
+      });
+      polozky.sort(function (x, y) { return x.od - y.od; });
+      box.innerHTML = (chyby.length ? '<p class="chyba">Nepodařilo se načíst: ' + esc(chyby.join(', ')) + '</p>' : '')
+        + (polozky.length ? '<ul class="seznam-akci">' + polozky.map(function (x) { return x.html; }).join('') + '</ul>'
+          : chyby.length ? '' : '<p class="drobne">Nic nečeká na schválení.</p>');
+    });
+  }
+
+  /* ---------------------------------------------------------------- moje pozvánky (pozvaný) */
+  function pozvankyHtml() {
+    return '<section class="pozvanky-sekce" aria-labelledby="pozvankyNadpis"><h2 id="pozvankyNadpis">Moje pozvánky</h2>'
+      + '<div id="mojePozvanky"><div class="stav"><div class="tocka"></div>Načítám pozvánky…</div></div>'
+      + '<p class="zprava" id="pozvankyZprava" role="status"></p></section>';
+  }
+  function nactiPozvanky(id) {
+    var box = el('mojePozvanky');
+    if (!box) return;
+    api.pozvankyPro().then(function (seznam) {
+      if (id !== pohled) return;
+      seznam = seznam.filter(function (p) { return p && p.aid && p.pro === relace.uid; })
+        .sort(function (x, y) { return (platneDatum(y.kdy) ? +y.kdy : 0) - (platneDatum(x.kdy) ? +x.kdy : 0); });
+      if (!seznam.length) {
+        box.innerHTML = '<p class="drobne">Zatím nemáte žádnou pozvánku. Když vás přítel pozve do soutěže nebo akce, uvidíte ji tady i v aplikaci.</p>';
+        return;
+      }
+      box.innerHTML = '<ul class="seznam-pozvanek">' + seznam.map(polozkaPozvanky).join('') + '</ul>';
+      box.querySelectorAll('[data-smazat-pozvanku]').forEach(function (b) {
+        b.onclick = function () { smazatPozvanku(b.getAttribute('data-smazat-pozvanku'), b.getAttribute('data-nazev'), id); };
+      });
+    }).catch(function (e) {
+      if (id !== pohled) return;
+      box.innerHTML = e && e.kod === 'prihlaseni' ? '<p class="drobne">Po přihlášení tu uvidíte své pozvánky.</p>'
+        : '<p class="chyba">Pozvánky se nepodařilo načíst: ' + esc(chybaText(e)) + '</p>';
+    });
+  }
+  function polozkaPozvanky(p) {
+    var soutez = p.typ === 'soutez', t = ted(), skoncila = platneDatum(p.do) && +p.do < t, nazev = text(p.nazev, 60) || p.aid;
+    var url = soutez ? '/dobyvatel/?s=' + encodeURIComponent(p.aid) : odkaz({ k: p.aid });
+    return '<li class="pozvanka-polozka"><div class="pp-text"><span class="ap-hlava"><strong>' + esc(nazev) + '</strong>'
+      + '<span class="mini-stitek">' + (soutez ? 'Dobývání vlajek' : 'Akce') + '</span>' + (skoncila ? stitekStavu('konec') : '') + '</span>'
+      + '<span class="ap-info">Zve vás ' + esc(text(p.odJmeno, 30) || 'organizátor') + (platneDatum(p.kdy) ? ' · ' + esc(predChvili(t - p.kdy)) : '')
+      + ' · kód ' + esc(p.aid) + '</span>'
+      + (soutez || skoncila ? '' : '<span class="ap-info">V aplikaci se připojíte bez čekání na schválení.</span>') + '</div>'
+      + '<div class="pp-tl"><a class="tlacitko mini zelene" href="' + esc(url) + '"' + (soutez ? '' : ' data-jdi') + '>Otevřít</a>'
+      + '<button type="button" class="tlacitko mini obrys" data-smazat-pozvanku="' + esc(p._id) + '" data-nazev="' + esc(nazev) + '">Smazat</button></div></li>';
+  }
+  function smazatPozvanku(pid, nazev, id) {
+    potvrd({ nadpis: 'Smazat pozvánku?', ano: 'Smazat', nebezpecne: true,
+      text: 'Pozvánka do „' + nazev + '“ zmizí z webu i z aplikace. Organizátor vás může pozvat znovu.' }).then(function (ano) {
+      if (!ano || id !== pohled) return;
+      zpravaEl('pozvankyZprava', 'Mažu pozvánku…');
+      api.pozvankaSmaz(pid).then(function () {
+        if (id !== pohled) return;
+        zpravaEl('pozvankyZprava', 'Pozvánka je smazaná.', 'ok');
+        nactiPozvanky(id);
+      }).catch(function (e) { if (id === pohled) zpravaEl('pozvankyZprava', 'Pozvánku se nepodařilo smazat: ' + chybaText(e), 'chyba'); });
+    });
+  }
+
+  /* ---------------------------------------------------------------- pozvat přátele (organizátor akce / zakladatel soutěže) */
+  function pozvaniHtml() {
+    return '<section class="karta pozvani" aria-labelledby="pozvaniNadpis"><h2 id="pozvaniNadpis">Pozvat přátele</h2>'
+      + '<p class="drobne">Pozvaní se připojí bez čekání na schválení.</p>'
+      + '<div id="pozvaniObsah"><div class="stav"><div class="tocka"></div>Načítám přátele…</div></div></section>';
+  }
+  /* cil = { typ: 'akce' | 'soutez', aid, nazev, do: Date | null, skoncila } */
+  function napojPozvani(cil) {
+    var id = pohled, box = el('pozvaniObsah');
+    if (!box) return;
+    if (cil.skoncila) { box.innerHTML = '<p class="drobne">' + (cil.typ === 'soutez' ? 'Soutěž' : 'Akce') + ' už skončila – zvát nejde.</p>'; return; }
+    var V = { pratele: [], pozvani: [], vybrano: {}, navic: [], jmeno: 'Organizátor', odesila: false, zprava: null, chybaKodu: '' };
+    function pozvan(uid) { return V.pozvani.some(function (p) { return p.pro === uid; }); }
+    function jmenoPro(uid) {
+      var x = najdi(V.pratele, function (p) { return p.uid === uid; }) || najdi(V.navic, function (p) { return p.uid === uid; });
+      return x ? x.jmeno : (jmenaPozvanych()[uid] || 'Hráč pozvaný kódem');
+    }
+    function vybrani() { return Object.keys(V.vybrano).filter(function (u) { return V.vybrano[u] && !pozvan(u); }); }
+    function tlacitko() {
+      var b = el('poslatPozvanky');
+      if (!b) return;
+      var n = vybrani().length;
+      b.disabled = !n || V.odesila;
+      b.textContent = V.odesila ? 'Posílám…' : n ? 'Poslat pozvánky (' + n + ')' : 'Poslat pozvánky';
+    }
+    function nacti() {
+      box.innerHTML = '<div class="stav"><div class="tocka"></div>Načítám přátele…</div>';
+      Promise.all([api.pratele(), api.pozvankyOd(cil.aid), api.hrac().catch(function () { return null; })]).then(function (v) {
+        if (id !== pohled) return;
+        V.pratele = v[0].pratele;
+        V.pozvani = v[1].filter(function (p) { return p.aid === cil.aid; });
+        V.jmeno = text((v[2] && v[2].prezdivka) || v[0].mojeJmeno || '', 30).trim() || 'Organizátor';
+        vykresli();
+      }).catch(function (e) {
+        if (id !== pohled) return;
+        box.innerHTML = '<p class="chyba">' + esc((e && e.kod === 'prihlaseni' ? '' : 'Přátele a pozvánky se nepodařilo načíst: ') + chybaText(e)) + '</p>'
+          + '<p><button type="button" class="tlacitko male obrys" id="pozvaniZnovu">Zkusit znovu</button></p>';
+        el('pozvaniZnovu').onclick = nacti;
+      });
+    }
+    function vykresli() {
+      if (id !== pohled || !el('pozvaniObsah')) return;
+      var volni = V.pratele.filter(function (p) { return !pozvan(p.uid); }), navic = V.navic.filter(function (p) { return !pozvan(p.uid); });
+      var zaskrt = function (p, pozn) {
+        return '<label class="zaskrtavatko"><input type="checkbox" data-pozvat="' + esc(p.uid) + '"' + (V.vybrano[p.uid] ? ' checked' : '') + '><span>' + esc(p.jmeno)
+          + (pozn ? ' <span class="drobne">' + esc(pozn) + '</span>' : '') + '</span></label>';
+      };
+      var h = '';
+      if (!V.pratele.length) h += '<p class="drobne">Zatím tu nemáte žádné přátele. Přátele přidáte v aplikaci (Více → Přátelé), nebo pozvěte hráče podle jeho kódu přítele.</p>';
+      else if (!volni.length) h += '<p class="drobne">Všechny přátele už jste pozvali.</p>';
+      if (volni.length || navic.length) {
+        h += '<div class="pratele-vyber" role="group" aria-label="Koho pozvat">' + volni.map(function (p) { return zaskrt(p); }).join('')
+          + navic.map(function (p) { return zaskrt(p, '(kód ' + p.kod + ')'); }).join('') + '</div>';
+      }
+      h += '<form class="kod-pritele" id="kodPriteleForm" novalidate><label class="popisek" for="kodPritele">Pozvat podle kódu přítele</label>'
+        + '<div class="kod-form-radek"><input class="vstup" id="kodPritele" maxlength="9" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="např. K7M2XQ">'
+        + '<button type="submit" class="tlacitko male obrys">Přidat</button></div>'
+        + '<p class="chyba" id="kodPriteleChyba" role="alert">' + esc(V.chybaKodu) + '</p></form>'
+        + '<p class="radek-flex"><button type="button" class="tlacitko zelene" id="poslatPozvanky">Poslat pozvánky</button></p>'
+        + '<p class="zprava' + (V.zprava ? (V.zprava.typ === 'chyba' ? ' je-chyba' : ' je-ok') : '') + '" id="pozvaniZprava" role="status">' + esc(V.zprava ? V.zprava.text : '') + '</p>';
+      if (V.pozvani.length) {
+        h += '<h3>Pozvaní (' + V.pozvani.length + ')</h3><ul class="seznam-pozvanych">'
+          + V.pozvani.slice().sort(function (x, y) { return (platneDatum(y.kdy) ? +y.kdy : 0) - (platneDatum(x.kdy) ? +x.kdy : 0); }).map(function (p) {
+            return '<li><span class="jm">' + esc(jmenoPro(p.pro)) + '</span>' + (platneDatum(p.kdy) ? '<span class="drobne">odesláno ' + esc(predChvili(ted() - p.kdy)) + '</span>' : '')
+              + '<button type="button" class="tlacitko mini obrys" data-zrusit-pozvanku="' + esc(p._id) + '">Zrušit</button></li>';
+          }).join('') + '</ul>';
+      }
+      box.innerHTML = h;
+      tlacitko();
+      box.querySelectorAll('[data-pozvat]').forEach(function (c) {
+        c.onchange = function () { V.vybrano[c.getAttribute('data-pozvat')] = c.checked; tlacitko(); };
+      });
+      el('kodPriteleForm').onsubmit = function (e) { e.preventDefault(); pridejKod(); };
+      el('poslatPozvanky').onclick = poslat;
+      box.querySelectorAll('[data-zrusit-pozvanku]').forEach(function (b) { b.onclick = function () { zrusit(b.getAttribute('data-zrusit-pozvanku'), b); }; });
+    }
+    function pridejKod() {
+      var vstup = el('kodPritele'), kod = String(vstup.value || '').toUpperCase().replace(/[\s-]/g, '');
+      var chybaKodu = function (textik) { V.chybaKodu = textik; var c = el('kodPriteleChyba'); if (c) c.textContent = textik; if (textik && el('kodPritele')) el('kodPritele').focus(); };
+      if (!/^[A-Z2-9]{6}$/.test(kod)) { chybaKodu('Kód přítele má 6 znaků – písmena a číslice 2 až 9.'); return; }
+      chybaKodu('');
+      api.kodPritele(kod).then(function (d) {
+        if (id !== pohled) return;
+        if (!d || typeof d.uid !== 'string' || !d.uid) { chybaKodu('S tímto kódem jsme žádného hráče nenašli.'); return; }
+        if (d.uid === relace.uid) { chybaKodu('To je váš vlastní kód.'); return; }
+        if (pozvan(d.uid)) { chybaKodu('Tento hráč už pozvánku má.'); return; }
+        var jmeno = text(d.prezdivka, 20).trim() || 'Hráč', pritel = najdi(V.pratele, function (p) { return p.uid === d.uid; });
+        if (!pritel && !najdi(V.navic, function (p) { return p.uid === d.uid; })) V.navic.push({ uid: d.uid, jmeno: jmeno, kod: kod });
+        V.vybrano[d.uid] = true;
+        V.zprava = { text: 'Vybráno: ' + (pritel ? pritel.jmeno : jmeno) + '. Pozvánku pošlete tlačítkem „Poslat pozvánky“.', typ: 'ok' };
+        vykresli();
+      }).catch(function (e) { if (id === pohled) chybaKodu('Kód se nepodařilo ověřit: ' + chybaText(e)); });
+    }
+    function poslat() {
+      var seznam = vybrani();
+      if (!seznam.length || V.odesila) return;
+      V.odesila = true;
+      tlacitko();
+      zpravaEl('pozvaniZprava', 'Posílám pozvánky…');
+      var ok = [], chyby = [];
+      (casZnam ? Promise.resolve() : api.synchronizujCas()).then(function () {
+        var kdy = T(new Date(ted()));   // pravidla: ±5 min od času serveru
+        return poSkupinach(seznam, 4, function (uid) {
+          var pole = { aid: S(cil.aid), typ: S(cil.typ), nazev: S(text(cil.nazev, 60)), od: S(relace.uid), odJmeno: S(V.jmeno), pro: S(uid), kdy: kdy };
+          if (platneDatum(cil.do)) pole.do = T(cil.do);
+          return api.pozvankaZaloz(cil.aid + '_' + uid, pole).then(function () { ok.push(uid); }, function (e) { chyby.push(e); });
+        });
+      }).then(function () {
+        var jmena = {};
+        ok.forEach(function (u) { delete V.vybrano[u]; var n = najdi(V.navic, function (p) { return p.uid === u; }); if (n) jmena[u] = n.jmeno; });
+        jmenaPozvanych(jmena);
+        V.zprava = chyby.length
+          ? { text: (ok.length ? 'Odesláno: ' + ok.length + '. ' : '') + 'Nepodařilo se odeslat: ' + chyby.length + ' (' + chybaText(chyby[0]) + ').', typ: 'chyba' }
+          : { text: ok.length === 1 ? 'Pozvánka je odeslaná.' : 'Pozvánky jsou odeslané (' + ok.length + ').', typ: 'ok' };
+        return api.pozvankyOd(cil.aid).then(function (p) { V.pozvani = p.filter(function (x) { return x.aid === cil.aid; }); }, function () { /* seznam se obnoví příště */ });
+      }).catch(function (e) {
+        V.zprava = { text: 'Pozvánky se nepodařilo odeslat: ' + chybaText(e), typ: 'chyba' };
+      }).then(function () { V.odesila = false; vykresli(); });
+    }
+    function zrusit(pid, b) {
+      var p = najdi(V.pozvani, function (x) { return x._id === pid; });
+      if (!p) return;
+      b.disabled = true;
+      api.pozvankaSmaz(pid).then(function () {
+        if (id !== pohled) return;
+        V.pozvani = V.pozvani.filter(function (x) { return x._id !== pid; });
+        V.zprava = { text: 'Pozvánka zrušena: ' + jmenoPro(p.pro) + '.', typ: 'ok' };
+        vykresli();
+      }).catch(function (e) {
+        if (id !== pohled) return;
+        b.disabled = false;
+        V.zprava = { text: 'Pozvánku se nepodařilo zrušit: ' + chybaText(e), typ: 'chyba' };
+        zpravaEl('pozvaniZprava', V.zprava.text, 'chyba');
+      });
+    }
+    nacti();
+  }
+  /* /akce/?pozvat=SID – zakladatel soutěže Dobyvatele zve přátele (správa soutěže sama je na /dobyvatel) */
+  function pozvatDoSouteze(sid) {
+    var id = pohled;
+    sirka(false);
+    document.title = 'Pozvat přátele – Okolník';
+    var nenalezena = function () {
+      el('obsah').innerHTML = horni() + '<div class="stav"><h2>Soutěž nenalezena</h2><p>Soutěž s kódem <strong>' + esc(sid || '–') + '</strong> neexistuje.</p>'
+        + '<p><a class="tlacitko male" data-jdi href="' + esc(odkaz({})) + '">Moje akce a soutěže</a></p></div>';
+    };
+    if (!/^[a-z0-9][a-z0-9-]{2,39}$/.test(sid)) { nenalezena(); return; }
+    if (!relace) { vyzvaPrihlaseni('Zvát přátele do soutěže může jen přihlášený zakladatel soutěže.'); return; }
+    nacitani('Načítám soutěž…');
+    api.soutez(sid).then(function (s) {
+      if (id !== pohled) return;
+      if (!s) { nenalezena(); return; }
+      var nazev = text(s.nazev, 60) || sid, p = s.pravidla || {}, kon = Date.parse(p.konec || '');
+      var st = s.stav === 'bezi' || s.stav === 'konec' ? s.stav : 'priprava';
+      if (s.zakladatel !== relace.uid) {
+        el('obsah').innerHTML = horni() + '<div class="stav"><h2>Tuhle soutěž nespravujete</h2><p>Přátele do soutěže „' + esc(nazev) + '“ může zvát jen její zakladatel.</p>'
+          + '<p><a class="tlacitko male" href="/dobyvatel/?s=' + encodeURIComponent(sid) + '">Otevřít soutěž</a></p></div>';
+        return;
+      }
+      document.title = 'Pozvat přátele – ' + nazev + ' – Okolník';
+      el('obsah').innerHTML = horni() + '<p class="zpet"><a data-jdi href="' + esc(odkaz({})) + '">← Moje akce a soutěže</a></p>'
+        + '<span class="nadtitul">Soutěž Dobývání vlajek</span><h1>' + esc(nazev) + '</h1>'
+        + '<p class="podtitul">' + esc(fmtRozsahDnu(String(p.zacatek || '').slice(0, 10), String(p.konec || '').slice(0, 10))) + ' ' + stitekStavu(st) + '</p>'
+        + '<p class="radek-flex"><a class="tlacitko male obrys" href="/dobyvatel/?s=' + encodeURIComponent(sid) + '">Otevřít soutěž</a></p>'
+        + pozvaniHtml();
+      napojPozvani({ typ: 'soutez', aid: sid, nazev: nazev, do: isNaN(kon) ? null : new Date(kon), skoncila: st === 'konec' || (!isNaN(kon) && kon < ted()) });
+    }).catch(function (e) {
+      if (id !== pohled) return;
+      chybaNacteni('Soutěž se nepodařilo načíst. ' + chybaText(e), function () { pozvatDoSouteze(sid); });
+    });
+  }
+
+  /* ---------------------------------------------------------------- správce Okolníku: veřejné akce do seznamu (jako soutěže na /dobyvatel) */
+  function vykresliSpravce(a) {
+    var box = el('spravceBox');
+    if (!box) return;
+    if (!jeSpravce() || !a.verejna) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="karta spravce-box"><h3>Správce Okolníku</h3>'
+      + '<p>Veřejná akce · ve veřejném seznamu: <strong>' + (a.schvaleno ? 'ano' : 'ne – čeká na schválení') + '</strong></p>'
+      + '<p class="radek-flex">' + (a.schvaleno ? '<button type="button" class="tlacitko male obrys" id="btnSchvaleni" data-ano="0">Stáhnout ze seznamu</button>'
+        : '<button type="button" class="tlacitko male zelene" id="btnSchvaleni" data-ano="1">Schválit do veřejného seznamu</button>') + '</p>'
+      + '<p class="zprava" id="spravceZprava" role="status"></p></div>';
+    el('btnSchvaleni').onclick = function () {
+      var b = this, ano = b.getAttribute('data-ano') === '1', id = pohled;
+      b.disabled = true;
+      zpravaEl('spravceZprava', ano ? 'Schvaluji…' : 'Stahuji ze seznamu…');
+      api.schvalit(a._id, ano).then(function () {
+        if (id !== pohled) return;
+        a.schvaleno = ano;
+        if (Z && Z.akce && Z.akce._id === a._id) { Z.akce.schvaleno = ano; Z.podpisHlavy = ''; vykresliHlavickuSpravy(); }
+        else vykresliSpravce(a);
+        zpravaEl('spravceZprava', ano ? 'Schváleno – akce je ve veřejném seznamu.' : 'Akce je stažená ze seznamu.', 'ok');
+      }).catch(function (e) {
+        if (id !== pohled) return;
+        b.disabled = false;
+        zpravaEl('spravceZprava', (ano ? 'Schválení se nepovedlo: ' : 'Stažení se nepovedlo: ') + chybaText(e), 'chyba');
+      });
+    };
+  }
+
   /* ================================================================ PRŮVODCE: založení a úprava akce */
   var KROKY_AKCE = [
     { nazev: 'Šablona', nazevUprava: 'Režim', vykresli: krokSablona },
@@ -1986,6 +2634,7 @@
     var x = s.nastav;
     N.sablona = s.id; N.rezim = x.rezim; N.poloha = x.poloha; N.polohaOrg = x.polohaOrg; N.polohaPovinna = x.polohaPovinna;
     N.schvalovani = x.schvalovani; N.stopy = x.stopy; N.uchovatDni = x.uchovatDni;
+    N.verejna = false;   // v22: šablony (i škola a děti) vždy začínají jako soukromé
     if (!x.tymy) N.tymy = [];
     else while (N.tymy.length < x.tymy) N.tymy.push(novyTym(N.tymy));
     N.tymyVyber = x.tymyVyber || 'hraci';
@@ -1994,7 +2643,7 @@
     var od = new Date(ted()); od.setDate(od.getDate() + 1); od.setHours(9, 0, 0, 0);
     var N = { sablona: null, nazev: '', popis: '', uvitani: '', od: od, do: new Date(+od + 3 * 3600000), rezim: 'vyprava',
       poloha: 'vsichni', polohaOrg: true, polohaPovinna: true, schvalovani: false, stopy: 'zive', tymy: [], tymyVyber: 'hraci',
-      sraz: null, pole: null, body: [], max: MAX_UCASTNIKU, uchovatDni: 30 };
+      sraz: null, pole: null, body: [], max: MAX_UCASTNIKU, uchovatDni: 30, verejna: false };
     pouzijSablonu(N, SABLONY[0]);
     return N;
   }
@@ -2006,16 +2655,17 @@
       tymyVyber: a.tymyVyber, sraz: a.sraz ? { n: a.sraz.n || 'Sraz', lat: a.sraz.lat, lon: a.sraz.lon } : null,
       pole: a.pole ? { typ: 'kruh', lat: a.pole.lat, lon: a.pole.lon, r: a.pole.r } : null,
       body: body.map(function (b) { return { _uid: dalsiIdBodu++, bid: b._id, n: b.n || '', lat: b.lat, lon: b.lon, h: jeCislo(b.h) ? b.h : null, r: jeCislo(b.r) ? b.r : null }; }),
-      max: a.max, uchovatDni: a.uchovatDni };
+      max: a.max, uchovatDni: a.uchovatDni, verejna: a.verejna === true };
   }
   function navrhNaAkci(N, uid) {
     return {
       nazev: N.nazev.trim(), popis: N.popis.trim(), vlastnik: uid, stav: 'priprava', od: N.od, do: N.do, rezim: N.rezim,
-      poloha: N.poloha, polohaOrg: N.polohaOrg !== false, polohaPovinna: N.polohaPovinna !== false, schvalovani: N.schvalovani === true,
+      poloha: N.poloha, polohaOrg: N.polohaOrg !== false, polohaPovinna: N.polohaPovinna !== false,
+      schvalovani: N.schvalovani === true || N.verejna === true,   // v22: veřejná akce jen se schvalováním
       stopy: N.stopy, tymy: N.tymy.map(function (t) { return { k: t.k, n: t.n.trim(), b: t.b }; }), tymyVyber: N.tymy.length ? N.tymyVyber : 'hraci',
       pole: N.pole ? { typ: 'kruh', lat: N.pole.lat, lon: N.pole.lon, r: Math.round(N.pole.r) } : null,
       sraz: N.sraz ? { n: N.sraz.n.trim() || 'Sraz', lat: N.sraz.lat, lon: N.sraz.lon } : null,
-      max: N.max, uchovatDni: N.uchovatDni, verejna: false, vytvoreno: null, souhlasVerze: SOUHLAS_VERZE, vzhled: { uvitani: N.uvitani.trim() },
+      max: N.max, uchovatDni: N.uchovatDni, verejna: N.verejna === true, vytvoreno: null, souhlasVerze: SOUHLAS_VERZE, vzhled: { uvitani: N.uvitani.trim() },
     };
   }
   function pruvodce(kod, sablona) {
@@ -2528,8 +3178,11 @@
       + '<label class="popisek" for="fMax">Nejvyšší počet účastníků</label>'
       + '<input class="vstup" type="number" id="fMax" data-pole="max" min="2" max="15" step="1" inputmode="numeric" value="' + (jeCislo(N.max) ? N.max : '') + '" style="max-width:140px">'
       + '<p class="chyba" data-chyba="max"></p><p class="drobne">V Okolník Premium až 15 lidí. Větší akce připravujeme.</p>'
-      + '<label class="zaskrtavatko"><input type="checkbox" id="fSchvalovani"' + (N.schvalovani ? ' checked' : '') + '><span><strong>Účast schvaluji já</strong>'
-      + '<span class="popis">Nový účastník počká, až ho ve správě akce schválíte. Nechtěného účastníka můžete kdykoli zamítnout.</span></span></label>'
+      + '<h3>Kdo akci najde</h3><div class="volby">'
+      + radio('verejna', 'ne', 'Soukromá – jen s kódem a pozvánkou', 'Připojí se jen ten, komu pošlete kód, odkaz nebo pozvánku.', N.verejna !== true)
+      + radio('verejna', 'ano', 'Veřejná – v seznamu po schválení správcem Okolníku; účast vždy schvalujete',
+        'Akci najde každý ve veřejném seznamu na webu. Kdo se přidá, počká na vaše schválení.', N.verejna === true)
+      + '</div><div id="schvalovaniBox"></div>'
       + '<h3>Jak dlouho po akci uchovat polohu a trasy</h3><div class="volby radkem">'
       + moznosti.map(function (d) { return radio('uchovat', String(d), d === 0 ? 'Smazat hned' : d + ' ' + sklon(d, 'den', 'dny', 'dní'), '', N.uchovatDni === d, delsi(d)); }).join('')
       + '</div><p class="chyba" data-chyba="uchovatDni"></p>'
@@ -2538,9 +3191,18 @@
       + '<h3>Co uvidí účastníci při připojení</h3><div class="souhlas-nahled" id="souhlasNahled"></div>';
     function nahled() { el('souhlasNahled').innerHTML = nahledSouhlasu(N); }
     el('fMax').oninput = function () { var v = this.value.trim(); N.max = /^\d+$/.test(v) ? parseInt(v, 10) : NaN; };
-    el('fSchvalovani').onchange = function () { N.schvalovani = this.checked; nahled(); };
+    function schvalovani() {   // v22: veřejná akce = schvalování vždy (pravidla jinak zápis odmítnou)
+      var ver = N.verejna === true;
+      if (ver) N.schvalovani = true;
+      el('schvalovaniBox').innerHTML = '<label class="zaskrtavatko' + (ver ? ' zakazana' : '') + '"><input type="checkbox" id="fSchvalovani"'
+        + (N.schvalovani ? ' checked' : '') + (ver ? ' disabled' : '') + '><span><strong>Účast schvaluji já</strong><span class="popis">'
+        + (ver ? 'U veřejné akce účast schvalujete vždy – nový účastník počká, až ho ve správě akce schválíte.'
+          : 'Nový účastník počká, až ho ve správě akce schválíte. Nechtěného účastníka můžete kdykoli zamítnout.') + '</span></span></label>';
+      el('fSchvalovani').onchange = function () { N.schvalovani = this.checked; nahled(); };
+    }
+    naRadio(t, 'verejna', function (v) { N.verejna = v === 'ano'; schvalovani(); nahled(); });
     naRadio(t, 'uchovat', function (v) { N.uchovatDni = parseInt(v, 10); nahled(); });
-    nahled();
+    schvalovani(); nahled();
   }
   function overUcastnici() {
     var N = P.N, ch = {};
@@ -2570,6 +3232,7 @@
       + r('Poloha', esc(popisPolohy(a)), 5)
       + r('Trasy', esc(popisTras(a)), 5)
       + r('Účastníci', 'nejvýš ' + esc(a.max) + (a.schvalovani ? ' · účast schvalujete' : ''), 6)
+      + r('Viditelnost', a.verejna ? 'Veřejná – v seznamu po schválení správcem Okolníku' : 'Soukromá – jen s kódem a pozvánkou', 6)
       + r('Uchování dat', a.uchovatDni === 0 ? 'smazat hned po akci' : esc(a.uchovatDni) + ' ' + sklon(a.uchovatDni, 'den', 'dny', 'dní') + ' po akci', 6)
       + '</dl><h3>Text souhlasu pro účastníky</h3><div class="souhlas-nahled">' + nahledSouhlasu(a) + '</div>';
     var v = [];
@@ -2642,7 +3305,7 @@
     var orig = P.puvodni.akce, nova = navrhNaAkci(P.N, orig.vlastnik);
     nova.stav = orig.stav; nova.vytvoreno = orig.vytvoreno; nova.souhlasVerze = orig.souhlasVerze;
     var fNove = akceNaPole(nova), fStare = akceNaPole(orig), maska = [], pole = {};
-    ['nazev', 'popis', 'od', 'do', 'rezim', 'poloha', 'polohaOrg', 'polohaPovinna', 'schvalovani', 'stopy', 'tymy', 'tymyVyber', 'pole', 'sraz', 'max', 'uchovatDni']
+    ['nazev', 'popis', 'od', 'do', 'rezim', 'poloha', 'polohaOrg', 'polohaPovinna', 'schvalovani', 'stopy', 'tymy', 'tymyVyber', 'pole', 'sraz', 'max', 'uchovatDni', 'verejna']
       .forEach(function (k) {
         if (JSON.stringify(fNove[k]) === JSON.stringify(fStare[k])) return;
         maska.push(k);
@@ -3576,7 +4239,8 @@
       + '<p class="odkaz-akce"><a href="' + esc(url) + '">' + esc(url) + '</a></p>'
       + '<p class="radek-flex"><button type="button" class="tlacitko" data-kopirovat>Kopírovat odkaz</button>'
       + '<button type="button" class="tlacitko obrys" data-sdilet hidden>Sdílet</button>'
-      + '<a class="tlacitko zelene" href="/dobyvatel/?s=' + encodeURIComponent(sid) + '">Otevřít soutěž</a></p>'
+      + '<a class="tlacitko zelene" href="/dobyvatel/?s=' + encodeURIComponent(sid) + '">Otevřít soutěž</a>'
+      + '<a class="tlacitko obrys" data-jdi href="' + esc(odkaz({ pozvat: sid })) + '">Pozvat přátele</a></p>'
       + '<p class="drobne">Hráči v aplikaci Okolník otevřou režim Dobyvatel → tlačítko soutěže nahoře (🏆) → „Zadat kód soutěže“, nebo klepnou na odkaz. '
       + 'Soutěž je zatím v přípravě – spustíte ji ve Správě na stránce soutěže.</p></div>'
       + '<p><a data-jdi href="' + esc(odkaz({})) + '">← Moje akce a soutěže</a></p>';
@@ -3588,7 +4252,8 @@
     return '<li><a class="akce-polozka" href="/dobyvatel/?s=' + encodeURIComponent(s._id) + '">'
       + '<span class="ap-hlava"><strong>' + esc(s.nazev || s._id) + '</strong>' + stitekStavu(st) + '<span class="mini-stitek">Dobývání vlajek</span></span>'
       + '<span class="ap-info">' + esc(fmtRozsahDnu(String(p.zacatek || '').slice(0, 10), String(p.konec || '').slice(0, 10)))
-      + ' · ' + (s.verejna ? 'veřejná' : 'soukromá') + ' · kód ' + esc(s._id) + '</span></a></li>';
+      + ' · ' + (s.verejna ? (s.schvaleno === true ? 'veřejná' : 'veřejná – čeká na schválení') : 'soukromá') + ' · kód ' + esc(s._id) + '</span></a>'
+      + (st !== 'konec' ? '<p class="ap-akce"><a class="odkaz-tl" data-jdi href="' + esc(odkaz({ pozvat: s._id })) + '">Pozvat přátele</a></p>' : '') + '</li>';
   }
 
   /* ================================================================ start */
@@ -3606,7 +4271,8 @@
     // pro aplikaci a testy: stejná logika textu souhlasu a dekódování tras
     window.OkolnikAkce = { textSouhlasu: textSouhlasu, dekodujPolyline: dekodujPolyline, souhlasVerze: SOUHLAS_VERZE };
     // jen v ukázce: přímý zápis do paměťových dat – test, že kopie pravidel odmítne totéž co server
-    if (UKAZKA) window.OkolnikAkce.ukazka = { uprav: apiUkazka.uprav, akce: apiUkazka.akce };
+    if (UKAZKA) window.OkolnikAkce.ukazka = { uprav: apiUkazka.uprav, akce: apiUkazka.akce, api: apiUkazka,
+      data: function () { return kopie({ akce: DEMO.akce, souteze: DEMO.souteze, pozvanky: DEMO.pozvanky, pratelstvi: DEMO.pratelstvi }); } };
     // jen v ukázce: šablona Dobývání vlajek – přesné tělo zápisů (test proti pravidlům syntetickým účtem)
     if (UKAZKA) {
       window.OkolnikAkce.dobyvani = { dokument: dokumentDobyvani, zabalMasku: zabalMasku, rozbalMasku: rozbalMasku,

@@ -293,6 +293,39 @@
     .dob-panel { max-height: none; border-radius: 18px 18px 14px 14px; box-shadow: 0 -4px 14px rgba(13, 43, 46, .08); }
   }
 
+  /* v22: veřejný adresář, pozvánky, pozvání přátel, správce */
+  .adresar, .pozvanky-sekce { margin-top: 28px; }
+  .adresar-ovladani { display: grid; gap: 8px; margin: 8px 0 12px; }
+  .adresar-ovladani .vstup { max-width: 420px; }
+  .cipy { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cip { font: inherit; font-size: .88rem; font-weight: 600; padding: 5px 13px; border-radius: 999px; border: 1px solid var(--linka);
+         background: #fff; cursor: pointer; color: var(--slabsi); }
+  .cip:hover { border-color: #b9c9bf; }
+  .cip[aria-pressed="true"] { background: var(--tmava); border-color: var(--tmava); color: #fff; }
+  .cip:focus-visible { outline: 3px solid var(--oranzova); outline-offset: 2px; }
+  .seznam-pozvanek { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 10px; }
+  .pozvanka-polozka { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; margin: 0;
+                      border: 1px solid var(--linka); border-left: 5px solid var(--oranzova); border-radius: 14px; background: #fff; }
+  .pp-text { flex: 1 1 240px; min-width: 0; }
+  .pp-tl { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ap-akce { margin: 4px 0 0 16px; }
+  .pozvani { margin: 24px 0 10px; }
+  .uzky .pozvani h2 { margin-top: 0; }
+  .pozvani p { margin: 0 0 8px; }
+  .pozvani .kod-pritele { margin: 8px 0 4px; }
+  .pozvani .kod-pritele .vstup { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; }
+  .pozvani .kod-pritele .vstup::placeholder { text-transform: none; letter-spacing: normal; }
+  .pratele-vyber { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0 14px; margin: 4px 0 6px; }
+  .pratele-vyber .zaskrtavatko { margin: 6px 0; overflow-wrap: anywhere; }
+  .seznam-pozvanych { list-style: none; padding: 0; margin: 6px 0 0; }
+  .seznam-pozvanych li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 7px 0; margin: 0; border-bottom: 1px solid var(--linka); }
+  .seznam-pozvanych .jm { font-weight: 700; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .spravce-box { background: #eef4fb; border-color: #c7d7ec; margin: 14px 0; }
+  .spravce-box p { margin: 0 0 8px; color: var(--text); }
+  .akce .spravce-box h3 { margin-top: 0; }
+  .spravce-sekce { margin-top: 28px; background: #eef4fb; border: 1px solid #c7d7ec; border-radius: 14px; padding: 4px 16px 12px; }
+  .spravce-sekce .akce-polozka { box-shadow: none; }
+
   /* velká obrazovka (projektor) – jen třída na <body>, žádné Fullscreen API */
   body.velka { overflow: hidden; }
   body.velka .hlava, body.velka .pata, body.velka .jen-normalne { display: none !important; }
@@ -401,6 +434,6 @@
 </footer>
 
 <script src="/web.js?v=4"></script>
-<script src="akce.js?v=3"></script>
+<script src="akce.js?v=5"></script>
 </body>
 </html>
