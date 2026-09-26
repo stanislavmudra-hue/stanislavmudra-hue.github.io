@@ -197,6 +197,30 @@ Když ho hrajete, platí toto:</p>
 <li><strong>Konec účasti.</strong> Hru kdykoli opustíte přepnutím režimu; o smazání
   herních dat účtu lze požádat na stamu.apps@gmail.com.</li>
 </ul>
+<h2>Hra na míru – akce (dobrovolné)</h2>
+<p>Organizátor (firma, škola, oddíl, rodina) může v Okolníku založit akci – společnou výpravu nebo hru.
+Připojíte se kódem nebo odkazem od organizátora a <strong>před připojením vám aplikace ukáže, co přesně se
+bude sdílet, s kým a do kdy</strong>. Bez vašeho souhlasu se nic neodešle. Pro akci se ukládá:</p>
+<ul>
+<li><strong>Účast:</strong> přezdívka, kterou si pro akci zvolíte, tým a čas vašeho souhlasu. Organizátor může
+  účast schvalovat – do schválení se nic nesdílí – a účastníka z akce vyřadit.</li>
+<li><strong>Poloha během akce</strong>, pokud ji pravidla akce zapínají <strong>a vy sdílení povolíte</strong> (přepínačem při
+  připojení, jde kdykoli vypnout): aktuální poloha telefonu, přesnost a čas, nejvýš jednou za minutu
+  (i se zhasnutou obrazovkou, dokud jste v akci). Podle nastavení akce ji vidí jen organizátor, jen
+  váš tým, váš tým a organizátor, nebo všichni účastníci – organizátor ji tedy nemusí vidět vůbec –
+  a <strong>vždy jen do konce akce</strong>. Sdílení nemusí běžet pořád – stačí při plnění úkolů a na trase jako
+  doklad, kde a kdy jste byli. Nic se neděje automaticky; o účasti rozhoduje organizátor.</li>
+<li><strong>Trasa</strong>, pokud ji organizátor zapnul a vy máte sdílení zapnuté (týž přepínač jako u polohy):
+  záznam vaší cesty během akce po kouscích. Vidí ji organizátor, nebo všichni účastníci (až po
+  skončení akce, nebo už během ní – podle nastavení).</li>
+<li><strong>Smazání:</strong> sdílení skončí samo po skončení akce nebo po odstoupení z akce. Polohy, trasy a účast se smažou po době uchování,
+  kterou organizátor zvolí (0 až 90 dní po akci, uvidíte ji v textu souhlasu). Když z akce odejdete,
+  vaše účast a poloha se smažou hned.</li>
+</ul>
+<p>Kdo z účastníků co vidí, hlídají pravidla serveru (Google Firebase), ne jen aplikace. Po založení
+akce už organizátor sdílení nemůže rozšířit – ukázat polohu nebo trasu dalším lidem, prodloužit dobu
+uchování ani běžící akci; smí je jen zúžit nebo akci zkrátit. Organizátor
+odpovídá za to, k čemu údaje z akce použije; správce Okolníku je zpracovává jen pro provoz akce.</p>
 <h2>Postup ve hře pod účtem (synchronizace)</h2>
 <p>Od verze 1.608 aplikace po přihlášení ukládá váš <strong>postup ve hře</strong> pod váš
 účet do databáze správce (Google Firebase / Firestore), aby přežil výměnu
@@ -373,6 +397,8 @@ reklamy a povolí zakládání soutěží v Dobyvateli.</p>
   Waze (jen když spustíte navigaci).</li>
 <li><strong>IDOS</strong> (CHAPS) – odjezdové tabule zastávek a nádraží, jen když je sami
   otevřete (předá se název zastávky).</li>
+<li><strong>Organizátor akce</strong> (hra na míru) – přezdívka a tým; poloha a trasa z akce jen tehdy, když mu je
+  nastavení akce zpřístupňuje a vy jste s ním při připojení souhlasili, a jen po dobu uvedenou v souhlasu.</li>
 </ul>
 <p>Tito příjemci obdrží běžné síťové požadavky (zejména IP adresu a případně
 souřadnice podle konkrétní funkce).</p>
