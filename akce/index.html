@@ -144,7 +144,7 @@
   .bod-cisla { display: flex; gap: 8px; align-items: center; font-size: .85rem; color: var(--slabsi); }
   .bod-cisla label { display: flex; gap: 4px; align-items: center; }
   .bod-tl { display: flex; gap: 3px; }
-  .bod-tl button, .tym-radek .odebrat { font: inherit; width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--linka);
+  .bod-tl button, .tym-radek .odebrat, .dob-tym .odebrat { font: inherit; width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--linka);
                                          background: #fff; cursor: pointer; color: var(--tmava); }
   .bod-tl button:disabled { opacity: .35; cursor: default; }
   .tym-radek { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 36px; gap: 8px; align-items: center; margin: 6px 0; }
@@ -180,7 +180,7 @@
   /* značky na mapě (prvky MapLibre Marker) */
   .zn-hrac { width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, .45); }
   .zn-hrac.stara { filter: opacity(.42); }   /* MapLibre dává značkám inline opacity – proto filtr */
-  .zn-hrac .jm, .zn-bod .jm { position: absolute; left: calc(100% + 5px); top: 50%; transform: translateY(-50%); white-space: nowrap;
+  .zn-hrac .jm, .zn-bod .jm, .zn-vlastni .jm { position: absolute; left: calc(100% + 5px); top: 50%; transform: translateY(-50%); white-space: nowrap;
     font: 700 12.5px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #1d2624;
     background: rgba(255, 255, 255, .92); padding: 2px 6px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0, 0, 0, .22); pointer-events: none; }
   .zn-bod .jm:empty { display: none; }
@@ -235,6 +235,63 @@
   .ano { color: #1d5e37; font-weight: 700; }
   .ne { color: #8c1d18; font-weight: 700; }
   .souhrn-cisla { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 6px 0 14px; }
+
+  /* šablona Dobývání vlajek – mapa míst + panel (mobil: mapa a pod ní panel jako spodní list) */
+  .dob-mista { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+  .dob-mapa-sloupec { min-width: 0; }
+  .mapa-box.dob-mapa { height: 66vh; min-height: 420px; }
+  .dob-panel { background: var(--jemna); border: 1px solid var(--linka); border-radius: 14px; padding: 8px 14px 12px;
+               max-height: calc(66vh + 110px); overflow: auto; }
+  .dob-panel h3 { margin: 14px 0 6px; font-size: .98rem; }
+  .dob-panel .volba-radek { padding: 8px 12px; }
+  .dob-pocet { display: flex; flex-direction: column; gap: 2px; font-weight: 700; color: var(--tmava); background: #fff; border: 1px solid var(--linka);
+               border-left: 5px solid var(--zelena); border-radius: 12px; padding: 8px 12px; margin: 0 0 8px; }
+  .dob-pocet .varovani { color: #b3261e; }
+  .dob-pocet .rada { color: #7a4a10; font-weight: 600; font-size: .9rem; }
+  #dobNapoveda.zvyraznit { color: #7a4a10; font-weight: 700; }
+  .dob-cipy { display: flex; flex-wrap: wrap; gap: 6px; }
+  .dob-druh { font: inherit; font-size: .85rem; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--linka); background: #fff;
+              cursor: pointer; color: var(--slabsi); }
+  .dob-druh[aria-pressed="true"] { background: var(--cest-jemna); border-color: var(--zelena); color: var(--zelena); font-weight: 700; }
+  .dob-druh:disabled { opacity: .5; cursor: default; }
+  .dob-druh .n { font-weight: 400; color: var(--slabsi); font-size: .8rem; }
+  .dob-odkazy { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 4px 0 0; }
+  .dob-kraje { max-height: 320px; overflow: auto; margin-top: 6px; border-top: 1px solid var(--linka); }
+  .dob-kraj { border-bottom: 1px solid var(--linka); padding: 3px 0; }
+  .dob-kraj-hlava { display: flex; align-items: center; gap: 4px; }
+  .dob-kraj-hlava label { flex: 1; display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; cursor: pointer; font-weight: 600; font-size: .93rem; }
+  .dob-rozbal { font: inherit; background: none; border: 0; cursor: pointer; padding: 4px 8px; color: var(--tmava); }
+  .dob-okresy { display: grid; gap: 1px; padding: 0 0 6px 24px; }
+  .dob-okresy label { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; cursor: pointer; font-size: .9rem; }
+  .dob-radek { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 4px 0; padding: 6px 0; border-bottom: 1px solid var(--linka); }
+  .dob-radek .vstup { flex: 1; min-width: 0; padding: 6px 10px; }
+  .dob-polomer { display: flex; align-items: center; gap: 6px; width: 100%; font-size: .88rem; }
+  .dob-polomer input { flex: 1; min-width: 0; accent-color: var(--zelena); }
+  .zn-vlastni { width: 18px; height: 18px; border-radius: 50%; background: #F29D38; border: 2.5px solid #fff; box-shadow: 0 1px 5px rgba(0, 0, 0, .45); }
+  .zn-vlastni-mini { width: 12px; height: 12px; border-radius: 50%; background: #F29D38; flex: none; box-shadow: 0 0 0 1px rgba(0, 0, 0, .2); }
+  .dob-bublina .maplibregl-popup-content { padding: 6px 10px; font-size: .88rem; border-radius: 8px; line-height: 1.35; }
+  .tocka.mini { display: inline-block; width: 14px; height: 14px; border-width: 2px; margin: 0 6px 0 0; vertical-align: -2px; }
+  .dob-tymy { display: grid; gap: 8px; margin: 8px 0; }
+  .dob-tym { display: grid; grid-template-columns: 36px minmax(0, 1fr) 36px; gap: 8px; align-items: center; }
+  .dob-barva { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .3); cursor: pointer; padding: 0; }
+  .dob-barva[aria-expanded="true"] { box-shadow: 0 0 0 3px var(--tmava); }
+  .dob-paleta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 6px 44px; }
+  .dob-cip { width: 30px; height: 30px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .3); cursor: pointer; padding: 0; }
+  .dob-cip[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--tmava); }
+  .dob-cip:disabled { opacity: .22; cursor: not-allowed; }
+  .dob-pravidla { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin: 12px 0 8px; }
+  .dob-pravidlo { background: #fff; border: 1px solid var(--linka); border-radius: 12px; padding: 10px 12px; }
+  .dob-pravidlo-hlava { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .dob-pravidlo .hodnota { font-weight: 800; color: var(--zelena); white-space: nowrap; }
+  .dob-pravidlo p { margin: 2px 0 6px; }
+  .dob-pravidlo input[type=range] { width: 100%; accent-color: var(--zelena); }
+  .sablony.dva { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .kod-velky.kod-soutez { font-size: clamp(1.3rem, 1rem + 2.5vw, 2.3rem); letter-spacing: .05em; }
+  @media (max-width: 900px) {
+    .dob-mista { grid-template-columns: minmax(0, 1fr); }
+    .mapa-box.dob-mapa { height: 55vh; min-height: 300px; }
+    .dob-panel { max-height: none; border-radius: 18px 18px 14px 14px; box-shadow: 0 -4px 14px rgba(13, 43, 46, .08); }
+  }
 
   /* velká obrazovka (projektor) – jen třída na <body>, žádné Fullscreen API */
   body.velka { overflow: hidden; }
@@ -344,6 +401,6 @@
 </footer>
 
 <script src="/web.js?v=4"></script>
-<script src="akce.js?v=1"></script>
+<script src="akce.js?v=2"></script>
 </body>
 </html>
