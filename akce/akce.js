@@ -37,6 +37,9 @@
   var OBNOVA = 15000, OBNOVA_TRAS = 60000;
   var UCHOVANI = [0, 1, 7, 30, 90];
   var UKAZKA = /[?&]ukazka=1(&|$)/.test(location.search);
+  // ⚠️ Výpravy a hry s polohou (kolekce akce/) zapnout, AŽ je umí vydaná aplikace – do té doby web zakládá jen
+  // Dobývání vlajek (soutěže, které aplikace umí). Interní náhled všeho: &vse=1.
+  var AKCE_V_APPCE = /[?&]vse=1(&|$)/.test(location.search);
   var NBSP = '\u00a0';
 
   var STAVY = { priprava: 'Připravuje se', bezi: 'Běží', konec: 'Skončila' };
@@ -1181,6 +1184,7 @@
     if (p.nahled) q.push('nahled=1');
     if (p.zalozeno) q.push('zalozeno=1');
     if (UKAZKA) q.push('ukazka=1');
+    if (AKCE_V_APPCE && /[?&]vse=1(&|$)/.test(location.search)) q.push('vse=1');   // interní náhled nese dál
     return '/akce/' + (q.length ? '?' + q.join('&') : '');
   }
   function jdi(url, nahradit) {
@@ -1245,14 +1249,15 @@
       return;
     }
     el('obsah').innerHTML = horni() + uvod
-      + '<p class="podtitul">Založte výpravu nebo hru, pošlete účastníkům kód a sledujte akci na živé mapě.</p>'
+      + '<p class="podtitul">' + (AKCE_V_APPCE ? 'Založte výpravu nebo hru, pošlete účastníkům kód a sledujte akci na živé mapě.'
+        : 'Založte vlastní dobývání vlajek – vyberete místa na mapě, týmy a pravidla. Výpravy a hry se sdílenou polohou přidáme s další verzí aplikace.') + '</p>'
       + '<div id="zalozitBox" class="zalozit-box"><p class="drobne">Ověřuji předplatné…</p></div>'
       + '<h2>Moje akce</h2><div id="mojeAkce"><div class="stav"><div class="tocka"></div>Načítám vaše akce…</div></div>'
       + formularKodu('Máte kód cizí akce?');
     napojFormularKodu();
     api.hrac().then(function (h) { return !!(h && h.premium === true); }, function (e) { return { chyba: e }; }).then(function (p) {
       if (id !== pohled) return;
-      var tl = '<a class="tlacitko" data-jdi href="' + esc(odkaz({ novy: true })) + '">+ Založit akci</a>';
+      var tl = '<a class="tlacitko" data-jdi href="' + esc(odkaz({ novy: true })) + '">' + (AKCE_V_APPCE ? '+ Založit akci' : '+ Založit soutěž') + '</a>';
       if (p === true) el('zalozitBox').innerHTML = tl;
       else if (p && p.chyba && p.chyba.kod === 'prihlaseni') {   // uložená relace už neplatí
         el('zalozitBox').innerHTML = '<div class="karta"><h3>Přihlášení vypršelo</h3><p>Přihlaste se prosím znovu stejným účtem jako v aplikaci – uvidíte své akce a budete moci zakládat nové.</p>'
@@ -2015,6 +2020,7 @@
   }
   function pruvodce(kod, sablona) {
     var id = pohled;
+    if (!kod && !AKCE_V_APPCE) sablona = 'dobyvani';
     sirka(false);
     document.title = (kod ? 'Úprava akce' : sablona === 'dobyvani' ? 'Nová soutěž' : 'Nová akce') + ' – Hra na míru – Okolník';
     if (!relace) { vyzvaPrihlaseni(kod ? 'Nastavení akce může měnit jen přihlášený organizátor.' : 'Pro založení ' + (sablona === 'dobyvani' ? 'soutěže' : 'akce') + ' se prosím přihlaste stejným účtem jako v aplikaci.'); return; }
@@ -2133,7 +2139,7 @@
     var N = P.N, h = '', dob = P.typ === 'dobyvani';
     if (!P.uprava) {
       h += '<h2>Šablona</h2><p class="drobne">Šablona jen předvyplní nastavení. Všechno můžete v dalších krocích změnit.</p><div class="sablony">';
-      SABLONY.forEach(function (s) {
+      if (AKCE_V_APPCE) SABLONY.forEach(function (s) {
         h += '<button type="button" class="sablona" data-sablona="' + s.id + '" aria-pressed="' + (!dob && N.sablona === s.id) + '">'
           + '<span class="ik" aria-hidden="true">' + s.ikona + '</span><strong>' + s.nazev + '</strong><span class="p">' + s.popis + '</span></button>';
       });
@@ -2141,6 +2147,7 @@
         + '<span class="ik" aria-hidden="true">🏰</span><strong>Dobývání vlajek</strong>'
         + '<span class="p">Týmy obsazují místa na mapě – pravidla celostátní hry na vaší mapě.</span></button>';
       h += '</div>';
+      if (!AKCE_V_APPCE) h += '<p class="drobne">Výpravy a hry se sdílenou polohou přidáme s další verzí aplikace.</p>';
     }
     if (dob) {
       h += '<p class="drobne">Soutěž Dobyvatele s vlastní mapou: vyberete místa a týmy a nastavíte pravidla. Hráči obsazují vlajky v aplikaci Okolník (režim Dobyvatel), skóre a mapa soutěže jsou i na webu.</p>';
